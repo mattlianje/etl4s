@@ -109,13 +109,13 @@ val slowLoad = Load[String, Int] { s => Thread.sleep(100); s.length }
 // Using &> for parallelized tasks
 time("Using &> operator") {
   val pipeline = Extract("hello") ~> (slowLoad &> slowLoad &> slowLoad)
-  pipeline.runSync(())
+  pipeline.unsafeRun(())
 }
 
 /* Using & for sequenced tasks */
 time("Using & operator") {
     val pipeline = Extract("hello") ~> (slowLoad & slowLoad & slowLoad)
-    pipeline.runSync(())
+    pipeline.unsafeRun(())
 }
 
 // Prints: (as expected 3x faster)
@@ -138,7 +138,7 @@ val transform = Transform[Int, String] { n =>
 }
 
 val pipeline = Extract(42) ~> transform.withRetry(RetryConfig())
-val result: Try[String] = pipeline.runSyncSafe(())
+val result: Try[String] = pipeline.unsafeRun(())
 ``` 
 
 ## Inspiration
