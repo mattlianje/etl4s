@@ -27,13 +27,13 @@ A fully created pipeline composed of nodes chained with `~>`. It takes a type `I
 #### `Node[-In, +Out]`
 `Node` Is the base abstraction of **etl4s**. A pipelines is stitched out of nodes. The node types are:
 
-#### `Extract[-In, +Out]`
+- #### `Extract[-In, +Out]`
 The start of your pipeline. An extract can either be plugged into another function or pipeline or produce an element "purely" with `Extract(2)`. This is shorthand for `val e: Extract[Unit, Int] = Extract(_ => 2)`
 
-#### `Transform[-In, +Out]`
+- #### `Transform[-In, +Out]`
 A `Node` that represent a transformation. It can be composed with other nodes via `andThen`
 
-#### `Load[-In, +Out]` 
+- #### `Load[-In, +Out]` 
 A `Node` used to represent the end of a pipeline.
 
 ## Inspiration
