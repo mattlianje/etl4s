@@ -8,7 +8,7 @@ A lightweight, zero-dependency, library for building type-safe, beautiful data t
 - Monadic composition for sequencing pipelines
 - Drop **etl4s.scala** into any Scala project like a header file
 - Type-safe, compile-time checked pipelines
-- Concurrenct execution on-top of Scala Futures
+- Effortless concurrent execution of parallelizable tasks
 - Built in retry-mechanism
 
 ## Get started
