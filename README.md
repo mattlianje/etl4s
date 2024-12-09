@@ -36,6 +36,53 @@ A `Node` that represent a transformation. It can be composed with other nodes vi
 - ##### `Load[-In, +Out]` 
 A `Node` used to represent the end of a pipeline.
 
+## Examples
+Chain together two pipelines:
+```scala
+val fetchUser: Transform[String, String] =
+  Transform(id => s"Fetching user $id")
+val loadUser: Load[String, String] = Load(msg => s"User loaded: $msg")
+
+val fetchOrder: Transform[Int, String] =
+  Transform(id => s"Fetching order $id")
+val loadOrder: Load[String, String] = Load(msg => s"Order loaded: $msg")
+
+val userPipeline = Extract("user123") ~> fetchUser ~> loadUser
+val ordersPipeline = Extract(42) ~> fetchOrder ~> loadOrder
+
+val combinedPipeline = (for {
+  userData <- userPipeline
+  orderData <- ordersPipeline
+} yield Extract(s"$userData | $orderData") ~>
+  Transform { _.toUpperCase } ~>
+  Load { x => s"Final result: $x" }).flatten
+
+val result = combinedPipeline.unsafeRun(())
+```
+
+Run config driven pipelines using the built in `Reader` monad:
+```scala
+case class ApiConfig(url: String, key: String)
+val config = ApiConfig("https://api.com", "secret")
+
+val fetchUser = Reader[ApiConfig, Transform[String, String]] { config =>
+  Transform(id => s"Fetching user $id from ${config.url}")
+}
+
+val loadUser = Reader[ApiConfig, Load[String, String]] { config =>
+  Load(msg => s"User loaded with key ${config.key}: $msg")
+}
+
+val configuredPipeline = for {
+  userTransform <- fetchUser
+  userLoader <- loadUser
+} yield Extract("user123") ~> userTransform ~> userLoader
+
+/* Run with config */
+val result = configuredPipeline.run(config).unsafeRun(())
+// Result: "User loaded with key secret: Fetching user user123 from https://api.com"
+```
+
 ## Inspiration
 - Debashish Ghosh's [Functional and Reactive Domain Modeling](https://www.manning.com/books/functional-and-reactive-domain-modeling)
 - [Akka Streams DSL](https://doc.akka.io/libraries/akka-core/current/stream/stream-graphs.html#constructing-graphs)
