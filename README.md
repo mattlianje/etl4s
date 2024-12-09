@@ -21,10 +21,10 @@ A lightweight, zero-dependency, library for writing type-safe, beautiful ✨🍰
 ## Core Concepts
 **etl4s** has 4 building blocks and 2 main operators
 
-### `Pipeline[-In, +Out]`
+#### `Pipeline[-In, +Out]`
 A fully created pipeline composed of nodes chained with `~>`. It takes a type `In` and gives a `Out` when run.
 
-### `Node[-In, +Out]`
+#### `Node[-In, +Out]`
 `Node` Is the base abstraction of **etl4s**. A pipelines is stitched out of nodes. The node types are:
 
 #### `Extract[-In, +Out]`
