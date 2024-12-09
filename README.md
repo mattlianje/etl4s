@@ -4,10 +4,10 @@
 A lightweight, type-safe library for building ETL pipelines using functional programming principles.
 
 ## Features
-- White-board style ETL, snapped together from your functions
+- White-board style ETL
 - Monadic composition for sequencing pipelines
-- Drop **Etl4s.scala** into any Scala 2.12+ project like a header file
-- Type-safe transformations w/ compile-time checking
+- Drop **etl4s.scala** into any Scala project like a header file
+- Type-safe, compile-time checked pipelines
 - Concurrenct execution on-top of Scala Futures
 - Built in retry-mechanism
 
@@ -24,9 +24,8 @@ val pipeline =
      fiveExtract ~> times2 ~> exclaim ~> consoleLoad
 
 /* Run your pipeline at the end of the World */
-val result = pipeline.unsafeRun()
-// result: 10!
+val result = pipeline.unsafeRun() /* result: 10! */
 ```
 
 ## Core Concepts
-**Etl4s** has 3 building blocks and 2 main operators
+**etl4s** has 3 building blocks and 2 main operators
