@@ -2,7 +2,7 @@
   <img src="pix/etl4s.png" width="700">
 </p>
 
-# etl4s
+# etl4s _(𝛼)_
 **Powerful, whiteboard-style ETL**
 
 A lightweight, zero-dependency, library for writing type-safe, beautiful ✨🍰  data flows in functional Scala. 
@@ -16,7 +16,10 @@ A lightweight, zero-dependency, library for writing type-safe, beautiful ✨🍰
 - Built in retry-mechanism
 
 ## Get started
-???
+When alpha testing is done, **etl4s** will be available on MavenCentral - until then, try it in your scala repl:
+```bash
+curl -Ls raw.githubusercontent.com/mattlianje/etl4s/master/Etl4s.scala > .Etl4s.swp.scala && scala-cli repl .Etl4s.swp.scala
+```
 
 ## Core Concepts
 **etl4s** has 4 building blocks and 2 main operators
