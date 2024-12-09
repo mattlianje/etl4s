@@ -97,13 +97,6 @@ val result = configuredPipeline.run(config).unsafeRun(())
 
 Parallelize tasks with task groups using `&>` or sequence them with `&`:
 ```scala
-def time[A](description: String)(f: => A): A = {
-  val start = System.currentTimeMillis()
-  val result = f
-  val end = System.currentTimeMillis()
-  println(s"$description took ${end - start}ms")
-  result
-}
 val slowLoad = Load[String, Int] { s => Thread.sleep(100); s.length }
 
 // Using &> for parallelized tasks
