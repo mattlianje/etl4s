@@ -164,22 +164,23 @@ object Etl4s {
 
     def &>[O2](e2: Extract[I, O2])(implicit
         ec: ExecutionContext
-    ): Extract[I, (O1, O2)] =
-      Extract { input =>
-        val f1 = e1.runAsync.apply(input)
-        val f2 = e2.runAsync.apply(input)
-        Await.result(
-          for {
-            r1 <- f1
-            r2 <- f2
-          } yield (r1, r2),
-          Duration.Inf
-        )
-      }
-      def merged[Out](implicit
-          flattener: Flatten.Aux[O1, Out]
-      ): Extract[I, Out] =
-        Extract(i => flattener(e1.runSync(i)))
+    ): Extract[I, (O1, O2)] = Extract { input =>
+      val f1 = e1.runAsync.apply(input.asInstanceOf[I])
+      val f2 = e2.runAsync.apply(input.asInstanceOf[I])
+      Await.result(
+        for {
+          r1 <- f1
+          r2 <- f2
+        } yield (r1, r2),
+        Duration.Inf
+      )
+    }
+
+    def merged[Out](implicit
+        flattener: Flatten.Aux[O1, Out]
+    ): Extract[I, Out] = Extract[I, Out] { i =>
+      flattener(e1.runSync(i))
+    }
   }
 
   implicit class LoadOps[I, O1](l1: Load[I, O1]) {
@@ -191,8 +192,8 @@ object Etl4s {
         ec: ExecutionContext
     ): Load[I, (O1, O2)] =
       Load { input =>
-        val f1 = l1.runAsync.apply(input)
-        val f2 = l2.runAsync.apply(input)
+        val f1 = l1.runAsync.apply(input.asInstanceOf[I])
+        val f2 = l2.runAsync.apply(input.asInstanceOf[I])
         Await.result(
           for {
             r1 <- f1
