@@ -78,9 +78,11 @@ val ordersPipeline: Pipeline[Unit, String]   = Extract(42) ~> fetchOrder ~> load
 val combinedPipeline: Pipeline[Unit, String] = (for {
   userData <- userPipeline
   orderData <- ordersPipeline
-} yield Extract(s"$userData | $orderData") ~>
+} yield {
+  Extract(s"$userData | $orderData") ~>
   Transform { _.toUpperCase } ~>
-  Load { x => s"Final result: $x" }).flatten
+  Load { x => s"Final result: $x"}
+}).flatten
 
 combinedPipeline.unsafeRun(())
 
