@@ -1,7 +1,7 @@
 # etl4s
 **Easy, whiteboard-style data**
 
-A lightweight, type-safe library for building ETL pipelines using functional programming principles.
+A lightweight, zero-dependency, library for building, cast-iron, type-safe, beautiful data transformation flows in functional Scala. 
 
 ## Features
 - White-board style ETL
