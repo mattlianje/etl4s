@@ -148,8 +148,8 @@ val transform = Transform[Int, String] { n =>
   s"Processed $n"
 }
 
-val pipeline = Extract(42) ~> transform.withRetry(RetryConfig())
-val result: Try[String] = pipeline.safeRun(())
+val pipeline: Pipeline[Unit, String] = Extract(42) ~> transform.withRetry(RetryConfig())
+val result:   Try[String]            = pipeline.safeRun(())
 ``` 
 
 ## Inspiration
