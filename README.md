@@ -39,25 +39,24 @@ A `Node` used to represent the end of a pipeline.
 ## Examples
 Chain together two pipelines:
 ```scala
-val fetchUser: Transform[String, String] =
-  Transform(id => s"Fetching user $id")
-val loadUser: Load[String, String] = Load(msg => s"User loaded: $msg")
+val fetchUser: Transform[String, String] = Transform(id => s"Fetching user $id")
+val loadUser:  Load[String, String]      = Load(msg => s"User loaded: $msg")
 
-val fetchOrder: Transform[Int, String] =
-  Transform(id => s"Fetching order $id")
-val loadOrder: Load[String, String] = Load(msg => s"Order loaded: $msg")
+val fetchOrder: Transform[Int, String] = Transform(id => s"Fetching order $id")
+val loadOrder:  Load[String, String]   = Load(msg => s"Order loaded: $msg")
 
-val userPipeline = Extract("user123") ~> fetchUser ~> loadUser
-val ordersPipeline = Extract(42) ~> fetchOrder ~> loadOrder
+val userPipeline:   Pipeline[Unit, String] = Extract("user123") ~> fetchUser ~> loadUser
+val ordersPipeline: Pipeline[Unit, String] = Extract(42) ~> fetchOrder ~> loadOrder
 
-val combinedPipeline = (for {
+val combinedPipeline: Pipeline[Unit, String] = (for {
   userData <- userPipeline
   orderData <- ordersPipeline
 } yield Extract(s"$userData | $orderData") ~>
   Transform { _.toUpperCase } ~>
   Load { x => s"Final result: $x" }).flatten
 
-val result = combinedPipeline.unsafeRun(())
+combinedPipeline.unsafeRun(())
+/* result:  "Final result: USER LOADED: FETCHING USER USER123 | ORDER LOADED: FETCHING ORDER 42" */
 ```
 
 Run config driven pipelines using the built in `Reader` monad:
@@ -80,7 +79,7 @@ val configuredPipeline = for {
 
 /* Run with config */
 val result = configuredPipeline.run(config).unsafeRun(())
-// Result: "User loaded with key secret: Fetching user user123 from https://api.com"
+/* Result: "User loaded with key secret: Fetching user user123 from https://api.com" */
 ```
 
 ## Inspiration
