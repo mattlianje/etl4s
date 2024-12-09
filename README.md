@@ -48,6 +48,22 @@ and see [functional ETL](https://maximebeauchemin.medium.com/functional-data-eng
 
 
 ## Examples
+**etl4s** won't let you chain together "blocks" that don't fit together:
+```scala
+ val fiveExtract: Extract[Unit, Int]        = Extract(5)
+ val exclaim:     Transform[String, String] = Transform(_ + "!")
+
+ fiveExtract ~> exclaim
+```
+The above will not compile with:
+```shell
+-- [E007] Type Mismatch Error: -------------------------------------------------
+4 | fiveExtract ~> exclaim
+  |                ^^^^^^^
+  |                Found:    (exclaim : Transform[String, String])
+  |                Required: Node[Int, Any]
+```
+
 Chain together two pipelines:
 ```scala
 val fetchUser:      Transform[String, String]= Transform(id => s"Fetching user $id")
