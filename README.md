@@ -100,15 +100,15 @@ time("Using &> operator") {
   pipeline.runSync(())
 }
 
-/* Using & for sequenced tasks
+/* Using & for sequenced tasks */
 time("Using & operator") {
     val pipeline = Extract("hello") ~> (slowLoad & slowLoad & slowLoad)
     pipeline.runSync(())
 }
-/* Prints: (as expected 3x faster)
-Using &> operator took 100ms
-Using & operator took 305ms
-*/
+
+// Prints: (as expected 3x faster)
+//   Using &> operator took 100ms
+//   Using & operator took 305ms
 ```
 
 Give individual `Nodes` or whole `Pipelines` retry capability using `.withRetry(<YOUR_CONF>: RetryConfig)` 
