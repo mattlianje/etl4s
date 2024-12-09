@@ -144,5 +144,6 @@ val result: Try[String] = pipeline.runSyncSafe(())
 ## Inspiration
 - Debashish Ghosh's [Functional and Reactive Domain Modeling](https://www.manning.com/books/functional-and-reactive-domain-modeling)
 - [Akka Streams DSL](https://doc.akka.io/libraries/akka-core/current/stream/stream-graphs.html#constructing-graphs)
+- Various Rich Hickey talks
 
 
