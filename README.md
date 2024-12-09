@@ -39,14 +39,14 @@ A `Node` used to represent the end of a pipeline.
 ## Examples
 Chain together two pipelines:
 ```scala
-val fetchUser: Transform[String, String] = Transform(id => s"Fetching user $id")
-val loadUser:  Load[String, String]      = Load(msg => s"User loaded: $msg")
+val fetchUser:      Transform[String, String]= Transform(id => s"Fetching user $id")
+val loadUser:       Load[String, String]     = Load(msg => s"User loaded: $msg")
 
-val fetchOrder: Transform[Int, String] = Transform(id => s"Fetching order $id")
-val loadOrder:  Load[String, String]   = Load(msg => s"Order loaded: $msg")
+val fetchOrder:     Transform[Int, String]   = Transform(id => s"Fetching order $id")
+val loadOrder:      Load[String, String]     = Load(msg => s"Order loaded: $msg")
 
-val userPipeline:   Pipeline[Unit, String] = Extract("user123") ~> fetchUser ~> loadUser
-val ordersPipeline: Pipeline[Unit, String] = Extract(42) ~> fetchOrder ~> loadOrder
+val userPipeline:   Pipeline[Unit, String]   = Extract("user123") ~> fetchUser ~> loadUser
+val ordersPipeline: Pipeline[Unit, String]   = Extract(42) ~> fetchOrder ~> loadOrder
 
 val combinedPipeline: Pipeline[Unit, String] = (for {
   userData <- userPipeline
