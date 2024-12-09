@@ -83,6 +83,52 @@ val result = configuredPipeline.run(config).unsafeRun(())
 /* Result: "User loaded with key secret: Fetching user user123 from https://api.com" */
 ```
 
+Parallelize tasks with task groups using `&>` or sequence them with `&`:
+```scala
+def time[A](description: String)(f: => A): A = {
+  val start = System.currentTimeMillis()
+  val result = f
+  val end = System.currentTimeMillis()
+  println(s"$description took ${end - start}ms")
+  result
+}
+val slowLoad = Load[String, Int] { s => Thread.sleep(100); s.length }
+
+// Using &> for parallelized tasks
+time("Using &> operator") {
+  val pipeline = Extract("hello") ~> (slowLoad &> slowLoad &> slowLoad)
+  pipeline.runSync(())
+}
+
+/* Using & for sequenced tasks
+time("Using & operator") {
+    val pipeline = Extract("hello") ~> (slowLoad & slowLoad & slowLoad)
+    pipeline.runSync(())
+}
+/* Prints: (as expected 3x faster)
+Using &> operator took 100ms
+Using & operator took 305ms
+*/
+```
+
+Give individual `Nodes` or whole `Pipelines` retry capability using `.withRetry(<YOUR_CONF>: RetryConfig)` 
+and the batteries included `RetryConfig` which does exponential backoff:
+```scala
+case class RetryConfig( /* default config */
+  maxAttempts: Int = 3,
+  initialDelay: Duration = 100.millis,
+  backoffFactor: Double = 2.0
+)
+
+val transform = Transform[Int, String] { n => 
+  if (math.random() < 0.5) throw new Exception("Random failure")
+  s"Processed $n"
+}
+
+val pipeline = Extract(42) ~> transform.withRetry(RetryConfig())
+val result: Try[String] = pipeline.runSyncSafe(())
+``` 
+
 ## Inspiration
 - Debashish Ghosh's [Functional and Reactive Domain Modeling](https://www.manning.com/books/functional-and-reactive-domain-modeling)
 - [Akka Streams DSL](https://doc.akka.io/libraries/akka-core/current/stream/stream-graphs.html#constructing-graphs)
