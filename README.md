@@ -68,7 +68,7 @@ val combinedPipeline: Pipeline[Unit, String] = (for {
 
 combinedPipeline.unsafeRun(())
 
-// result:  "Final result: USER LOADED: FETCHING USER USER123 | ORDER LOADED: FETCHING ORDER 42"
+// "Final result: USER LOADED: FETCHING USER USER123 | ORDER LOADED: FETCHING ORDER 42"
 ```
 
 Run config driven pipelines using the built in `Reader` monad:
@@ -92,7 +92,7 @@ val configuredPipeline = for {
 /* Run with config */
 val result = configuredPipeline.run(config).unsafeRun(())
 
-// result: "User loaded with key secret: Fetching user user123 from https://api.com"
+// "User loaded with key secret: Fetching user user123 from https://api.com"
 ```
 
 Parallelize tasks with task groups using `&>` or sequence them with `&`:
