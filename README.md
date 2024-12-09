@@ -22,7 +22,7 @@ curl -Ls raw.githubusercontent.com/mattlianje/etl4s/master/Etl4s.scala > .Etl4s.
 ```
 
 ## Core Concepts
-**etl4s** has 4 building blocks and 2 main operators
+**etl4s** has 4 building blocks
 
 #### `Pipeline[-In, +Out]`
 A fully created pipeline composed of nodes chained with `~>`. It takes a type `In` and gives a `Out` when run.
