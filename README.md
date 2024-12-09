@@ -23,6 +23,7 @@ A lightweight, zero-dependency, library for writing type-safe, beautiful ✨🍰
 
 #### `Pipeline[-In, +Out]`
 A fully created pipeline composed of nodes chained with `~>`. It takes a type `In` and gives a `Out` when run.
+Call `unsafeRun()` to run or throw - `safeRun()` will yield a `Try` Monad.
 
 #### `Node[-In, +Out]`
 `Node` Is the base abstraction of **etl4s**. A pipelines is stitched out of nodes. The node types are:
