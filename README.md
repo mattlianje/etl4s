@@ -10,10 +10,10 @@ A lightweight, zero-dependency, library for writing type-safe, beautiful ✨🍰
 ## Features
 - White-board style ETL
 - Monadic composition for sequencing pipelines
-- Drop **etl4s.scala** into any Scala project like a header file
+- Drop **Etl4s.scala** into any Scala project like a header file
 - Type-safe, compile-time checked pipelines
 - Effortless concurrent execution of parallelizable tasks
-- Built in retry-mechanism
+- Built in retry-mechanism for individual nodes or pipelines
 
 ## Get started
 When alpha testing is done, **etl4s** will be available on MavenCentral - until then, try it in your scala repl:
