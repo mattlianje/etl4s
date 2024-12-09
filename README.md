@@ -3,7 +3,7 @@
 </p>
 
 # etl4s
-**Powerful, easy whiteboard-style data**
+**Powerful, whiteboard-style ETL**
 
 A lightweight, zero-dependency, library for writing type-safe, beautiful ✨🍰  data flows in functional Scala. 
 
