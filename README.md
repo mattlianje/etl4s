@@ -138,7 +138,7 @@ val transform = Transform[Int, String] { n =>
 }
 
 val pipeline = Extract(42) ~> transform.withRetry(RetryConfig())
-val result: Try[String] = pipeline.unsafeRun(())
+val result: Try[String] = pipeline.safeRun(())
 ``` 
 
 ## Inspiration
