@@ -16,7 +16,14 @@ A lightweight, zero-dependency, library for writing type-safe, beautiful ✨🍰
 - Built in retry-mechanism for individual nodes or pipelines
 
 ## Get started
-When alpha testing is done, **etl4s** will be available on MavenCentral - until then, try it in your scala repl:
+> [!WARNING]  
+> Releases sub `1.0.0` are experimental - breaking API changes might happen
+**etl4s** is on the MavenCentral repo:
+```scala
+"io.github.mattlianje" % "testd_2.13" % "0.1.0"
+```
+
+Or try the latest `master` in your scala repl:
 ```bash
 curl -Ls raw.githubusercontent.com/mattlianje/etl4s/master/Etl4s.scala > .Etl4s.swp.scala && scala-cli repl .Etl4s.swp.scala
 ```
