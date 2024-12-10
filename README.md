@@ -26,7 +26,7 @@ curl -Ls raw.githubusercontent.com/mattlianje/etl4s/master/Etl4s.scala > .Etl4s.
 
 #### `Pipeline[-In, +Out]`
 A fully created pipeline composed of nodes chained with `~>`. It takes a type `In` and gives a `Out` when run.
-Call `unsafeRun()` to run or throw - `safeRun()` will yield a `Try` Monad.
+Call `unsafeRun()` to "run-or-throw" - `safeRun()` will yield a `Try[Out]` Monad.
 
 #### `Node[-In, +Out]`
 `Node` Is the base abstraction of **etl4s**. A pipelines is stitched out of nodes. The node types are:
