@@ -13,7 +13,7 @@ A lightweight, zero-dependency, library for writing type-safe, beautiful ✨🍰
 - Drop **Etl4s.scala** into any Scala project like a header file
 - Type-safe, compile-time checked pipelines
 - Effortless concurrent execution of parallelizable tasks
-- Built in retry-mechanism for individual nodes or pipelines
+- Built in retry/on-failure-mechanism for nodes and pipelines
 
 ## Get started
 > [!WARNING]  
