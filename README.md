@@ -167,7 +167,8 @@ val result:   Try[String]            = pipeline.safeRun(())
 
 #### Real-world example with Spark
 ```scala
- /* Step (1/6) Create some data type to represent the environment + configs
+ /*
+  * Step (1/6) Create some data type to represent the environment + configs
   * our pipeline needs
   */
  case class PipelineContext(
@@ -176,7 +177,9 @@ val result:   Try[String]            = pipeline.safeRun(())
    salaryThreshold: Double
  )
 
- /* Step (2/6) We create some test data */
+ /*
+  * Step (2/6) We create some test data
+  */
  val employeesDF = Seq(
    (1, "Alice", 1, 100000.0),
    (2, "Bob", 1, 90000.0),
@@ -198,8 +201,9 @@ val result:   Try[String]            = pipeline.safeRun(())
        (3, LocalDate.parse("2023-02-20"), 270000.0)
  ).toDF("emp_id", "date", "amount")
 
- /* Step (3/6) Define our building blocks and transformations */
-
+ /*
+  * Step (3/6) Define our building blocks and transformations
+  */
  val inputDfs = Extract[Unit, Map[String, DataFrame]](_ => Map(
    "employees" -> employeesDF,
    "departments" -> departmentsDF,
@@ -246,7 +250,8 @@ val result:   Try[String]            = pipeline.safeRun(())
      } yield result
    }
 
- /* This loader performs a side effect, and hands the Df off
+ /*
+  * This loader performs a side effect, and hands the Df off
   * so other pipelines can plug into it and use it for processing
   */
  val load = Load[DataFrame, (Unit, DataFrame)](df => {
