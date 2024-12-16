@@ -167,7 +167,8 @@ val pipeline: Pipeline[Unit, String] = Extract(42) ~> transform.withRetry(RetryC
 val result:   Try[String]            = pipeline.safeRun(())
 ```
 
-#### Real-world example with Spark
+#### Real-world examples with Spark
+Config driven, batch processing pipeline which performs joins and complex aggregations:
 ```scala
  /*
   * Step (1/6) Create some data type to represent the environment + configs
@@ -295,6 +296,79 @@ Writing 3 records for date range
 |          Bob|Engineering|      NY| 90000.0|   220000.0|110000.0|        2|Cost Effective|
 |      Charlie|    Product|      SF|120000.0|   180000.0|180000.0|        1|     High Cost|
 +-------------+-----------+--------+--------+-----------+--------+---------+--------------+
+```
+**etl4s** also models unbounded streams of data
+```scala
+  /*
+   * Step (1/3) Define a generator or some source
+   */
+  val source = Extract[Unit, DataFrame](_ => 
+    spark.readStream
+      .format("rate")
+      .option("rowsPerSecond", 5)
+      .load()
+      .select(
+        current_timestamp().as("timestamp"),
+        expr("value % 3").cast("string").as("user_id"),
+        expr("rand() * 100").as("amount")
+      )
+  )
+
+  /*
+   * Step (2/3) do your windowed aggregations on an unbounded stream
+   */
+  val streamProcessing = Transform[DataFrame, DataFrame](df => 
+    df.withWatermark("timestamp", "10 seconds")
+      .groupBy(
+        window(col("timestamp"), "30 seconds", "10 seconds"),
+        col("user_id")
+      )
+      .agg(
+        sum("amount").as("total_amount"),
+        count("*").as("num_transactions"),
+        avg("amount").as("avg_amount")
+      )
+  )
+
+  /*
+   * Step (3/3) Perform your streaming writes
+   */
+  val sink = Load[DataFrame, (Unit, DataFrame)](df => {
+    val query = df.writeStream
+      .format("console")
+      .outputMode("update")
+      .trigger(Trigger.ProcessingTime("10 seconds"))
+      .start()
+
+    println("Query started - will run for demo period...")
+    Thread.sleep(60000) /* Just 1 minute for our little demo" */
+    query.stop()
+    
+    ((), df)
+  })
+
+  val pipeline = source ~> streamProcessing ~> sink
+  val (_, resultDF) = pipeline.unsafeRun(())
+```
+This start to output:
+```
+Query started - will run for demo period...
+-------------------------------------------
+Batch: 1
+-------------------------------------------
++--------------------+-------+------------------+----------------+------------------+
+|              window|user_id|      total_amount|num_transactions|        avg_amount|
++--------------------+-------+------------------+----------------+------------------+
+|{2024-12-16 12:58...|      1|1163.0088075440715|              27| 43.07440027941006|
+|{2024-12-16 12:58...|      0|1164.7187456389638|              27|43.137731319961624|
+|{2024-12-16 12:58...|      0|1164.7187456389638|              27|43.137731319961624|
+|{2024-12-16 12:58...|      2|1053.7506535847801|              26| 40.52887129172231|
+|{2024-12-16 12:58...|      2|1053.7506535847801|              26| 40.52887129172231|
+|{2024-12-16 12:58...|      2|1053.7506535847801|              26| 40.52887129172231|
+|{2024-12-16 12:58...|      1|1163.0088075440715|              27| 43.07440027941006|
+|{2024-12-16 12:58...|      0|1164.7187456389638|              27|43.137731319961624|
+|{2024-12-16 12:58...|      1|1163.0088075440715|              27| 43.07440027941006|
++--------------------+-------+------------------+----------------+------------------+
 ```
 
 
