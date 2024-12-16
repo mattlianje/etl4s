@@ -73,7 +73,8 @@ The above will not compile with:
   |                Required: Node[Int, Any]
 ```
 
-Chain together two pipelines:
+##### Chain pipelines together:
+Connect the output of two pipelines to a third:
 ```scala
 val fetchUser:      Transform[String, String]= Transform(id => s"Fetching user $id")
 val loadUser:       Load[String, String]     = Load(msg => s"User loaded: $msg")
@@ -96,7 +97,8 @@ combinedPipeline.unsafeRun(())
 // "Final result: USER LOADED: FETCHING USER USER123 | ORDER LOADED: FETCHING ORDER 42"
 ```
 
-Run config driven pipelines using the built in `Reader` monad:
+##### Config-driven pipelines
+Use the built in `Reader` monad:
 ```scala
 case class ApiConfig(url: String, key: String)
 val config = ApiConfig("https://api.com", "secret")
@@ -120,6 +122,7 @@ val result = configuredPipeline.run(config).unsafeRun(())
 // "User loaded with key secret: Fetching user user123 from https://api.com"
 ```
 
+##### Parallelize tasks
 Parallelize tasks with task groups using `&>` or sequence them with `&`:
 ```scala
 val slowLoad = Load[String, Int] { s => Thread.sleep(100); s.length }
@@ -137,11 +140,12 @@ time("Using & operator") {
 }
 
 /*
- *     Using &> operator took 100ms
- *     Using & operator took  305ms
+ *   Using &> operator took 100ms
+ *   Using & operator took  305ms
  */
 ```
 
+##### Retry and onFailure
 Give individual `Nodes` or whole `Pipelines` retry capability using `.withRetry(<YOUR_CONF>: RetryConfig)` 
 and the batteries included `RetryConfig` which does exponential backoff:
 ```scala
@@ -158,7 +162,123 @@ val transform = Transform[Int, String] { n =>
 
 val pipeline: Pipeline[Unit, String] = Extract(42) ~> transform.withRetry(RetryConfig())
 val result:   Try[String]            = pipeline.safeRun(())
-``` 
+```
+
+##### Real-world example with Spark
+```scala
+ /* Create some pipeline conf */
+ case class PipelineContext(
+   startDate: LocalDate,
+   endDate: LocalDate,
+   salaryThreshold: Double
+ )
+
+ /* Create our data to process */
+ val employeesDF = Seq(
+   (1, "Alice", 1, 100000.0),
+   (2, "Bob", 1, 90000.0),
+   (3, "Charlie", 2, 120000.0)
+ ).toDF("id", "name", "dept_id", "salary")
+
+ val departmentsDF = Seq(
+   (1, "Engineering", "NY"),
+   (2, "Product", "SF")
+ ).toDF("id", "name", "location")
+
+ val salesDF = Seq(
+       (1, LocalDate.parse("2023-01-15"), 150000.0),
+       (1, LocalDate.parse("2023-02-01"), 200000.0),
+       (1, LocalDate.parse("2023-03-15"), 150000.0),
+       (2, LocalDate.parse("2023-01-20"), 100000.0),
+       (2, LocalDate.parse("2023-02-15"), 120000.0),
+       (3, LocalDate.parse("2023-01-10"), 180000.0),
+       (3, LocalDate.parse("2023-02-20"), 270000.0)
+ ).toDF("emp_id", "date", "amount")
+
+ /* Define our building blocks and transformations */
+ val inputDfs = Extract[Unit, Map[String, DataFrame]](_ => Map(
+   "employees" -> employeesDF,
+   "departments" -> departmentsDF,
+   "sales" -> salesDF
+ ))
+
+ val process: Reader[DataConfig, Transform[Map[String, DataFrame], DataFrame]] = 
+   Reader { config =>
+     for {
+       /*
+        * Tranforms can introspect on their input use some intermediate states
+        * just like you are used to in more procedural styles via pure
+        * + monadic comprehensions
+        */
+       dfs <- Transform.pure[Map[String, DataFrame]]
+       
+       salesInRange = dfs("sales")
+         .where(col("date").between(config.startDate, config.endDate))
+         .groupBy("emp_id")
+         .agg(
+           sum("amount").as("total_sales"),
+           avg("amount").as("avg_sale"),
+           count("*").as("num_sales")
+         )
+       
+     result <- Transform[Map[String, DataFrame], DataFrame](_ => {
+       val employees = dfs("employees")
+       val departments = dfs("departments")
+       
+       employees
+         .join(departments, employees.col("dept_id") === departments.col("id"))
+         .join(salesInRange, employees.col("id") === salesInRange.col("emp_id"))
+         .select(
+           employees.col("name").as("employee_name"),
+           departments.col("name").as("department"),
+           col("location"),
+           col("salary"),
+           col("total_sales"),
+           col("avg_sale"),
+           col("num_sales"),
+           when(col("salary") > config.salaryThreshold, "High Cost")
+             .otherwise("Cost Effective").as("cost_profile")
+         )
+     })
+     } yield result
+   }
+
+ /* This loader performs a side effect, and hands the Df off
+  * so other pipelines can plug into it and use it for processing
+  */
+ val load = Load[DataFrame, (Unit, DataFrame)](df => {
+   df.cache()
+   println(s"Writing ${df.count()} records for date range")
+   ((), df)
+ })
+
+ /* We create a clean pipeline context:
+  * This bundles all the dependencies + params your pipeline needs!
+  *
+ val config = PipelineContext(
+   startDate       = LocalDate.parse("2023-01-01"),
+   endDate         = LocalDate.parse("2023-02-15"),
+   salaryThreshold = 100000.0
+ )
+ 
+ val pipeline =
+     inputDfs ~> process.run(config) ~> load
+
+ val (_, resultDf) = pipeline.unsafeRun(())
+ resultDf.show()
+```
+This outputs:
+```
+Writing 3 records for date range
++-------------+-----------+--------+--------+-----------+--------+---------+--------------+
+|employee_name| department|location|  salary|total_sales|avg_sale|num_sales|  cost_profile|
++-------------+-----------+--------+--------+-----------+--------+---------+--------------+
+|        Alice|Engineering|      NY|100000.0|   350000.0|175000.0|        2|Cost Effective|
+|          Bob|Engineering|      NY| 90000.0|   220000.0|110000.0|        2|Cost Effective|
+|      Charlie|    Product|      SF|120000.0|   180000.0|180000.0|        1|     High Cost|
++-------------+-----------+--------+--------+-----------+--------+---------+--------------+
+```
+
 
 ## Inspiration
 - Debasish Ghosh's [Functional and Reactive Domain Modeling](https://www.manning.com/books/functional-and-reactive-domain-modeling)
