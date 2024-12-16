@@ -249,7 +249,7 @@ val result:   Try[String]            = pipeline.safeRun(())
            when(col("salary") > config.salaryThreshold, "High Cost")
              .otherwise("Cost Effective").as("cost_profile")
          )
-      })
+       })
      } yield result
    }
 
