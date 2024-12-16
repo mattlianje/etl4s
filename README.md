@@ -149,12 +149,13 @@ time("Using & operator") {
 Give individual `Nodes` or whole `Pipelines` retry capability using `.withRetry(<YOUR_CONF>: RetryConfig)` 
 and the batteries included `RetryConfig` which does exponential backoff:
 ```scala
-/* default config:
-case class RetryConfig(
-  maxAttempts: Int = 3,
-  initialDelay: Duration = 100.millis,
-  backoffFactor: Double = 2.0
-) */
+/*
+ * case class RetryConfig(
+ *   maxAttempts: Int = 3,
+ *   initialDelay: Duration = 100.millis,
+ *   backoffFactor: Double = 2.0
+ *)
+ */
 
 val transform = Transform[Int, String] { n => 
   if (math.random() < 0.5) throw new Exception("Random failure")
