@@ -212,14 +212,14 @@ val result:   Try[String]            = pipeline.safeRun(())
    "sales" -> salesDF
  ))
 
+ /*
+  * Step (4/6) Handle complex processing + joins
+  * just like you are used to in more procedural styles via the `pure` method to
+  * introspect on a `Transform`'s input and use intermediate states.
+  */
  val process: Reader[DataConfig, Transform[Map[String, DataFrame], DataFrame]] = 
    Reader { config =>
      for {
-       /*
-        * Step (4/6) Handle complex processing + joins
-        * just like you are used to in more procedural styles via the `pure` method to
-        * introspect on a `Transform`'s input and use intermediate states.
-        */
        dfs <- Transform.pure[Map[String, DataFrame]]
        
        salesInRange = dfs("sales")
@@ -231,11 +231,11 @@ val result:   Try[String]            = pipeline.safeRun(())
            count("*").as("num_sales")
          )
        
-     result <- Transform[Map[String, DataFrame], DataFrame](_ => {
-       val employees = dfs("employees")
-       val departments = dfs("departments")
+      result <- Transform[Map[String, DataFrame], DataFrame](_ => {
+        val employees = dfs("employees")
+        val departments = dfs("departments")
        
-       employees
+        employees
          .join(departments, employees.col("dept_id") === departments.col("id"))
          .join(salesInRange, employees.col("id") === salesInRange.col("emp_id"))
          .select(
@@ -249,7 +249,7 @@ val result:   Try[String]            = pipeline.safeRun(())
            when(col("salary") > config.salaryThreshold, "High Cost")
              .otherwise("Cost Effective").as("cost_profile")
          )
-     })
+      })
      } yield result
    }
 
