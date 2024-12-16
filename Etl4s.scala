@@ -4,14 +4,13 @@ import scala.concurrent.Await
 import scala.util.{Try, Success, Failure}
 
 case class Reader[R, A](run: R => A) {
-  def map[B](f: A => B): Reader[R, B] =
-    Reader(r => f(run(r)))
-
+  def map[B](f: A => B): Reader[R, B] = Reader(r => f(run(r)))
   def flatMap[B](f: A => Reader[R, B]): Reader[R, B] =
     Reader(r => f(run(r)).run(r))
 }
 
 object Reader {
+  def pure[R, A](a: A): Reader[R, A] = Reader(_ => a)
   def ask[R]: Reader[R, R] = Reader(identity)
 }
 
@@ -21,10 +20,27 @@ case class RetryConfig(
     backoffFactor: Double = 2.0
 )
 
-sealed trait Node[-A, +B] {
+sealed trait Node[-A, +B] { self =>
   def runSync: A => B
   def runAsync(implicit ec: ExecutionContext): A => Future[B]
   def run[C]: C => A => B = _ => runSync
+
+  def map[C](g: B => C): Node[A, C] = new Node[A, C] {
+    def runSync: A => C = self.runSync andThen g
+    def runAsync(implicit ec: ExecutionContext): A => Future[C] = { a =>
+      self.runAsync(ec)(a).map(g)(ec)
+    }
+  }
+
+  def flatMap[AA <: A, C](g: B => Node[AA, C]): Node[AA, C] = new Node[AA, C] {
+    def runSync: AA => C = { a =>
+      val b = self.runSync(a)
+      g(b).runSync(a)
+    }
+    def runAsync(implicit ec: ExecutionContext): AA => Future[C] = { a =>
+      self.runAsync(ec)(a).flatMap(b => g(b).runAsync(ec)(a))(ec)
+    }
+  }
 
   def withRetry(config: RetryConfig): Node[A, B] = new Node[A, B] {
     def runSync: A => B = { input =>
@@ -67,21 +83,67 @@ sealed trait Node[-A, +B] {
       attempt(config.maxAttempts, config.initialDelay)
     }
   }
+
+  /*
+  def onFailure[BB >: B](handler: Throwable => BB): Node[A, BB] =
+    new Node[A, BB] {
+      def runSync: A => BB = { input =>
+        try {
+          self.runSync(input)
+        } catch {
+          case e: Throwable => handler(e)
+        }
+      }
+
+      def runAsync(implicit ec: ExecutionContext): A => Future[BB] = { input =>
+        self.runAsync(ec)(input).recover { case e => handler(e) }
+      }
+    }
+   */
+  def onFailure[BB >: B](handler: Throwable => BB): Node[A, BB] =
+    new Node[A, BB] {
+      def runSync: A => BB = { input =>
+        Try(self.runSync(input)) match {
+          case Success(result) => result
+          case Failure(e)      => handler(e)
+        }
+      }
+
+      def runAsync(implicit ec: ExecutionContext): A => Future[BB] = { input =>
+        self.runAsync(ec)(input).recover { case e => handler(e) }
+      }
+    }
 }
 
-case class Extract[I, O](f: I => O) extends Node[I, O] {
-  def runSync: I => O = f
-  def runAsync(implicit ec: ExecutionContext): I => Future[O] =
-    i => Future(f(i))
+object Node {
+  def pure[A]: Node[A, A] = new Node[A, A] {
+    def runSync: A => A = a => a
+    def runAsync(implicit ec: ExecutionContext): A => Future[A] =
+      a => Future.successful(a)
+  }
+}
+
+case class Extract[A, B](f: A => B) extends Node[A, B] {
+  def runSync: A => B = f
+  def runAsync(implicit ec: ExecutionContext): A => Future[B] =
+    a => Future(f(a))
+
+  override def map[C](g: B => C): Extract[A, C] = new Extract[A, C](f andThen g)
+
+  def flatMap[C](g: B => Extract[A, C]): Extract[A, C] =
+    new Extract[A, C](a => {
+      val b = f(a)
+      g(b).f(a)
+    })
 }
 
 object Extract {
   def apply[A](value: A): Extract[Unit, A] = Extract(_ => value)
-
-  def async[I, O](f: I => Future[O])(implicit
+  def pure[A]: Extract[A, A] = Extract(a => a)
+  def async[A, B](f: A => Future[B])(implicit
       ec: ExecutionContext
-  ): Extract[I, O] =
-    Extract(i => Await.result(f(i), Duration.Inf))
+  ): Extract[A, B] =
+    Extract(a => Await.result(f(a), Duration.Inf))
 }
 
 case class Transform[A, B](f: A => B) extends Node[A, B] {
@@ -92,22 +154,42 @@ case class Transform[A, B](f: A => B) extends Node[A, B] {
   def andThen[C](that: Transform[B, C]): Transform[A, C] =
     Transform(f andThen that.f)
 
+  def flatMap[C](g: B => Transform[A, C]): Transform[A, C] =
+    Transform { a =>
+      val b = f(a)
+      g(b).f(a)
+    }
+
+  override def map[C](g: B => C): Transform[A, C] = Transform(f andThen g)
 }
 
-case class Load[I, O](f: I => O) extends Node[I, O] {
-  def runSync: I => O = f
-  def runAsync(implicit ec: ExecutionContext): I => Future[O] =
-    i => Future(f(i))
+object Transform {
+  def pure[A]: Transform[A, A] = Transform(a => a)
+}
+
+case class Load[A, B](f: A => B) extends Node[A, B] {
+  def runSync: A => B = f
+  def runAsync(implicit ec: ExecutionContext): A => Future[B] =
+    a => Future(f(a))
+
+  override def map[C](g: B => C): Load[A, C] = new Load[A, C](f andThen g)
+
+  def flatMap[C](g: B => Load[A, C]): Load[A, C] =
+    new Load[A, C](a => {
+      val b = f(a)
+      g(b).f(a)
+    })
 }
 
 object Load {
-  def async[I, O](f: I => Future[O])(implicit
+  def pure[A]: Load[A, A] = Load(a => a)
+  def async[A, B](f: A => Future[B])(implicit
       ec: ExecutionContext
-  ): Load[I, O] =
-    Load(i => Await.result(f(i), Duration.Inf))
+  ): Load[A, B] =
+    Load(a => Await.result(f(a), Duration.Inf))
 }
 
-object Etl4s {
+object core {
   case class Pipeline[A, B](node: Node[A, B]) {
     def ~>[C](next: Node[B, C]): Pipeline[A, C] = {
       Pipeline(new Node[A, C] {
@@ -141,15 +223,27 @@ object Etl4s {
         }
       })
     }
+
     def map[C](f: B => C): Pipeline[A, C] = this ~> Transform(f)
 
     def runSync(input: A): B = node.runSync(input)
+
     def runAsync(input: A)(implicit ec: ExecutionContext): Future[B] =
       node.runAsync.apply(input)
+
     def unsafeRun(input: A): B = runSync(input)
-    def runSyncSafe(input: A): Try[B] = Try(runSync(input))
+
+    def safeRun(input: A): Try[B] = Try(runSync(input))
+
     def withRetry(config: RetryConfig = RetryConfig()): Pipeline[A, B] =
       Pipeline(node.withRetry(config))
+
+    def onFailure[BB >: B](handler: Throwable => BB): Pipeline[A, BB] =
+      Pipeline(node.onFailure(handler))
+  }
+
+  object Pipeline {
+    def pure[A]: Pipeline[A, A] = Pipeline(Node.pure[A])
   }
 
   implicit class NodeOps[A, B](node: Node[A, B]) {
@@ -176,7 +270,7 @@ object Etl4s {
       )
     }
 
-    def merged[Out](implicit
+    def zip[Out](implicit
         flattener: Flatten.Aux[O1, Out]
     ): Extract[I, Out] = Extract[I, Out] { i =>
       flattener(e1.runSync(i))

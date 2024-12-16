@@ -2,8 +2,11 @@ import scala.concurrent.ExecutionContext.Implicits.global
 import scala.concurrent.{Future, Await}
 import scala.concurrent.duration._
 
+import java.time.LocalDate
+import java.time.temporal.ChronoUnit
+
 class Etl4sSpec extends munit.FunSuite {
-  import Etl4s._
+  import core._
 
   test("sequential pipeline should combine extracts and loads correctly") {
     val e1 = Extract(42)
@@ -65,6 +68,12 @@ class Etl4sSpec extends munit.FunSuite {
     }
 
     val pipeline = (e1 &> e2 &> e3) ~>
+      Transform[((Int, String), String), String]({ case ((num, str), str2) =>
+        s"$str-$str2-$num"
+      }) ~>
+      (l1 &> l2)
+
+    val pipeline2 = (e1 &> e2 &> e3) ~>
       Transform[((Int, String), String), String]({ case ((num, str), str2) =>
         s"$str-$str2-$num"
       }) ~>
@@ -238,7 +247,7 @@ class Etl4sSpec extends munit.FunSuite {
       RetryConfig(maxAttempts = 3, initialDelay = 10.millis)
     )
 
-    val result = pipeline.runSyncSafe(())
+    val result = pipeline.safeRun(())
     assert(result.isSuccess)
     assertEquals(result.get, "Success after 3 attempts")
     assertEquals(attempts, 3)
@@ -255,7 +264,7 @@ class Etl4sSpec extends munit.FunSuite {
       RetryConfig(maxAttempts = 2)
     )
 
-    val result = pipeline.runSyncSafe(())
+    val result = pipeline.safeRun(())
     assert(result.isFailure)
     assert(result.failed.get.getMessage == "Failed attempt 2")
     assertEquals(attempts, 2)
@@ -272,7 +281,7 @@ class Etl4sSpec extends munit.FunSuite {
       RetryConfig(maxAttempts = 3)
     )
 
-    val result = pipeline.runSyncSafe(())
+    val result = pipeline.safeRun(())
     assert(result.isSuccess)
     assertEquals(result.get, "First try success!")
     assertEquals(attempts, 1)
@@ -283,11 +292,11 @@ class Etl4sSpec extends munit.FunSuite {
     val e2 = Extract("two")
     val e3 = Extract("three")
 
-    val result = (e1 &> e2 &> e3).merged.runSync(())
+    val result = (e1 &> e2 &> e3).zip.runSync(())
     assertEquals(result, (1, "two", "three"))
 
     val e4 = Extract[Unit, Double](_ => 4.0)
-    val result2 = (e1 &> e2 &> e3 &> e4).merged.runSync(())
+    val result2 = (e1 &> e2 &> e3 &> e4).zip.runSync(())
     assertEquals(result2, (1, "two", "three", 4.0))
   }
 
@@ -304,7 +313,7 @@ class Etl4sSpec extends munit.FunSuite {
     val load = Load[String, String](s => s"Final: $s")
 
     val pipeline =
-      (e1 &> e2 &> e3).merged ~> transform ~> load
+      (e1 &> e2 &> e3).zip ~> transform ~> load
 
     val result = pipeline.unsafeRun(())
     assertEquals(result, "Final: Number: 1, First: two, Second: three")
@@ -315,8 +324,7 @@ class Etl4sSpec extends munit.FunSuite {
         s"Number: $num, First: $s1, Second: $s2, Double: $d"
     }
 
-    val pipeline2 = (e1 &> e2 &> e3 &> e4).merged ~> transform2 ~> load
-
+    val pipeline2 = (e1 &> e2 &> e3 &> e4).zip ~> transform2 ~> load
     val result2 = pipeline2.unsafeRun(())
     assertEquals(
       result2,
@@ -324,4 +332,180 @@ class Etl4sSpec extends munit.FunSuite {
     )
   }
 
+  test(
+    "Transform should handle Map input while maintaining sequential operations"
+  ) {
+    case class Person(name: String, age: Int, scores: List[Int])
+
+    val input = Map(
+      "alice" -> Person("Alice", 25, List(95, 88, 92)),
+      "bob" -> Person("Bob", 23, List(88, 85, 90))
+    )
+
+    val process: Transform[Map[String, Person], Map[String, String]] = for {
+      avgScores <- Transform[Map[String, Person], Map[String, Double]](people =>
+        people.map { case (id, p) =>
+          id -> (p.scores.sum.toDouble / p.scores.length)
+        }
+      )
+      grades <- Transform[Map[String, Person], Map[String, String]](_ =>
+        avgScores.map { case (id, score) =>
+          id -> (if (score > 90) "A"
+                 else if (score > 80) "B"
+                 else "C")
+        }
+      )
+    } yield grades
+
+    val expected = Map(
+      "alice" -> "A",
+      "bob" -> "B"
+    )
+
+    assertEquals(process.runSync(input), expected)
+  }
+
+  test(
+    "should handle Map input as ETL pipeline with sequential operations and for-comprehension"
+  ) {
+    case class Person(name: String, age: Int, scores: List[Int])
+
+    val e1 = Extract[Unit, Map[String, Person]]((u: Unit) =>
+      Map(
+        "alice" -> Person("Alice", 25, List(95, 88, 92)),
+        "bob" -> Person("Bob", 23, List(88, 85, 90))
+      )
+    )
+
+    val process: Transform[Map[String, Person], Map[String, String]] = for {
+      avgScores <- Transform[Map[String, Person], Map[String, Double]](people =>
+        people.map { case (id, p) =>
+          id -> (p.scores.sum.toDouble / p.scores.length)
+        }
+      )
+      gradesByAge <- Transform[Map[String, Person], Map[String, String]](
+        people =>
+          people.map { case (id, p) =>
+            id -> (if (p.age > 24) "Old " else "Young ")
+          }
+      )
+      finalGrades <- Transform[Map[String, Person], Map[String, String]](_ =>
+        avgScores.map { case (id, score) =>
+          val agePrefix = gradesByAge(id)
+          id -> s"$agePrefix${
+              if (score > 90) "A"
+              else if (score > 80) "B"
+              else "C"
+            }"
+        }
+      )
+    } yield finalGrades
+
+    val load = Load[Map[String, String], String](grades =>
+      grades
+        .map { case (id, grade) =>
+          s"Student $id received grade: $grade"
+        }
+        .mkString("\n")
+    )
+
+    val pipeline = e1 ~> process ~> load
+
+    val expected =
+      """Student alice received grade: Old A
+      |Student bob received grade: Young B""".stripMargin
+
+    assertEquals(pipeline.unsafeRun(()), expected)
+  }
+
+  test(
+    "should demonstrate simple ETL pipeline with multiple dataframes and config"
+  ) {
+    case class DataConfig(threshold: Double)
+
+    val inputDfs = Extract[Unit, Map[String, Map[String, Double]]](_ =>
+      Map(
+        "sales" -> Map(
+          "product1" -> 100.0,
+          "product2" -> 400.0,
+          "product3" -> 150.0
+        ),
+        "costs" -> Map(
+          "product1" -> 80.0,
+          "product2" -> 150.0,
+          "product3" -> 90.0
+        )
+      )
+    )
+
+    val process: Reader[DataConfig, Transform[
+      Map[String, Map[String, Double]],
+      Map[String, String]
+    ]] =
+      Reader { config =>
+        for {
+          dfs <- Transform.pure[Map[String, Map[String, Double]]]
+
+          margins: Map[String, Double] = dfs("sales").map {
+            case (product, revenue) =>
+              val cost = dfs("costs").getOrElse(product, 0.0)
+              val margin = revenue - cost
+              product -> margin
+          }
+
+          enriched <- Transform[Map[String, Map[String, Double]], Map[
+            String,
+            String
+          ]](_ =>
+            margins.map { case (product, margin) =>
+              product -> {
+                if (margin > config.threshold) s"High margin: $margin"
+                else s"Low margin: $margin"
+              }
+            }
+          )
+        } yield enriched
+      }
+
+    val load = Load[Map[String, String], String](results =>
+      results
+        .map { case (product, status) =>
+          s"$product -> $status"
+        }
+        .mkString("\n")
+    )
+
+    val config = DataConfig(threshold = 100.0)
+
+    val pipeline = inputDfs ~> process.run(config) ~> load
+    val result = pipeline.unsafeRun(())
+
+    assert(result.contains("product2 -> High margin"))
+    assert(result.contains("product1 -> Low margin"))
+  }
+
+  test("should handle errors with onFailure") {
+    case class MyError(msg: String)
+
+    val riskyExtract =
+      Extract[Unit, String](_ => throw new RuntimeException("Boom!"))
+
+    val riskyTransform = Transform[String, Int](str =>
+      if (str.contains("safe")) str.length
+      else throw new IllegalArgumentException("Unsafe input")
+    )
+
+    val safeExtract = riskyExtract.onFailure(e => s"Failed: ${e.getMessage}")
+    assertEquals(safeExtract.runSync(()), "Failed: Boom!")
+
+    val p1 = Extract("bad input") ~>
+      riskyTransform.onFailure(e => -1) ~>
+      Transform[Int, String](n => if (n < 0) "Error occurred" else "Success")
+
+    val p2 =
+      (Extract("bad input") ~> riskyTransform).onFailure(_ => "Error occurred")
+
+    assertEquals(p1.unsafeRun(()), "Error occurred")
+    assertEquals(p2.unsafeRun(()), "Error occurred")
+  }
 }
