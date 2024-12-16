@@ -183,14 +183,14 @@ val result:   Try[String]            = pipeline.safeRun(())
   * Step (2/6) We create some test data
   */
  val employeesDF = Seq(
-   (1, "Alice", 1, 100000.0),
-   (2, "Bob", 1, 90000.0),
+   (1, "Alice",   1, 100000.0),
+   (2, "Bob",     1, 90000.0),
    (3, "Charlie", 2, 120000.0)
  ).toDF("id", "name", "dept_id", "salary")
 
  val departmentsDF = Seq(
    (1, "Engineering", "NY"),
-   (2, "Product", "SF")
+   (2, "Product",     "SF")
  ).toDF("id", "name", "location")
 
  val salesDF = Seq(
