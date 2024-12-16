@@ -89,7 +89,8 @@ val combinedPipeline: Pipeline[Unit, String] = (for {
   userData  <- userPipeline
   orderData <- ordersPipeline
 } yield {
-  Extract(s"$userData | $orderData") ~> Transform { _.toUpperCase } ~> Load { x => s"Final result: $x"}
+  Extract(s"$userData | $orderData") ~> Transform { _.toUpperCase }
+     ~> Load { x => s"Final result: $x"}
 }).flatten
 
 combinedPipeline.unsafeRun(())
@@ -140,8 +141,8 @@ time("Using & operator") {
 }
 
 /*
- *   Using &> operator took 100ms
- *   Using & operator took  305ms
+ * Using &> operator took: 100ms
+ * Using & operator took:  305ms
  */
 ```
 
@@ -193,13 +194,13 @@ val result:   Try[String]            = pipeline.safeRun(())
  ).toDF("id", "name", "location")
 
  val salesDF = Seq(
-       (1, LocalDate.parse("2023-01-15"), 150000.0),
-       (1, LocalDate.parse("2023-02-01"), 200000.0),
-       (1, LocalDate.parse("2023-03-15"), 150000.0),
-       (2, LocalDate.parse("2023-01-20"), 100000.0),
-       (2, LocalDate.parse("2023-02-15"), 120000.0),
-       (3, LocalDate.parse("2023-01-10"), 180000.0),
-       (3, LocalDate.parse("2023-02-20"), 270000.0)
+   (1, LocalDate.parse("2023-01-15"), 150000.0),
+   (1, LocalDate.parse("2023-02-01"), 200000.0),
+   (1, LocalDate.parse("2023-03-15"), 150000.0),
+   (2, LocalDate.parse("2023-01-20"), 100000.0),
+   (2, LocalDate.parse("2023-02-15"), 120000.0),
+   (3, LocalDate.parse("2023-01-10"), 180000.0),
+   (3, LocalDate.parse("2023-02-20"), 270000.0)
  ).toDF("emp_id", "date", "amount")
 
  /*
