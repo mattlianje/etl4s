@@ -73,7 +73,7 @@ The above will not compile with:
   |                Required: Node[Int, Any]
 ```
 
-##### Chain pipelines together:
+#### Chain pipelines together:
 Connect the output of two pipelines to a third:
 ```scala
 val fetchUser:      Transform[String, String]= Transform(id => s"Fetching user $id")
@@ -97,7 +97,7 @@ combinedPipeline.unsafeRun(())
 // "Final result: USER LOADED: FETCHING USER USER123 | ORDER LOADED: FETCHING ORDER 42"
 ```
 
-##### Config-driven pipelines
+#### Config-driven pipelines
 Use the built in `Reader` monad:
 ```scala
 case class ApiConfig(url: String, key: String)
@@ -122,7 +122,7 @@ val result = configuredPipeline.run(config).unsafeRun(())
 // "User loaded with key secret: Fetching user user123 from https://api.com"
 ```
 
-##### Parallelize tasks
+#### Parallelizing tasks
 Parallelize tasks with task groups using `&>` or sequence them with `&`:
 ```scala
 val slowLoad = Load[String, Int] { s => Thread.sleep(100); s.length }
@@ -145,7 +145,7 @@ time("Using & operator") {
  */
 ```
 
-##### Retry and onFailure
+#### Retry and onFailure
 Give individual `Nodes` or whole `Pipelines` retry capability using `.withRetry(<YOUR_CONF>: RetryConfig)` 
 and the batteries included `RetryConfig` which does exponential backoff:
 ```scala
@@ -164,7 +164,7 @@ val pipeline: Pipeline[Unit, String] = Extract(42) ~> transform.withRetry(RetryC
 val result:   Try[String]            = pipeline.safeRun(())
 ```
 
-##### Real-world example with Spark
+#### Real-world example with Spark
 ```scala
  /* Create some pipeline conf */
  case class PipelineContext(
@@ -254,7 +254,7 @@ val result:   Try[String]            = pipeline.safeRun(())
 
  /* We create a clean pipeline context:
   * This bundles all the dependencies + params your pipeline needs!
-  *
+  */
  val config = PipelineContext(
    startDate       = LocalDate.parse("2023-01-01"),
    endDate         = LocalDate.parse("2023-02-15"),
