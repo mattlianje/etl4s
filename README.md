@@ -167,7 +167,7 @@ val pipeline: Pipeline[Unit, String] = Extract(42) ~> transform.withRetry(RetryC
 val result:   Try[String]            = pipeline.safeRun(())
 ```
 
-#### Real-world examples with Spark
+#### Real-world batch example with Spark
 Config driven, batch processing pipeline which performs joins and complex aggregations:
 ```scala
  /*
@@ -297,7 +297,9 @@ Writing 3 records for date range
 |      Charlie|    Product|      SF|120000.0|   180000.0|180000.0|        1|     High Cost|
 +-------------+-----------+--------+--------+-----------+--------+---------+--------------+
 ```
-**etl4s** also models unbounded streams of data
+
+#### Real-world streaming example with Spark
+You can just as easily model and process unbounded streams of data with **etl4s**:
 ```scala
   /*
    * Step (1/3) Define a generator or some source
