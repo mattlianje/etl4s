@@ -38,7 +38,7 @@ Call `unsafeRun()` to "run-or-throw" - `safeRun()` will yield a `Try[Out]` Monad
 
 #### `Node[-In, +Out]`
 `Node` Is the base abstraction of **etl4s**. A pipeline is stitched out of nodes. Nodes are just abstractions which defer the application of some run function: `In => Out`.
-Nodes are in the categories of profunctor and monad. For the latter, the unit operation is `pure`. The node types are:
+Nodes are monadic having unit operation the `pure` method. The node types are:
 
 - ##### `Extract[-In, +Out]`
 The start of your pipeline. An extract can either be plugged into another function or pipeline or produce an element "purely" with `Extract(2)`. This is shorthand for `val e: Extract[Unit, Int] = Extract(_ => 2)`
