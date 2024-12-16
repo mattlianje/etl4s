@@ -149,11 +149,12 @@ time("Using & operator") {
 Give individual `Nodes` or whole `Pipelines` retry capability using `.withRetry(<YOUR_CONF>: RetryConfig)` 
 and the batteries included `RetryConfig` which does exponential backoff:
 ```scala
-case class RetryConfig( /* default config */
+/* default config:
+case class RetryConfig(
   maxAttempts: Int = 3,
   initialDelay: Duration = 100.millis,
   backoffFactor: Double = 2.0
-)
+) */
 
 val transform = Transform[Int, String] { n => 
   if (math.random() < 0.5) throw new Exception("Random failure")
@@ -166,14 +167,16 @@ val result:   Try[String]            = pipeline.safeRun(())
 
 #### Real-world example with Spark
 ```scala
- /* Create some pipeline conf */
+ /* Step (1/6) Create some data type to represent the environment + configs
+  * our pipeline needs
+  */
  case class PipelineContext(
    startDate: LocalDate,
    endDate: LocalDate,
    salaryThreshold: Double
  )
 
- /* Create our data to process */
+ /* Step (2/6) We create some test data */
  val employeesDF = Seq(
    (1, "Alice", 1, 100000.0),
    (2, "Bob", 1, 90000.0),
@@ -195,7 +198,8 @@ val result:   Try[String]            = pipeline.safeRun(())
        (3, LocalDate.parse("2023-02-20"), 270000.0)
  ).toDF("emp_id", "date", "amount")
 
- /* Define our building blocks and transformations */
+ /* Step (3/6) Define our building blocks and transformations */
+
  val inputDfs = Extract[Unit, Map[String, DataFrame]](_ => Map(
    "employees" -> employeesDF,
    "departments" -> departmentsDF,
@@ -206,9 +210,8 @@ val result:   Try[String]            = pipeline.safeRun(())
    Reader { config =>
      for {
        /*
-        * Tranforms can introspect on their input use some intermediate states
-        * just like you are used to in more procedural styles via pure
-        * + monadic comprehensions
+        * Step (4/6) Handle complex processing + joins
+        * just like you are used to in more procedural styles via the `pure` method
         */
        dfs <- Transform.pure[Map[String, DataFrame]]
        
@@ -252,7 +255,8 @@ val result:   Try[String]            = pipeline.safeRun(())
    ((), df)
  })
 
- /* We create a clean pipeline context:
+ /*
+  * (Step 5/6) We create a clean pipeline context:
   * This bundles all the dependencies + params your pipeline needs!
   */
  val config = PipelineContext(
@@ -260,7 +264,11 @@ val result:   Try[String]            = pipeline.safeRun(())
    endDate         = LocalDate.parse("2023-02-15"),
    salaryThreshold = 100000.0
  )
- 
+
+ /*
+  * (Step 6/6) We stitch our pipeline together and TADA!
+  * Now we can run it at the end of the World or plug it into other pipelines
+  */
  val pipeline =
      inputDfs ~> process.run(config) ~> load
 
