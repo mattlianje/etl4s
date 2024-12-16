@@ -221,6 +221,7 @@ val result:   Try[String]            = pipeline.safeRun(())
    Reader { config =>
      for {
        dfs <- Transform.pure[Map[String, DataFrame]]
+       _ = println(s"Processing range: ${config.startDate} to ${config.endDate}")
        
        salesInRange = dfs("sales")
          .where(col("date").between(config.startDate, config.endDate))
@@ -285,6 +286,7 @@ val result:   Try[String]            = pipeline.safeRun(())
 ```
 This outputs:
 ```
+Processing range: 2023-01-01 to 2023-02-15
 Writing 3 records for date range
 +-------------+-----------+--------+--------+-----------+--------+---------+--------------+
 |employee_name| department|location|  salary|total_sales|avg_sale|num_sales|  cost_profile|
