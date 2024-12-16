@@ -352,7 +352,7 @@ You can just as easily model and process unbounded streams of data with **etl4s*
   val pipeline = source ~> streamProcessing ~> sink
   val (_, resultDF) = pipeline.unsafeRun(())
 ```
-This start to output:
+This will output:
 ```
 Query started - will run for demo period...
 -------------------------------------------
