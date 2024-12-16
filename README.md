@@ -216,6 +216,8 @@ val result:   Try[String]            = pipeline.safeRun(())
        /*
         * Step (4/6) Handle complex processing + joins
         * just like you are used to in more procedural styles via the `pure` method
+        * Introspect on a `Transform`'s input and use intermediate states all inside
+        * a monadic comprehension
         */
        dfs <- Transform.pure[Map[String, DataFrame]]
        
