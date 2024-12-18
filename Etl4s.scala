@@ -84,22 +84,6 @@ sealed trait Node[-A, +B] { self =>
     }
   }
 
-  /*
-  def onFailure[BB >: B](handler: Throwable => BB): Node[A, BB] =
-    new Node[A, BB] {
-      def runSync: A => BB = { input =>
-        try {
-          self.runSync(input)
-        } catch {
-          case e: Throwable => handler(e)
-        }
-      }
-
-      def runAsync(implicit ec: ExecutionContext): A => Future[BB] = { input =>
-        self.runAsync(ec)(input).recover { case e => handler(e) }
-      }
-    }
-   */
   def onFailure[BB >: B](handler: Throwable => BB): Node[A, BB] =
     new Node[A, BB] {
       def runSync: A => BB = { input =>
@@ -226,9 +210,9 @@ object core {
 
     def map[C](f: B => C): Pipeline[A, C] = this ~> Transform(f)
 
-    def runSync(input: A): B = node.runSync(input)
+    private def runSync(input: A): B = node.runSync(input)
 
-    def runAsync(input: A)(implicit ec: ExecutionContext): Future[B] =
+    private def runAsync(input: A)(implicit ec: ExecutionContext): Future[B] =
       node.runAsync.apply(input)
 
     def unsafeRun(input: A): B = runSync(input)

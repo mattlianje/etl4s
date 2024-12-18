@@ -79,7 +79,7 @@ class Etl4sSpec extends munit.FunSuite {
       }) ~>
       (l1 &> l2)
 
-    val (list, map) = Await.result(pipeline.runAsync(()), 1.second)
+    val (list, map) = pipeline.unsafeRun(())
 
     assertEquals(list, List("hello", "world", "42"))
     assertEquals(map, Map("length" -> 14))
