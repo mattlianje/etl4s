@@ -29,6 +29,11 @@ Or try it in your repl:
 scala-cli repl --dep io.github.mattlianje:etl4s_2.13:0.0.3
 ```
 
+All you need tom import:
+```scala
+import etl4s.core._
+```
+
 ## Core Concepts
 **etl4s** has 4 building blocks
 
