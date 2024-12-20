@@ -19,12 +19,12 @@ A lightweight, zero-dependency, library for writing type-safe, beautiful ✨🍰
 > [!WARNING]  
 > Releases sub `1.0.0` are experimental - breaking API changes might happen
 
-**etl4s** is on the MavenCentral repo:
+**etl4s** is on MavenCentral:
 ```scala
 "io.github.mattlianje" % "etl4s_2.13" % "0.0.3"
 ```
 
-Or try it in your repl:
+Try it in your repl:
 ```bash
 scala-cli repl --dep io.github.mattlianje:etl4s_2.13:0.0.3
 ```
