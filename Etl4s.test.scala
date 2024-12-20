@@ -1,3 +1,5 @@
+package etl4s
+
 import scala.concurrent.ExecutionContext.Implicits.global
 import scala.concurrent.{Future, Await}
 import scala.concurrent.duration._
@@ -507,5 +509,57 @@ class Etl4sSpec extends munit.FunSuite {
 
     assertEquals(p1.unsafeRun(()), "Error occurred")
     assertEquals(p2.unsafeRun(()), "Error occurred")
+  }
+
+  test("transform should accumulate multiple validation errors") {
+    case class User(name: String, age: Int, email: String)
+
+    def validateName(name: String): Validated[String, String] =
+      if (name.isEmpty) Validated.invalid("Name cannot be empty")
+      else if (name.length < 2) Validated.invalid("Name too short")
+      else if (!name.matches("[A-Za-z ]+"))
+        Validated.invalid("Name can only contain letters")
+      else Validated.valid(name)
+
+    def validateAge(age: Int): Validated[String, Int] =
+      if (age < 0) Validated.invalid("Age must be positive")
+      else if (age > 150) Validated.invalid("Age not realistic")
+      else Validated.valid(age)
+
+      def validateEmail(email: String): Validated[String, String] = {
+        Validated
+          .valid(email)
+          .zip(if (!email.contains("@")) Validated.invalid("Email must contain @") else Validated.valid(email))
+          .zip(if (!email.contains(".")) Validated.invalid("Email must contain .") else Validated.valid(email))
+          .map { case ((email, _), _) => email }
+      }
+
+    val validateUser =
+      Transform[(String, Int, String), Validated[String, User]] {
+        case (name, age, email) =>
+          validateName(name)
+            .zip(validateAge(age))
+            .zip(validateEmail(email))
+            .map { case ((name, age), email) => User(name, age, email) }
+      }
+
+    val validInput = ("Matthieu", 27, "matthieu.court@protonmail.com")
+    val invalidInput = ("", -1, "invalid")
+
+    val validResult = validateUser.runSync(validInput)
+    val invalidResult = validateUser.runSync(invalidInput)
+
+    assert(validResult.value.isRight)
+    println(invalidResult.value)
+    assert(invalidResult.value.isLeft)
+    assertEquals(
+      invalidResult.value.left.get,
+      List(
+        "Name cannot be empty",
+        "Age must be positive",
+        "Email must contain @",
+        "Email must contain ."
+      )
+    )
   }
 }

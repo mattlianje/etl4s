@@ -1,3 +1,5 @@
+package etl4s
+
 import scala.concurrent.{Future, ExecutionContext}
 import scala.concurrent.duration._
 import scala.concurrent.Await
@@ -12,6 +14,27 @@ case class Reader[R, A](run: R => A) {
 object Reader {
   def pure[R, A](a: A): Reader[R, A] = Reader(_ => a)
   def ask[R]: Reader[R, R] = Reader(identity)
+}
+
+case class Validated[+E, +A](value: Either[List[E], A]) {
+  def map[B](f: A => B): Validated[E, B] =
+    Validated(value.map(f))
+
+  def flatMap[EE >: E, B](f: A => Validated[EE, B]): Validated[EE, B] =
+    Validated(value.flatMap(a => f(a).value))
+
+  def zip[EE >: E, B](that: Validated[EE, B]): Validated[EE, (A, B)] =
+    (this.value, that.value) match {
+      case (Right(a), Right(b)) => Validated.valid((a, b))
+      case (Left(e1), Left(e2)) => Validated(Left(e1 ++ e2))
+      case (Left(e), _)         => Validated(Left(e))
+      case (_, Left(e))         => Validated(Left(e))
+    }
+}
+
+object Validated {
+  def valid[E, A](a: A): Validated[E, A] = Validated(Right(a))
+  def invalid[E, A](e: E): Validated[E, A] = Validated(Left(List(e)))
 }
 
 case class RetryConfig(
