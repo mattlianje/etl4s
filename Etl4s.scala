@@ -5,198 +5,207 @@ import scala.concurrent.duration._
 import scala.concurrent.Await
 import scala.util.{Try, Success, Failure}
 
-case class Reader[R, A](run: R => A) {
-  def map[B](f: A => B): Reader[R, B] = Reader(r => f(run(r)))
-  def flatMap[B](f: A => Reader[R, B]): Reader[R, B] =
-    Reader(r => f(run(r)).run(r))
-}
-
-object Reader {
-  def pure[R, A](a: A): Reader[R, A] = Reader(_ => a)
-  def ask[R]: Reader[R, R] = Reader(identity)
-}
-
-case class Validated[+E, +A](value: Either[List[E], A]) {
-  def map[B](f: A => B): Validated[E, B] =
-    Validated(value.map(f))
-
-  def flatMap[EE >: E, B](f: A => Validated[EE, B]): Validated[EE, B] =
-    Validated(value.flatMap(a => f(a).value))
-
-  def zip[EE >: E, B](that: Validated[EE, B]): Validated[EE, (A, B)] =
-    (this.value, that.value) match {
-      case (Right(a), Right(b)) => Validated.valid((a, b))
-      case (Left(e1), Left(e2)) => Validated(Left(e1 ++ e2))
-      case (Left(e), _)         => Validated(Left(e))
-      case (_, Left(e))         => Validated(Left(e))
-    }
-}
-
-object Validated {
-  def valid[E, A](a: A): Validated[E, A] = Validated(Right(a))
-  def invalid[E, A](e: E): Validated[E, A] = Validated(Left(List(e)))
-}
-
-case class RetryConfig(
-    maxAttempts: Int = 3,
-    initialDelay: Duration = 100.millis,
-    backoffFactor: Double = 2.0
-)
-
-sealed trait Node[-A, +B] { self =>
-  def runSync: A => B
-  def runAsync(implicit ec: ExecutionContext): A => Future[B]
-  def run[C]: C => A => B = _ => runSync
-
-  def map[C](g: B => C): Node[A, C] = new Node[A, C] {
-    def runSync: A => C = self.runSync andThen g
-    def runAsync(implicit ec: ExecutionContext): A => Future[C] = { a =>
-      self.runAsync(ec)(a).map(g)(ec)
-    }
+object types {
+  case class Reader[R, A](run: R => A) {
+    def map[B](f: A => B): Reader[R, B] = Reader(r => f(run(r)))
+    def flatMap[B](f: A => Reader[R, B]): Reader[R, B] =
+      Reader(r => f(run(r)).run(r))
   }
 
-  def flatMap[AA <: A, C](g: B => Node[AA, C]): Node[AA, C] = new Node[AA, C] {
-    def runSync: AA => C = { a =>
-      val b = self.runSync(a)
-      g(b).runSync(a)
-    }
-    def runAsync(implicit ec: ExecutionContext): AA => Future[C] = { a =>
-      self.runAsync(ec)(a).flatMap(b => g(b).runAsync(ec)(a))(ec)
-    }
+  object Reader {
+    def pure[R, A](a: A): Reader[R, A] = Reader(_ => a)
+    def ask[R]: Reader[R, R] = Reader(identity)
   }
 
-  def withRetry(config: RetryConfig): Node[A, B] = new Node[A, B] {
-    def runSync: A => B = { input =>
-      def attempt(remaining: Int, delay: Duration): Try[B] = {
-        Try(Node.this.runSync(input)) match {
-          case Success(result) => Success(result)
-          case Failure(e) if remaining > 1 =>
-            Thread.sleep(delay.toMillis)
-            attempt(
-              remaining - 1,
-              Duration.fromNanos((delay.toNanos * config.backoffFactor).toLong)
-            )
-          case Failure(e) => Failure(e)
+  case class Validated[+E, +A](value: Either[List[E], A]) {
+    def map[B](f: A => B): Validated[E, B] =
+      Validated(value.map(f))
+
+    def flatMap[EE >: E, B](f: A => Validated[EE, B]): Validated[EE, B] =
+      Validated(value.flatMap(a => f(a).value))
+
+    def zip[EE >: E, B](that: Validated[EE, B]): Validated[EE, (A, B)] =
+      (this.value, that.value) match {
+        case (Right(a), Right(b)) => Validated.valid((a, b))
+        case (Left(e1), Left(e2)) => Validated(Left(e1 ++ e2))
+        case (Left(e), _)         => Validated(Left(e))
+        case (_, Left(e))         => Validated(Left(e))
+      }
+  }
+
+  object Validated {
+    def valid[E, A](a: A): Validated[E, A] = Validated(Right(a))
+    def invalid[E, A](e: E): Validated[E, A] = Validated(Left(List(e)))
+  }
+}
+
+object core {
+  import types._
+
+  case class RetryConfig(
+      maxAttempts: Int = 3,
+      initialDelay: Duration = 100.millis,
+      backoffFactor: Double = 2.0
+  )
+
+  sealed trait Node[-A, +B] { self =>
+    def runSync: A => B
+    def runAsync(implicit ec: ExecutionContext): A => Future[B]
+    def run[C]: C => A => B = _ => runSync
+
+    def map[C](g: B => C): Node[A, C] = new Node[A, C] {
+      def runSync: A => C = self.runSync andThen g
+      def runAsync(implicit ec: ExecutionContext): A => Future[C] = { a =>
+        self.runAsync(ec)(a).map(g)(ec)
+      }
+    }
+
+    def flatMap[AA <: A, C](g: B => Node[AA, C]): Node[AA, C] =
+      new Node[AA, C] {
+        def runSync: AA => C = { a =>
+          val b = self.runSync(a)
+          g(b).runSync(a)
+        }
+        def runAsync(implicit ec: ExecutionContext): AA => Future[C] = { a =>
+          self.runAsync(ec)(a).flatMap(b => g(b).runAsync(ec)(a))(ec)
         }
       }
-      attempt(
-        config.maxAttempts,
-        config.initialDelay
-      ).get
-    }
 
-    def runAsync(implicit ec: ExecutionContext): A => Future[B] = { input =>
-      def attempt(remaining: Int, delay: Duration): Future[B] = {
-        Future(Try(Node.this.runSync(input))).flatMap {
-          case Success(result) => Future.successful(result)
-          case Failure(e) if remaining > 1 =>
-            Future {
+    def withRetry(config: RetryConfig): Node[A, B] = new Node[A, B] {
+      def runSync: A => B = { input =>
+        def attempt(remaining: Int, delay: Duration): Try[B] = {
+          Try(Node.this.runSync(input)) match {
+            case Success(result) => Success(result)
+            case Failure(e) if remaining > 1 =>
               Thread.sleep(delay.toMillis)
-            }.flatMap { _ =>
               attempt(
                 remaining - 1,
                 Duration.fromNanos(
                   (delay.toNanos * config.backoffFactor).toLong
                 )
               )
-            }
-          case Failure(e) => Future.failed(e)
+            case Failure(e) => Failure(e)
+          }
+        }
+        attempt(
+          config.maxAttempts,
+          config.initialDelay
+        ).get
+      }
+
+      def runAsync(implicit ec: ExecutionContext): A => Future[B] = { input =>
+        def attempt(remaining: Int, delay: Duration): Future[B] = {
+          Future(Try(Node.this.runSync(input))).flatMap {
+            case Success(result) => Future.successful(result)
+            case Failure(e) if remaining > 1 =>
+              Future {
+                Thread.sleep(delay.toMillis)
+              }.flatMap { _ =>
+                attempt(
+                  remaining - 1,
+                  Duration.fromNanos(
+                    (delay.toNanos * config.backoffFactor).toLong
+                  )
+                )
+              }
+            case Failure(e) => Future.failed(e)
+          }
+        }
+        attempt(config.maxAttempts, config.initialDelay)
+      }
+    }
+
+    def onFailure[BB >: B](handler: Throwable => BB): Node[A, BB] =
+      new Node[A, BB] {
+        def runSync: A => BB = { input =>
+          Try(self.runSync(input)) match {
+            case Success(result) => result
+            case Failure(e)      => handler(e)
+          }
+        }
+
+        def runAsync(implicit ec: ExecutionContext): A => Future[BB] = {
+          input =>
+            self.runAsync(ec)(input).recover { case e => handler(e) }
         }
       }
-      attempt(config.maxAttempts, config.initialDelay)
+  }
+
+  object Node {
+    def pure[A]: Node[A, A] = new Node[A, A] {
+      def runSync: A => A = a => a
+      def runAsync(implicit ec: ExecutionContext): A => Future[A] =
+        a => Future.successful(a)
     }
   }
 
-  def onFailure[BB >: B](handler: Throwable => BB): Node[A, BB] =
-    new Node[A, BB] {
-      def runSync: A => BB = { input =>
-        Try(self.runSync(input)) match {
-          case Success(result) => result
-          case Failure(e)      => handler(e)
-        }
-      }
+  case class Extract[A, B](f: A => B) extends Node[A, B] {
+    def runSync: A => B = f
+    def runAsync(implicit ec: ExecutionContext): A => Future[B] =
+      a => Future(f(a))
 
-      def runAsync(implicit ec: ExecutionContext): A => Future[BB] = { input =>
-        self.runAsync(ec)(input).recover { case e => handler(e) }
-      }
-    }
-}
+    override def map[C](g: B => C): Extract[A, C] =
+      new Extract[A, C](f andThen g)
 
-object Node {
-  def pure[A]: Node[A, A] = new Node[A, A] {
-    def runSync: A => A = a => a
-    def runAsync(implicit ec: ExecutionContext): A => Future[A] =
-      a => Future.successful(a)
+    def flatMap[C](g: B => Extract[A, C]): Extract[A, C] =
+      new Extract[A, C](a => {
+        val b = f(a)
+        g(b).f(a)
+      })
   }
-}
 
-case class Extract[A, B](f: A => B) extends Node[A, B] {
-  def runSync: A => B = f
-  def runAsync(implicit ec: ExecutionContext): A => Future[B] =
-    a => Future(f(a))
+  object Extract {
+    def apply[A](value: A): Extract[Unit, A] = Extract(_ => value)
+    def pure[A]: Extract[A, A] = Extract(a => a)
+    def async[A, B](f: A => Future[B])(implicit
+        ec: ExecutionContext
+    ): Extract[A, B] =
+      Extract(a => Await.result(f(a), Duration.Inf))
+  }
 
-  override def map[C](g: B => C): Extract[A, C] = new Extract[A, C](f andThen g)
+  case class Transform[A, B](f: A => B) extends Node[A, B] {
+    def runSync: A => B = f
+    def runAsync(implicit ec: ExecutionContext): A => Future[B] =
+      a => Future(f(a))
 
-  def flatMap[C](g: B => Extract[A, C]): Extract[A, C] =
-    new Extract[A, C](a => {
-      val b = f(a)
-      g(b).f(a)
-    })
-}
+    def andThen[C](that: Transform[B, C]): Transform[A, C] =
+      Transform(f andThen that.f)
 
-object Extract {
-  def apply[A](value: A): Extract[Unit, A] = Extract(_ => value)
-  def pure[A]: Extract[A, A] = Extract(a => a)
-  def async[A, B](f: A => Future[B])(implicit
-      ec: ExecutionContext
-  ): Extract[A, B] =
-    Extract(a => Await.result(f(a), Duration.Inf))
-}
+    def flatMap[C](g: B => Transform[A, C]): Transform[A, C] =
+      Transform { a =>
+        val b = f(a)
+        g(b).f(a)
+      }
 
-case class Transform[A, B](f: A => B) extends Node[A, B] {
-  def runSync: A => B = f
-  def runAsync(implicit ec: ExecutionContext): A => Future[B] =
-    a => Future(f(a))
+    override def map[C](g: B => C): Transform[A, C] = Transform(f andThen g)
+  }
 
-  def andThen[C](that: Transform[B, C]): Transform[A, C] =
-    Transform(f andThen that.f)
+  object Transform {
+    def pure[A]: Transform[A, A] = Transform(a => a)
+  }
 
-  def flatMap[C](g: B => Transform[A, C]): Transform[A, C] =
-    Transform { a =>
-      val b = f(a)
-      g(b).f(a)
-    }
+  case class Load[A, B](f: A => B) extends Node[A, B] {
+    def runSync: A => B = f
+    def runAsync(implicit ec: ExecutionContext): A => Future[B] =
+      a => Future(f(a))
 
-  override def map[C](g: B => C): Transform[A, C] = Transform(f andThen g)
-}
+    override def map[C](g: B => C): Load[A, C] = new Load[A, C](f andThen g)
 
-object Transform {
-  def pure[A]: Transform[A, A] = Transform(a => a)
-}
+    def flatMap[C](g: B => Load[A, C]): Load[A, C] =
+      new Load[A, C](a => {
+        val b = f(a)
+        g(b).f(a)
+      })
+  }
 
-case class Load[A, B](f: A => B) extends Node[A, B] {
-  def runSync: A => B = f
-  def runAsync(implicit ec: ExecutionContext): A => Future[B] =
-    a => Future(f(a))
+  object Load {
+    def pure[A]: Load[A, A] = Load(a => a)
+    def async[A, B](f: A => Future[B])(implicit
+        ec: ExecutionContext
+    ): Load[A, B] =
+      Load(a => Await.result(f(a), Duration.Inf))
+  }
 
-  override def map[C](g: B => C): Load[A, C] = new Load[A, C](f andThen g)
-
-  def flatMap[C](g: B => Load[A, C]): Load[A, C] =
-    new Load[A, C](a => {
-      val b = f(a)
-      g(b).f(a)
-    })
-}
-
-object Load {
-  def pure[A]: Load[A, A] = Load(a => a)
-  def async[A, B](f: A => Future[B])(implicit
-      ec: ExecutionContext
-  ): Load[A, B] =
-    Load(a => Await.result(f(a), Duration.Inf))
-}
-
-object core {
   case class Pipeline[A, B](node: Node[A, B]) {
     def ~>[C](next: Node[B, C]): Pipeline[A, C] = {
       Pipeline(new Node[A, C] {
@@ -329,9 +338,9 @@ object core {
       }
   }
 
-  object Flatten extends P1 {
-    type Aux[A, B] = Flatten[A] { type Out = B }
-    implicit def tuple4[A, B, C, D]: Aux[(((A, B), C), D), (A, B, C, D)] =
+  trait P2 extends P1 {
+    implicit def tuple4[A, B, C, D]
+        : Flatten.Aux[(((A, B), C), D), (A, B, C, D)] =
       new Flatten[(((A, B), C), D)] {
         type Out = (A, B, C, D)
         def apply(t: (((A, B), C), D)): (A, B, C, D) = {
@@ -339,5 +348,33 @@ object core {
           (a, b, c, d)
         }
       }
+  }
+
+  trait P3 extends P2 {
+    implicit def tuple5[A, B, C, D, E]
+        : Flatten.Aux[((((A, B), C), D), E), (A, B, C, D, E)] =
+      new Flatten[((((A, B), C), D), E)] {
+        type Out = (A, B, C, D, E)
+        def apply(t: ((((A, B), C), D), E)): (A, B, C, D, E) = {
+          val ((((a, b), c), d), e) = t
+          (a, b, c, d, e)
+        }
+      }
+  }
+
+  trait P4 extends P3 {
+    implicit def tuple6[A, B, C, D, E, F]
+        : Flatten.Aux[(((((A, B), C), D), E), F), (A, B, C, D, E, F)] =
+      new Flatten[(((((A, B), C), D), E), F)] {
+        type Out = (A, B, C, D, E, F)
+        def apply(t: (((((A, B), C), D), E), F)): (A, B, C, D, E, F) = {
+          val (((((a, b), c), d), e), f) = t
+          (a, b, c, d, e, f)
+        }
+      }
+  }
+
+  object Flatten extends P4 {
+    type Aux[A, B] = Flatten[A] { type Out = B }
   }
 }

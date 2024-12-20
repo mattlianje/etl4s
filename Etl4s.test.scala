@@ -9,6 +9,7 @@ import java.time.temporal.ChronoUnit
 
 class Etl4sSpec extends munit.FunSuite {
   import core._
+  import types._
 
   test("sequential pipeline should combine extracts and loads correctly") {
     val e1 = Extract(42)
@@ -529,8 +530,14 @@ class Etl4sSpec extends munit.FunSuite {
       def validateEmail(email: String): Validated[String, String] = {
         Validated
           .valid(email)
-          .zip(if (!email.contains("@")) Validated.invalid("Email must contain @") else Validated.valid(email))
-          .zip(if (!email.contains(".")) Validated.invalid("Email must contain .") else Validated.valid(email))
+          .zip(
+            if (!email.contains("@")) Validated.invalid("Email must contain @")
+            else Validated.valid(email)
+          )
+          .zip(
+            if (!email.contains(".")) Validated.invalid("Email must contain .")
+            else Validated.valid(email)
+          )
           .map { case ((email, _), _) => email }
       }
 
