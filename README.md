@@ -29,7 +29,7 @@ Or try it in your repl:
 scala-cli repl --dep io.github.mattlianje:etl4s_2.13:0.0.3
 ```
 
-All you need tom import:
+All you need:
 ```scala
 import etl4s.core._
 ```
