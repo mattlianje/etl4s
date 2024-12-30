@@ -2,7 +2,7 @@
   <img src="pix/etl4s.png" width="700">
 </p>
 
-# etl4s _(pre-𝛼)_
+# <img src="pix/etl4s-logo.png" width="50"> etl4s _(pre-𝛼)_
 **Powerful, whiteboard-style ETL**
 
 A lightweight, zero-dependency, library for writing type-safe, beautiful ✨🍰  data flows in functional Scala. 
