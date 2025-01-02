@@ -5,7 +5,7 @@
 # <img src="pix/etl4s-logo.png" width="50"> etl4s
 **Powerful, whiteboard-style ETL**
 
-A lightweight, zero-dependency, library for writing type-safe, beautiful ✨🍰  data flows in functional Scala. 
+A lightweight, zero-dependency, library for writing type-safe, beautiful ✨🍰  data flows in functional Scala. Part of [d4s](https://github.com/mattlianje/d4s) 
 
 ## Features
 - White-board style ETL
