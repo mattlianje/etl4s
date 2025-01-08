@@ -35,7 +35,7 @@ import etl4s.core._
 ```
 
 ## Core Concepts
-**etl4s** has 4 building blocks
+**etl4s** has 2 building blocks
 
 #### `Pipeline[-In, +Out]`
 A fully created pipeline composed of nodes chained with `~>`. It takes a type `In` and gives a `Out` when run.
