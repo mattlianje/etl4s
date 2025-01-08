@@ -54,7 +54,7 @@ A `Node` that represent a transformation. It can be composed with other nodes vi
 A `Node` used to represent the end of a pipeline.
 
 ## Of note...
-- Ultimately - these nodes and pipelines are just reifications of functions and values (with a few niceties like built in retries and Future based parallelism).
+- Ultimately - these nodes and pipelines are just reifications of functions and values (with a few niceties like built in retries, failure handling, concurrency-shorthand, and Future based parallelism).
 - Chaotic, framework/infra-coupled ETL codebases that grow without an imposed discipline drive dev-teams and data-orgs to their knees.
 - **etl4s** is a little DSL to enforce discipline, type-safety and re-use of pure functions - 
 and see [functional ETL](https://maximebeauchemin.medium.com/functional-data-engineering-a-modern-paradigm-for-batch-data-processing-2327ec32c42a) for what it is... and could be.
