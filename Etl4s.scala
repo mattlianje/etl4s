@@ -37,6 +37,51 @@ object types {
     def valid[E, A](a: A): Validated[E, A] = Validated(Right(a))
     def invalid[E, A](e: E): Validated[E, A] = Validated(Left(List(e)))
   }
+
+  trait Monoid[A] {
+    def empty: A
+    def combine(x: A, y: A): A
+  }
+
+  object Monoid {
+    def apply[A](implicit M: Monoid[A]): Monoid[A] = M
+
+    implicit val listMonoid: Monoid[List[String]] = new Monoid[List[String]] {
+      def empty = List.empty[String]
+      def combine(x: List[String], y: List[String]) = x ++ y
+    }
+
+    implicit val vectorMonoid: Monoid[Vector[String]] = new Monoid[Vector[String]] {
+      def empty = Vector.empty[String]
+      def combine(x: Vector[String], y: Vector[String]) = x ++ y
+    }
+  }
+
+  case class Writer[L, A](run: () => (L, A))(implicit L: Monoid[L]) {
+    def map[B](f: A => B): Writer[L, B] = Writer(() => {
+      val (l, a) = run()
+      (l, f(a))
+    })
+
+    def flatMap[B](f: A => Writer[L, B]): Writer[L, B] = Writer(() => {
+      val (l1, a) = run()
+      val (l2, b) = f(a).run()
+      (L.combine(l1, l2), b)
+    })
+
+    def value: A = run()._2
+  }
+
+  object Writer {
+    def apply[L: Monoid, A](l: L, a: A): Writer[L, A] = 
+      Writer(() => (l, a))
+      
+    def tell[L: Monoid](l: L): Writer[L, Unit] = 
+      Writer(() => (l, ()))
+
+    def pure[L: Monoid, A](a: A): Writer[L, A] = 
+      Writer(() => (Monoid[L].empty, a))
+  }
 }
 
 object core {
@@ -152,6 +197,7 @@ object core {
         val b = f(a)
         g(b).f(a)
       })
+    def andThen[C](that: Extract[B, C]): Extract[A, C] = Extract(f andThen that.f)
   }
 
   object Extract {
@@ -196,6 +242,7 @@ object core {
         val b = f(a)
         g(b).f(a)
       })
+   def andThen[C](that: Load[B, C]): Load[A, C] = Load(f andThen that.f)
   }
 
   object Load {
@@ -312,7 +359,36 @@ object core {
           Duration.Inf
         )
       }
+    def zip[Out](implicit
+        flattener: Flatten.Aux[O1, Out]
+    ): Load[I, Out] = Load[I, Out] { i =>
+      flattener(l1.runSync(i))
+    }
   }
+
+implicit class TransformOps[I, O1](t1: Transform[I, O1]) {
+  def &[O2](t2: Transform[I, O2]): Transform[I, (O1, O2)] = Transform { input =>
+    (t1.runSync(input), t2.runSync(input))
+  }
+
+  def &>[O2](t2: Transform[I, O2])(implicit ec: ExecutionContext): Transform[I, (O1, O2)] = 
+    Transform { input =>
+      val f1 = t1.runAsync.apply(input)
+      val f2 = t2.runAsync.apply(input)
+      Await.result(
+        for {
+          r1 <- f1
+          r2 <- f2
+        } yield (r1, r2),
+        Duration.Inf
+      )
+    }
+    def zip[Out](implicit
+        flattener: Flatten.Aux[O1, Out]
+    ): Transform[I, Out] = Transform[I, Out] { i =>
+      flattener(t1.runSync(i))
+    }
+}
 
   /* Yuck - but don't want to use shapeless */
   trait Flatten[A] {

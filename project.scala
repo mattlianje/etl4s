@@ -1,4 +1,4 @@
-//> using dep "org.scalameta::munit:1.0.3"
+//> using dep "org.scalameta::munit:1.0.4"
 //> using scala "2.13"
 
 //> using publish.name "etl4s"

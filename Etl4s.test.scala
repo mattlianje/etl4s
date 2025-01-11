@@ -557,7 +557,6 @@ class Etl4sSpec extends munit.FunSuite {
     val invalidResult = validateUser.runSync(invalidInput)
 
     assert(validResult.value.isRight)
-    println(invalidResult.value)
     assert(invalidResult.value.isLeft)
     assertEquals(
       invalidResult.value.left.get,
@@ -568,5 +567,91 @@ class Etl4sSpec extends munit.FunSuite {
         "Email must contain ."
       )
     )
+  }
+
+  test("Extract and Load should support andThen composition") {
+    val extract1: Extract[String, Int] = Extract(_.length)
+    val extract2: Extract[Int, Double] = Extract(_ * 2.0)
+    val combined = extract1 andThen extract2
+    assertEquals(combined.runSync("hello"), 10.0)
+  
+    val load1: Load[String, Int] = Load(_.toInt) 
+    val load2: Load[Int, String]= Load(x => (x * 2).toString) 
+    val combinedLoad = load1 andThen load2
+    assertEquals(combinedLoad.runSync("21"), "42")
+  }
+
+  test("Transform should compose with Extract and Load in concurrent pipelines") {
+    var t1Started, t2Started, l1Started = 0L
+    
+    val e1 = Extract("hello")
+    val t1 = Transform[String, Int] { s =>
+      t1Started = System.currentTimeMillis()
+      Thread.sleep(100)
+      s.length
+    }
+    val t2 = Transform[String, String] { s =>
+      t2Started = System.currentTimeMillis()
+      Thread.sleep(100)
+      s.toUpperCase
+    }
+    val l1 = Load[(Int, String), List[String]] { s =>
+      l1Started = System.currentTimeMillis()
+      Thread.sleep(100)
+      s._2.split("").toList
+    }
+    
+    val pipeline = e1 ~> (t1 &> t2) ~> l1
+    
+    pipeline.unsafeRun(())
+    
+    assert(
+      Math.abs(t1Started - t2Started) < 50,
+      "t1 and t2 should start around same time"
+    )
+  }
+
+  test("ETL pipeline with Reader config and Writer logs") {
+    case class Config(url: String, key: String)
+    type Log = List[String]  
+    type DataWriter[A] = Writer[Log, A]
+  
+    val fetchUser = Reader[Config, Transform[String, DataWriter[String]]] { config =>
+      Transform { id =>
+        Writer(
+          List(s"Fetching user $id from ${config.url}"),
+          s"User $id"
+        )
+      }
+    }
+  
+    val processUser = Reader[Config, Transform[DataWriter[String], DataWriter[String]]] { config =>
+      Transform { writerInput => 
+        for {
+          value <- writerInput
+          result <- Writer(
+            List(s"Processing $value with key ${config.key}"),
+            s"Processed: $value"
+          )
+        } yield result
+      }
+    }
+  
+    val configuredPipeline = for {
+      fetch <- fetchUser
+      process <- processUser
+    } yield Extract("123") ~> fetch ~> process
+  
+    val config = Config("https://api.com", "secret")
+    val (logs, result) = configuredPipeline.run(config).unsafeRun(()).run()
+  
+    assertEquals(
+      logs,
+      List(
+        "Fetching user 123 from https://api.com",
+        "Processing User 123 with key secret"
+      )
+    )
+    assertEquals(result, "Processed: User 123")
   }
 }
