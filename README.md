@@ -54,7 +54,7 @@ A `Node` that represent a transformation. It can be composed with other nodes vi
 A `Node` used to represent the end of a pipeline.
 
 ## Type safety
-**etl4s** won't let you chain together "blocks" (nodes or pipelines) that don't fit together:
+**etl4s** won't let you chain together "blocks" that don't fit together:
 ```scala
  val fiveExtract: Extract[Unit, Int]        = Extract(5)
  val exclaim:     Transform[String, String] = Transform(_ + "!")
@@ -222,7 +222,8 @@ val (logs, result) = pipeline.unsafeRun(()).run()
 
 
 #### `Validated`
-Tired of fixing validation errors one... by... one? The **etl4s** way: Catch ALL errors in one shot!
+Tired of fixing validation errors one... by... one? The **etl4s** way: Catch ALL errors in one shot!(use `Validated.` `valid`/`invalid`... then `zip` on a `Validated` to "stack"
+your validations).
 
 ```scala
 case class User(name: String, age: Int)
