@@ -136,7 +136,7 @@ Parallel run of e1, e2, e3 on their own JVM threads with Scala Futures **(~100ms
 ```scala
 val parallel = e1 &> e2 &> e3   /* Same result, much faster! */
 ```
-Use zip method built into **etl4s** flatten unwieldly nested tuples:
+Use the built-in zip method to flatten unwieldly nested tuples:
 ```scala
 val clean = (e1 & e2 & e3).zip  /* Type: Extract[Unit, (Int, String, Boolean)] */
 ```
