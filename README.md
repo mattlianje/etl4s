@@ -78,7 +78,7 @@ and see [functional ETL](https://maximebeauchemin.medium.com/functional-data-eng
 
 
 ## Handling Failures
-**etl4s** comes with 2 methods you can use to handle failures on a Node or Pipeline out of the box:
+**etl4s** comes with 2 methods you can use (on a Node or Pipeline) to handle failures out of the box:
 
 #### `withRetry`
 Give retry capability using the built-in `RetryConfig`:
