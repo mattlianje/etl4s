@@ -101,7 +101,7 @@ Success after 3 attempts
 ```
 
 #### `onFailure`
-Catch some exception and perform some action:
+Catch exceptions and perform some action:
 ```scala
 val riskyExtract =
     Extract[Unit, String](_ => throw new RuntimeException("Boom!"))
