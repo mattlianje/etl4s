@@ -77,10 +77,10 @@ and see [functional ETL](https://maximebeauchemin.medium.com/functional-data-eng
 
 
 ## Handling Failures
-**etl4s** comes with 2 methods you can use to handle failures out of the box:
+**etl4s** comes with 2 methods you can use to handle failures on a Node or Pipeline out of the box:
 
 #### `withRetry`
-Give retry capability to a Node or Pipeline using the built-in `RetryConfig`:
+Give retry capability using the built-in `RetryConfig`:
 ```scala
 val riskyTransformWithRetry = Transform[Int, String] { n =>
     var attempts = 0
@@ -92,7 +92,6 @@ val riskyTransformWithRetry = Transform[Int, String] { n =>
 )
 
 val pipeline = Extract(42) ~> riskyTransformWithRetry
-
 pipeline.unsafeRun(())
 ```
 This prints:
@@ -101,7 +100,7 @@ Success after 3 attempts
 ```
 
 #### `onFailure`
-Catch some exception and perform some action for Nodes or Pipelines:
+Catch some exception and perform some action:
 ```scala
 val riskyExtract =
     Extract[Unit, String](_ => throw new RuntimeException("Boom!"))
@@ -121,31 +120,38 @@ Failed with: Boom! ... firing missile
 ## Parallelizing Tasks
 **etl4s** has an elegant shorthand for parallelizing operations:
 ```scala
-/* Simulate slow IO operations (e.g., DB calls, API requests) */
+// Simulate slow IO operations (e.g., DB calls, API requests)
 val e1 = Extract { Thread.sleep(100); 42 }
 val e2 = Extract { Thread.sleep(100); "hello" }
 val e3 = Extract { Thread.sleep(100); true }
-
-/* Sequential (~300ms total) */
-val sequential = e1 & e2 & e3        // Type: Extract[Unit, ((Int, String), Boolean)]
-
-/* Parallel (~100ms total) */
-val parallel = e1 &> e2 &> e3        // Same result, much faster!
-
-/* Clean up nested tuples */
-val clean = (e1 & e2 & e3).zip       // Type: Extract[Unit, (Int, String, Boolean)]
-
-/* Mix sequential and parallel */
-val mixed = (e1 &> e2) & e3          // First two parallel (~100ms), then third (~100ms)
-
-/* Parallel pipeline */
-val pipeline = (e1 &> e2 &> e3).zip ~>    // Parallel extracts (~100ms)
-  Transform { case (i, s, b) =>           // Transform combined results
-    s"$i-$s-$b"
-  } ~> 
-  (Load(println) &> Load(save))           // Parallel loads (~100ms)
 ```
-Use `&` for sequential operations (each takes full time), `&>` for parallel (only takes longest operation time), and `.zip` to flatten nested tuples.
+
+Sequential run of e1, e2, and e3 (~300ms total)
+```scala
+val sequential = e1 & e2 & e3   /* Type: Extract[Unit, ((Int, String), Boolean)] */
+```
+
+Parallel run (~100ms total) of e1, e2, e3 on their own JVM threads with Scala Futures
+```scala
+val parallel = e1 &> e2 &> e3   /* Same result, much faster! */
+```
+Use zip method built into **etl4s** flatten unwieldly nested tuples:
+```scala
+val clean = (e1 & e2 & e3).zip  /* Type: Extract[Unit, (Int, String, Boolean)] */
+```
+Mix sequential and parallel execution:
+```scala
+val mixed = (e1 &> e2) & e3     /* First two parallel (~100ms), then third (~100ms) */
+```
+
+Full example of a parallel pipeline:
+```scala
+val merge: Transform[(Int, String, Boolean), String] =
+  Transform(case(i, s, b) => s"$i-$s-$b")
+
+val pipeline =
+  (e1 &> e2 &> e3).zip ~> merge ~> (Load(println) &> Load(save))
+```
 
 
 ## Built-in Monads
@@ -158,7 +164,7 @@ import etl4s.types.*
 ```
 
 #### `Reader`
-Make your pipelines config-driven and run in the context of the environment they need:
+Make your pipelines config-driven and run them in the context they need:
 ```scala
 case class ApiConfig(url: String, key: String)
 val config = ApiConfig("https://api.com", "secret")
@@ -184,7 +190,7 @@ val result = configuredPipeline.run(config).unsafeRun(())
 
 
 #### `Writer`
-Trace your pipeline's transformations:
+Trace your pipeline's transformations (no more slapping println's and df.count()'s all over - ahem, ahem):
 ```scala
 type Log = List[String]
 type DataWriter[A] = Writer[Log, A]
@@ -215,7 +221,7 @@ val (logs, result) = pipeline.unsafeRun(()).run()
 
 
 #### `Validated`
-Instead of failing fast, collect ALL validation errors in one go:
+Tired of fixing validation errors one... by... one? The **etl4s** way: Catch ALL errors in one shot!
 
 ```scala
 case class User(name: String, age: Int)
@@ -229,35 +235,27 @@ def validateAge(age: Int): Validated[String, Int] =
   else if (age > 150) Validated.invalid("Age not realistic")
   else Validated.valid(age)
 
-val validateUser = Transform[User, Validated[String, User]] {
-  case User(name, age) =>
+val validateUser = Transform[(String, Int), Validated[String, User]] {
+  case (name, age) =>
     validateName(name)
       .zip(validateAge(age))
       .map { case (name, age) => User(name, age) }
 }
 
-val formatUser: Transform[Validated[String, User], String] = 
-  Transform {
-    case Validated.Valid(user) => s"${user.name} is ${user.age} years old"
-    case Validated.Invalid(errors) => throw new Exception(s"Validation failed: ${errors.mkString("AND ")}")
-  } ~>
-
-val consoleLoad: Load[String, Unit] = Load(println(_))
-
-val invalidPipeline = 
-  Extract(User("Alice4", -1)) ~> validateUser ~> formatUser ~> consoleLoad
-
-invalidPipeline.unsafeRun(())
-``` 
-This prints:
+// Pipeline returns all validation errors at once!
+val pipeline = Extract(("Alice4", -1)) ~> validateUser 
+pipeline.unsafeRun(())
 ```
-Name can only contain letters AND Age must be positive
+
+This returns:
+```
+Invalid("Name can only contain letters", "Age must be positive")
 ```
 
 
 ## Examples
 
-#### Chain pipelines
+#### Chain two pipelines
 Simple piping of two pipelines:
 ```scala
 val plusFiveExclaim: Pipeline[Unit, String] =
@@ -269,19 +267,23 @@ val doubleString: Pipeline[String, String] =
 val plusFiveExclaimDouble: Pipeline[Int, Str] = plusFiveExclaimPipeline ~> doubleStrPipeline
 
 println(plusFiveExclaimDouble(2))
-// Prints: "7!7!"
+```
+Prints:
+```
+"7!7!"
 ```
 
-Connect the output of two pipelines to a third:
+#### Connect two pipelines to a third
+Connects the output of two pipelines to a third:
 ```scala
 val fetchUser = Transform[String, String](id => s"Fetching $id")
 val loadUser = Load[String, String](msg => s"Loaded: $msg")
 
-/* Create two simple pipelines */
+// Create two simple pipelines
 val namePipeline = Extract("alice") ~> fetchUser ~> loadUser
 val agePipeline = Extract(25) ~> Transform(age => s"Age: $age")
 
-/* Combine them */
+// Combine them
 val combined = for {
   name <- namePipeline
   age <- agePipeline
@@ -290,8 +292,12 @@ val combined = for {
   Load(println)
 
 combined.unsafeRun(())
-// Prints: "LOADED: FETCHING ALICE | AGE: 25"
 ```
+Prints:
+```
+"LOADED: FETCHING ALICE | AGE: 25"
+```
+
 
 
 ## Real-world examples
