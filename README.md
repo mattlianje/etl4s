@@ -256,18 +256,14 @@ val validateUser = Transform[(String, Int), Validated[String, User]] {
 }
 
 val pipeline = Extract(("Alice4", -1)) ~> validateUser 
-pipeline.unsafeRun(())
+pipeline.unsafeRun(()).value.left.get
 ```
 
 This returns:
 ```
-Validated(
-    Left(
-        List(
-             Name can only contain letters,
-             Age must be positive
-            )
-    )
+List(
+  Name can only contain letters,
+  Age must be positive
 )
 ```
 
