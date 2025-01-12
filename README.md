@@ -306,7 +306,7 @@ Prints:
 ## Real-world examples
 See the [tutorial](tutorial.md) for examples of **etl4s** in combat. It works great with anything:
 - Spark / Flink / Beam
-- Bounded / Unbounded-data - ETL / Streaming
+- ETL / Streaming
 - Multi-physical-machine big data workflows
 - Little web-server dataflows
 
