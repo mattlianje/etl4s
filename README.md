@@ -185,7 +185,7 @@ val result = configuredPipeline.run(config).unsafeRun(())
 
 #### `Writer`
 Trace your pipeline's transformations:
-```
+```scala
 type Log = List[String]
 type DataWriter[A] = Writer[Log, A]
 
