@@ -154,15 +154,20 @@ val pipeline =
   (e1 &> e2 &> e3).zip ~> merge ~> (Load(println) &> Load(save))
 ```
 
+# Built-in Tools
 
-## Built-in Monads
-**etl4s** comes with 3 powerful built in Monads to make your pipelines hard like iron, and flexible like bamboo.
-You can use the same ideas with the Cats datatypes or your own.
+**etl4s** comes with 3 useful abstractions to make your pipelines hard like iron, and flexible like bamboo.
+- **Collect All Errors** (`Validated[E, A]`): No more failing on the first error! Get a complete list of what needs fixing.
+Perfect for validating data on the edges of your pipelines.
+- **Config Made Easy** (`Reader[R, A]`): Need database credentials? Services? API keys? Environment settings?
+Let your pipeline know exactly what it needs to run, and switch configs effortlessly.
+- **Track Dataflows** (`Writer[W, A]`): Collect logs at every step of your pipeline and get them all at once with your results.
+No more scattered println's - just clean, organized logging, that shows exactly how your data flowed through the pipeline.
 
-You just need to:
+You can use them directly or swap in your own favorites (like the better implementations from [Cats](https://typelevel.org/cats/)). Just:
 ```scala
 import etl4s.types.*
-```
+``` 
 
 #### `Reader`
 Make your pipelines config-driven and run them in the context they need:
