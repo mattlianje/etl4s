@@ -275,7 +275,7 @@ Prints:
 "7!7!"
 ```
 
-#### Connect two pipelines to a third
+#### Complex chaining
 Connects the output of two pipelines to a third:
 ```scala
 val fetchUser = Transform[String, String](id => s"Fetching $id")
