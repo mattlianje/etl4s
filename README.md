@@ -261,7 +261,7 @@ pipeline.unsafeRun(())
 
 This returns:
 ```
-Invalid("Name can only contain letters", "Age must be positive")
+Validated(Left(List(Name can only contain letters, Age must be positive)))
 ```
 
 
