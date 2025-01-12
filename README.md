@@ -154,23 +154,16 @@ val pipeline =
   (e1 &> e2 &> e3).zip ~> merge ~> (Load(println) &> Load(save))
 ```
 
-# Built-in Tools
-
-**etl4s** comes with 3 useful abstractions to make your pipelines hard like iron, and flexible like bamboo.
-- **Collect All Errors** (`Validated[E, A]`): No more failing on the first error! Get a complete list of what needs fixing.
-Perfect for validating data on the edges of your pipelines.
-- **Config Made Easy** (`Reader[R, A]`): Need database credentials? Services? API keys? Environment settings?
-Let your pipeline know exactly what it needs to run, and switch configs effortlessly.
-- **Track Dataflows** (`Writer[W, A]`): Collect logs at every step of your pipeline and get them all at once with your results.
-No more scattered println's - just clean, organized logging, that shows exactly how your data flowed through the pipeline.
-
+## Built-in Tools
+**etl4s** comes with 3 extra abstractions to make your pipelines hard like iron, and flexible like bamboo.
 You can use them directly or swap in your own favorites (like the better implementations from [Cats](https://typelevel.org/cats/)). Just:
 ```scala
 import etl4s.types.*
 ``` 
 
-#### `Reader`
-Make your pipelines config-driven and run them in the context they need:
+#### `Reader[R, A]`
+Need database credentials? Services? API keys? Environment settings?
+Let your pipeline know exactly what it needs to run, and switch configs effortlessly.
 ```scala
 case class ApiConfig(url: String, key: String)
 val config = ApiConfig("https://api.com", "secret")
@@ -195,8 +188,9 @@ val result = configuredPipeline.run(config).unsafeRun(())
 ```
 
 
-#### `Writer`
-Trace your pipeline's transformations (no more slapping println's and df.count()'s all over - ahem, ahem):
+#### `Writer[W, A]`
+Collect logs at every step of your pipeline and get them all at once with your results.
+No more scattered println's - just clean, organized logging, that shows exactly how your data flowed through the pipeline.
 ```scala
 type Log = List[String]
 type DataWriter[A] = Writer[Log, A]
@@ -226,8 +220,9 @@ val (logs, result) = pipeline.unsafeRun(()).run()
 ```
 
 
-#### `Validated`
-Tired of fixing validation errors one... by... one? The **etl4s** way: Catch ALL errors in one shot!(use `Validated.` `valid`/`invalid`... then `zip` on a `Validated` to "stack"
+#### `Validated[E, A]`
+No more failing on the first error! Get a complete list of what needs fixing.
+Perfect for validating data on the edges of your pipelines (Just use `Validated.` `valid`/`invalid`... then `zip` on a `Validated` to "stack"
 your validations).
 
 ```scala
