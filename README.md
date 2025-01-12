@@ -260,7 +260,9 @@ Invalid("Name can only contain letters", "Age must be positive")
 Simple piping of two pipelines:
 ```scala
 val plusFiveExclaim: Pipeline[Unit, String] =
-          Extract(1) ~> Transform((x: Int) => x + 5) ~> Transform((x: Int) => x.toString + "!")
+          Extract(1)
+          ~> Transform((x: Int) => x + 5)
+          ~> Transform((x: Int) => x.toString + "!")
 
 val doubleString: Pipeline[String, String] =
           Extract((s: String) => s) ~> Transform((s: String) => s ++ s)
