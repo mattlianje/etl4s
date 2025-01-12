@@ -156,8 +156,10 @@ Full example of a parallel pipeline:
 val consoleLoad: Load[String, Unit] = Load(println(_))
 val dbLoad:      Load[String, Unit] = Load(x => println(s"DB Load: ${x}"))
 
-val merge: Transform[(Int, String, Boolean), String] =
-  Transform(case(i, s, b) => s"$i-$s-$b")
+val merge = Transform[(Int, String, Boolean), String] { t => 
+    val (i, s, b) = t
+    s"$i-$s-$b"
+  }
 
 val pipeline =
   (e1 &> e2 &> e3).zip ~> merge ~> (consoleLoad &> dbLoad)
