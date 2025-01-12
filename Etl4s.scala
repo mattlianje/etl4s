@@ -310,9 +310,16 @@ object core {
   }
 
   implicit class NodeOps[A, B](node: Node[A, B]) {
-    def ~>[C](next: Node[B, C]): Pipeline[A, C] =
-      Pipeline(node) ~> next
+    def ~>[C](next: Node[B, C]): Pipeline[A, C] = 
+      Pipeline(new Node[A, C] { 
+        def runSync: A => C = node.runSync andThen next.runSync 
+        def runAsync(implicit ec: ExecutionContext): A => Future[C] = { a => 
+          node.runAsync(ec)(a).flatMap(next.runAsync(ec)) 
+        } 
+      })
   }
+  
+  implicit def pipelineToNode[A, B](p: Pipeline[A, B]): Node[A, B] = p.node
 
   implicit class ExtractOps[I, O1](e1: Extract[I, O1]) {
     def &[O2](e2: Extract[I, O2]): Extract[I, (O1, O2)] = Extract { input =>
@@ -366,29 +373,30 @@ object core {
     }
   }
 
-implicit class TransformOps[I, O1](t1: Transform[I, O1]) {
-  def &[O2](t2: Transform[I, O2]): Transform[I, (O1, O2)] = Transform { input =>
-    (t1.runSync(input), t2.runSync(input))
-  }
-
-  def &>[O2](t2: Transform[I, O2])(implicit ec: ExecutionContext): Transform[I, (O1, O2)] = 
-    Transform { input =>
-      val f1 = t1.runAsync.apply(input)
-      val f2 = t2.runAsync.apply(input)
-      Await.result(
-        for {
-          r1 <- f1
-          r2 <- f2
-        } yield (r1, r2),
-        Duration.Inf
-      )
+  implicit class TransformOps[I, O1](t1: Transform[I, O1]) {
+    def &[O2](t2: Transform[I, O2]): Transform[I, (O1, O2)] = Transform { input =>
+        (t1.runSync(input), t2.runSync(input))
     }
+
+    def &>[O2](t2: Transform[I, O2])(implicit ec: ExecutionContext): Transform[I, (O1, O2)] = 
+        Transform { input =>
+        val f1 = t1.runAsync.apply(input.asInstanceOf[I])
+        val f2 = t2.runAsync.apply(input.asInstanceOf[I])
+        Await.result(
+            for {
+                r1 <- f1
+                r2 <- f2
+            } yield (r1, r2),
+            Duration.Inf
+        )
+    }
+
     def zip[Out](implicit
         flattener: Flatten.Aux[O1, Out]
     ): Transform[I, Out] = Transform[I, Out] { i =>
-      flattener(t1.runSync(i))
+        flattener(t1.runSync(i))
     }
-}
+ }
 
   /* Yuck - but don't want to use shapeless */
   trait Flatten[A] {
@@ -454,3 +462,36 @@ implicit class TransformOps[I, O1](t1: Transform[I, O1]) {
     type Aux[A, B] = Flatten[A] { type Out = B }
   }
 }
+
+/* Rough EBNF
+(* Core Types *)
+Pipeline    ::= Node {~> Node} [.withRetry(RetryConfig)] [.onFailure(Handler)]
+Node        ::= BasicNode | ComposedNode [.withRetry(RetryConfig)] [.onFailure(Handler)]
+
+(* Basic Nodes *)
+BasicNode   ::= Extract | Transform | Load
+Extract     ::= Extract [Type, Type] (Function)
+Transform   ::= Transform [Type, Type] (Function)
+Load        ::= Load [Type, Type] (Function)
+
+(* Node Composition *)
+ComposedNode::= Node & Node              (* Sequential composition *)
+             | Node &> Node              (* Parallel composition *)
+             | Node andThen Node         (* Same-type chaining *)
+
+(* Type System *)
+Type        ::= Identifier | GenericType | EffectType 
+GenericType ::= Identifier [Type {, Type}]
+EffectType  ::= Reader [Type, Type]
+             | Writer [Type, Type]
+             | Validated [Type, Type]
+
+(* Operations *)
+Zip         ::= Node.zip                 (* Flattens any nested tuple *)
+             | Validated.zip(Validated)  (* Combines validations *)
+
+(* Base Elements *)
+Function    ::= Identifier | (Params => Expr)
+Identifier  ::= Letter {Letter | Digit}
+*/
+
