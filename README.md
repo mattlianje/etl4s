@@ -53,14 +53,6 @@ A `Node` that represent a transformation. It can be composed with other nodes vi
 - ##### `Load[-In, +Out]` 
 A `Node` used to represent the end of a pipeline.
 
-## Of note...
-- Ultimately - these nodes and pipelines are just reifications of functions and values (with a few niceties like built in retries, failure handling, concurrency-shorthand, and Future based parallelism).
-- Chaotic, framework/infra-coupled ETL codebases that grow without an imposed discipline drive dev-teams and data-orgs to their knees.
-- **etl4s** is a little DSL to enforce discipline, type-safety and re-use of pure functions - 
-and see [functional ETL](https://maximebeauchemin.medium.com/functional-data-engineering-a-modern-paradigm-for-batch-data-processing-2327ec32c42a) for what it is... and could be.
-
-
-## Examples
 **etl4s** won't let you chain together "blocks" that don't fit together:
 ```scala
  val fiveExtract: Extract[Unit, Int]        = Extract(5)
@@ -77,33 +69,96 @@ The above will not compile with:
   |                Required: Node[Int, Any]
 ```
 
-#### Chain pipelines together:
-Connect the output of two pipelines to a third:
+## Of note...
+- Ultimately - these nodes and pipelines are just reifications of functions and values (with a few niceties like built in retries, failure handling, concurrency-shorthand, and Future based parallelism).
+- Chaotic, framework/infra-coupled ETL codebases that grow without an imposed discipline drive dev-teams and data-orgs to their knees.
+- **etl4s** is a little DSL to enforce discipline, type-safety and re-use of pure functions - 
+and see [functional ETL](https://maximebeauchemin.medium.com/functional-data-engineering-a-modern-paradigm-for-batch-data-processing-2327ec32c42a) for what it is... and could be.
+
+
+## Handling Failures
+**etl4s** comes with 2 methods you can use to handle failures out of the box:
+
+#### `withRetry`
+Give retry capability to a Node or Pipeline using the built-in `RetryConfig`:
 ```scala
-val fetchUser:      Transform[String, String]= Transform(id => s"Fetching user $id")
-val loadUser:       Load[String, String]     = Load(msg => s"User loaded: $msg")
+val riskyTransformWithRetry = Transform[Int, String] { n =>
+    var attempts = 0
+    attempts += 1
+    if (attempts < 3) throw new RuntimeException(s"Attempt $attempts failed")
+    else s"Success after $attempts attempts"
+}.withRetry(
+    RetryConfig(maxAttempts = 3, initialDelay = 10.millis)
+)
 
-val fetchOrder:     Transform[Int, String]   = Transform(id => s"Fetching order $id")
-val loadOrder:      Load[String, String]     = Load(msg => s"Order loaded: $msg")
+val pipeline = Extract(42) ~> riskyTransformWithRetry
 
-val userPipeline:   Pipeline[Unit, String]   = Extract("user123") ~> fetchUser ~> loadUser
-val ordersPipeline: Pipeline[Unit, String]   = Extract(42) ~> fetchOrder ~> loadOrder
-
-val combinedPipeline: Pipeline[Unit, String] = (for {
-  userData  <- userPipeline
-  orderData <- ordersPipeline
-} yield {
-  Extract(s"$userData | $orderData") ~> Transform { _.toUpperCase }
-     ~> Load { x => s"Final result: $x"}
-}).flatten
-
-combinedPipeline.unsafeRun(())
-
-// "Final result: USER LOADED: FETCHING USER USER123 | ORDER LOADED: FETCHING ORDER 42"
+pipeline.unsafeRun(())
+```
+This prints:
+```
+Success after 3 attempts
 ```
 
-#### Config-driven pipelines
-Use the built in `Reader` monad:
+#### `onFailure`
+Catch some exception and perform some action for Nodes or Pipelines:
+```scala
+val riskyExtract =
+    Extract[Unit, String](_ => throw new RuntimeException("Boom!"))
+
+val safeExtract = riskyExtract
+                    .onFailure(e => s"Failed with: ${e.getMessage} ... firing missile")
+val consoleLoad: Load[String, Unit] = Load(println(_))
+
+val pipeline = safeExtract ~> consoleLoad
+pipeline.unsafeRun(())
+``` 
+This prints:
+```
+Failed with: Boom! ... firing missile
+```
+
+## Parallelizing Tasks
+**etl4s** has an elegant shorthand for parallelizing operations:
+```scala
+/* Simulate slow IO operations (e.g., DB calls, API requests) */
+val e1 = Extract { Thread.sleep(100); 42 }
+val e2 = Extract { Thread.sleep(100); "hello" }
+val e3 = Extract { Thread.sleep(100); true }
+
+/* Sequential (~300ms total) */
+val sequential = e1 & e2 & e3        // Type: Extract[Unit, ((Int, String), Boolean)]
+
+/* Parallel (~100ms total) */
+val parallel = e1 &> e2 &> e3        // Same result, much faster!
+
+/* Clean up nested tuples */
+val clean = (e1 & e2 & e3).zip       // Type: Extract[Unit, (Int, String, Boolean)]
+
+/* Mix sequential and parallel */
+val mixed = (e1 &> e2) & e3          // First two parallel (~100ms), then third (~100ms)
+
+/* Parallel pipeline */
+val pipeline = (e1 &> e2 &> e3).zip ~>    // Parallel extracts (~100ms)
+  Transform { case (i, s, b) =>           // Transform combined results
+    s"$i-$s-$b"
+  } ~> 
+  (Load(println) &> Load(save))           // Parallel loads (~100ms)
+```
+Parallelize tasks with task groups using `&>` or sequence them with `&`:
+
+
+## Built-in Monads
+**etl4s** comes with 3 powerful built in Monads to make your pipelines hard like iron, and flexible like bamboo.
+You can use the same ideas with the Cats datatypes or your own.
+
+You just need to:
+```scala
+import etl4s.types.*
+```
+
+#### `Reader`
+Make your pipelines config-driven and run in the context of the environment they need:
 ```scala
 case class ApiConfig(url: String, key: String)
 val config = ApiConfig("https://api.com", "secret")
@@ -127,52 +182,124 @@ val result = configuredPipeline.run(config).unsafeRun(())
 // "User loaded with key secret: Fetching user user123 from https://api.com"
 ```
 
-#### Parallelizing tasks
-Parallelize tasks with task groups using `&>` or sequence them with `&`:
-```scala
-val slowLoad = Load[String, Int] { s => Thread.sleep(100); s.length }
 
-/* Using &> for parallelized tasks */
-time("Using &> operator") {
-  val pipeline = Extract("hello") ~> (slowLoad &> slowLoad &> slowLoad)
-  pipeline.unsafeRun(())
+#### `Writer`
+Trace your pipeline's transformations:
+```
+type Log = List[String]
+type DataWriter[A] = Writer[Log, A]
+
+val fetchUser = Transform[String, DataWriter[String]] { id =>
+  Writer(
+    List(s"Fetching user $id"),
+    s"User $id"
+  )
 }
 
-/* Using & for sequenced tasks */
-time("Using & operator") {
-    val pipeline = Extract("hello") ~> (slowLoad & slowLoad & slowLoad)
-    pipeline.unsafeRun(())
+val processUser = Transform[DataWriter[String], DataWriter[String]] { writerInput =>
+  for {
+    value <- writerInput
+    result <- Writer(
+      List(s"Processing $value"),
+      s"Processed: $value"
+    )
+  } yield result
 }
 
-/*
- * Using &> operator took: 100ms
- * Using & operator took:  305ms
- */
+val pipeline = Extract("123") ~> fetchUser ~> processUser
+val (logs, result) = pipeline.unsafeRun(()).run()
+
+// Logs: ["Fetching user 123", "Processing User 123"]
+// Result: "Processed: User 123"
 ```
 
-#### Retry and onFailure
-Give individual `Nodes` or whole `Pipelines` retry capability using `.withRetry(<YOUR_CONF>: RetryConfig)` 
-and the batteries included `RetryConfig` which does exponential backoff:
-```scala
-/*
-case class RetryConfig(
-  maxAttempts: Int = 3,
-  initialDelay: Duration = 100.millis,
-  backoffFactor: Double = 2.0
-)
-*/
 
-val transform = Transform[Int, String] { n => 
-  if (math.random() < 0.5) throw new Exception("Random failure")
-  s"Processed $n"
+#### `Validated`
+Instead of failing fast, collect ALL validation errors in one go:
+
+```scala
+case class User(name: String, age: Int)
+
+def validateName(name: String): Validated[String, String] =
+  if (!name.matches("[A-Za-z ]+")) Validated.invalid("Name can only contain letters")
+  else Validated.valid(name)
+
+def validateAge(age: Int): Validated[String, Int] =
+  if (age < 0) Validated.invalid("Age must be positive")
+  else if (age > 150) Validated.invalid("Age not realistic")
+  else Validated.valid(age)
+
+val validateUser = Transform[User, Validated[String, User]] {
+  case User(name, age) =>
+    validateName(name)
+      .zip(validateAge(age))
+      .map { case (name, age) => User(name, age) }
 }
 
-val pipeline: Pipeline[Unit, String] = Extract(42) ~> transform.withRetry(RetryConfig())
-val result:   Try[String]            = pipeline.safeRun(())
+val formatUser: Transform[Validated[String, User], String] = 
+  Transform {
+    case Validated.Valid(user) => s"${user.name} is ${user.age} years old"
+    case Validated.Invalid(errors) => throw new Exception(s"Validation failed: ${errors.mkString("AND ")}")
+  } ~>
+
+val consoleLoad: Load[String, Unit] = Load(println(_))
+
+val invalidPipeline = 
+  Extract(User("Alice4", -1)) ~> validateUser ~> formatUser ~> consoleLoad
+
+invalidPipeline.unsafeRun(())
+``` 
+This prints:
 ```
+Name can only contain letters AND Age must be positive
+```
+
+
+## Examples
+
+#### Chain pipelines
+Simple piping of two pipelines:
+```scala
+val plusFiveExclaim: Pipeline[Unit, String] =
+          Extract(1) ~> Transform((x: Int) => x + 5) ~> Transform((x: Int) => x.toString + "!")
+
+val doubleString: Pipeline[String, String] =
+          Extract((s: String) => s) ~> Transform((s: String) => s ++ s)
+
+val plusFiveExclaimDouble: Pipeline[Int, Str] = plusFiveExclaimPipeline ~> doubleStrPipeline
+
+println(plusFiveExclaimDouble(2))
+// Prints: "7!7!"
+```
+
+Connect the output of two pipelines to a third:
+```scala
+val fetchUser = Transform[String, String](id => s"Fetching $id")
+val loadUser = Load[String, String](msg => s"Loaded: $msg")
+
+/* Create two simple pipelines */
+val namePipeline = Extract("alice") ~> fetchUser ~> loadUser
+val agePipeline = Extract(25) ~> Transform(age => s"Age: $age")
+
+/* Combine them */
+val combined = for {
+  name <- namePipeline
+  age <- agePipeline
+} yield Extract(s"$name | $age") ~> 
+  Transform(_.toUpperCase) ~> 
+  Load(println)
+
+combined.unsafeRun(())
+// Prints: "LOADED: FETCHING ALICE | AGE: 25"
+```
+
 
 ## Real-world examples
-See the [tutorial](tutorial.md) for examples of **etl4s** in combat. With Spark, with unbounded streams ... you name it.
+See the [tutorial](tutorial.md) for examples of **etl4s** in combat. It works great with anything:
+- Spark / Flink / Beam
+- Bounded / Unbounded-data - ETL / Streaming
+- Multi-physical-machine big data workflows
+- Little web-server dataflows
 
 
 ## Inspiration
