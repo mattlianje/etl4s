@@ -257,7 +257,7 @@ Invalid("Name can only contain letters", "Age must be positive")
 ## Examples
 
 #### Chain two pipelines
-Simple piping of two pipelines:
+Simple UNIX-pipe style chaining of two pipelines:
 ```scala
 val plusFiveExclaim: Pipeline[Unit, String] =
           Extract(1)
@@ -277,7 +277,7 @@ Prints:
 ```
 
 #### Complex chaining
-Connects the output of two pipelines to a third:
+Connect the output of two pipelines to a third:
 ```scala
 val fetchUser = Transform[String, String](id => s"Fetching $id")
 val loadUser = Load[String, String](msg => s"Loaded: $msg")
@@ -307,8 +307,10 @@ Prints:
 See the [tutorial](tutorial.md) for examples of **etl4s** in combat. It works great with anything:
 - Spark / Flink / Beam
 - ETL / Streaming
-- Multi-physical-machine big data workflows
-- Little web-server dataflows
+- Distributed Systems
+- Local scripts
+- Big Data workflows
+- Web-server dataflows
 
 
 ## Inspiration
