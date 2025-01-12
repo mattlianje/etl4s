@@ -156,7 +156,7 @@ val pipeline =
 
 ## Built-in Tools
 **etl4s** comes with 3 extra abstractions to make your pipelines hard like iron, and flexible like bamboo.
-You can use them directly or swap in your own favorites (like the better implementations from [Cats](https://typelevel.org/cats/)). Just:
+You can use them directly or swap in your own favorites (like their homologues from [Cats](https://typelevel.org/cats/)). Just:
 ```scala
 import etl4s.types.*
 ``` 
