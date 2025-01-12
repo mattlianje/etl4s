@@ -145,7 +145,7 @@ val pipeline = (e1 &> e2 &> e3).zip ~>    // Parallel extracts (~100ms)
   } ~> 
   (Load(println) &> Load(save))           // Parallel loads (~100ms)
 ```
-Parallelize tasks with task groups using `&>` or sequence them with `&`:
+Use `&` for sequential operations (each takes full time), `&>` for parallel (only takes longest operation time), and `.zip` to flatten nested tuples.
 
 
 ## Built-in Monads
