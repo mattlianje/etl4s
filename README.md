@@ -267,7 +267,7 @@ val plusFiveExclaim: Pipeline[Unit, String] =
 val doubleString: Pipeline[String, String] =
           Extract((s: String) => s) ~> Transform((s: String) => s ++ s)
 
-val plusFiveExclaimDouble: Pipeline[Int, Str] = plusFiveExclaimPipeline ~> doubleStrPipeline
+val plusFiveExclaimDouble: Pipeline[Int, Str] = plusFiveExclaim ~> doubleString
 
 println(plusFiveExclaimDouble(2))
 ```
