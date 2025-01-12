@@ -221,8 +221,8 @@ val (logs, result) = pipeline.unsafeRun(()).run()
 
 
 #### `Validated[E, A]`
-No more failing on the first error! ... And fixing bugs ... one ... by ... one. Stack validations and accumulate List of errors.
-Perfect for validating data on the edges of your pipelines (Just use `Validated.` `valid`/`invalid`... then `zip` on a `Validated` to "stack"
+No more failing on the first error! ... And fixing bugs ... one ... by ... one. Stack quality checks and accumulate lists of errors.
+This is perfect for validating data on the edges of your pipelines (Just use `Validated.` `valid`/`invalid`... then `zip` on a `Validated` to "stack"
 your validations).
 
 ```scala
