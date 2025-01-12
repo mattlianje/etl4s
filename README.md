@@ -243,7 +243,6 @@ val validateUser = Transform[(String, Int), Validated[String, User]] {
       .map { case (name, age) => User(name, age) }
 }
 
-// Pipeline returns all validation errors at once!
 val pipeline = Extract(("Alice4", -1)) ~> validateUser 
 pipeline.unsafeRun(())
 ```
