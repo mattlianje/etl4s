@@ -162,7 +162,7 @@ import etl4s.types.*
 ``` 
 
 #### `Reader[R, A]`
-Need database credentials? Services? API keys? Environment settings?
+Need database credentials? Start and end dates for your batch job? API keys? Environment settings?
 Let your pipeline know exactly what it needs to run, and switch configs effortlessly.
 ```scala
 case class ApiConfig(url: String, key: String)
