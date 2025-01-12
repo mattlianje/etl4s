@@ -273,15 +273,14 @@ List(
 #### Chain two pipelines
 Simple UNIX-pipe style chaining of two pipelines:
 ```scala
-val plusFiveExclaim: Pipeline[Unit, String] =
-          Extract(1)
+val plusFiveExclaim: Pipeline[Int, String] =
           ~> Transform((x: Int) => x + 5)
           ~> Transform((x: Int) => x.toString + "!")
 
 val doubleString: Pipeline[String, String] =
-          Extract((s: String) => s) ~> Transform((s: String) => s ++ s)
+          Extract((s: String) => s) ~> Transform[String, String](x => x ++ x)
 
-val plusFiveExclaimDouble: Pipeline[Int, Str] = plusFiveExclaim ~> doubleString
+val plusFiveExclaimDouble: Pipeline[Int, String] = plusFiveExclaim ~> doubleString
 
 println(plusFiveExclaimDouble(2))
 ```
