@@ -53,7 +53,8 @@ A `Node` that represent a transformation. It can be composed with other nodes vi
 - ##### `Load[-In, +Out]` 
 A `Node` used to represent the end of a pipeline.
 
-**etl4s** won't let you chain together "blocks" that don't fit together:
+## Type safety
+**etl4s** won't let you chain together "blocks" (nodes or pipelines) that don't fit together:
 ```scala
  val fiveExtract: Extract[Unit, Int]        = Extract(5)
  val exclaim:     Transform[String, String] = Transform(_ + "!")
