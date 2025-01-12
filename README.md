@@ -78,7 +78,7 @@ and see [functional ETL](https://maximebeauchemin.medium.com/functional-data-eng
 
 
 ## Handling Failures
-**etl4s** comes with 2 methods you can use (on a specific Node OR Pipeline) to handle failures out of the box:
+**etl4s** comes with 2 methods you can use (on a `Node` or `Pipeline`) to handle failures out of the box:
 
 #### `withRetry`
 Give retry capability using the built-in `RetryConfig`:
@@ -119,7 +119,7 @@ Failed with: Boom! ... firing missile
 ```
 
 ## Parallelizing Tasks
-**etl4s** has an elegant shorthand for parallelizing operations:
+**etl4s** has an elegant shorthand for grouping and parallelizing operations:
 ```scala
 // Simulate slow IO operations (e.g., DB calls, API requests)
 val e1 = Extract { Thread.sleep(100); 42 }
@@ -127,12 +127,12 @@ val e2 = Extract { Thread.sleep(100); "hello" }
 val e3 = Extract { Thread.sleep(100); true }
 ```
 
-Sequential run of e1, e2, and e3 (~300ms total)
+Sequential run of e1, e2, and e3 **(~300ms total)**
 ```scala
 val sequential = e1 & e2 & e3   /* Type: Extract[Unit, ((Int, String), Boolean)] */
 ```
 
-Parallel run (~100ms total) of e1, e2, e3 on their own JVM threads with Scala Futures
+Parallel run of e1, e2, e3 on their own JVM threads with Scala Futures **(~100ms total)**
 ```scala
 val parallel = e1 &> e2 &> e3   /* Same result, much faster! */
 ```
