@@ -83,9 +83,10 @@ and see [functional ETL](https://maximebeauchemin.medium.com/functional-data-eng
 #### `withRetry`
 Give retry capability using the built-in `RetryConfig`:
 ```scala
-val riskyTransformWithRetry = Transform[Int, String] { n =>
-    var attempts = 0
-    attempts += 1
+import scala.concurrent.duration.*
+
+val riskyTransformWithRetry = Transform[Int, String] {
+    var attempts = 0; n => attempts += 1
     if (attempts < 3) throw new RuntimeException(s"Attempt $attempts failed")
     else s"Success after $attempts attempts"
 }.withRetry(
@@ -181,7 +182,7 @@ val fetchUser = Reader[ApiConfig, Transform[String, String]] { config =>
 }
 
 val loadUser = Reader[ApiConfig, Load[String, String]] { config =>
-  Load(msg => s"User loaded with key ${config.key}: $msg")
+  Load(msg => s"User loaded with key `${config.key}`: $msg")
 }
 
 val configuredPipeline = for {
@@ -192,7 +193,7 @@ val configuredPipeline = for {
 /* Run with config */
 val result = configuredPipeline.run(config).unsafeRun(())
 
-// "User loaded with key secret: Fetching user user123 from https://api.com"
+// "User loaded with key `secret`: Fetching user user123 from https://api.com"
 ```
 
 
