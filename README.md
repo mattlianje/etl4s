@@ -315,7 +315,7 @@ Prints:
 #### Regular Scala Inside
 Use normal (more procedural-style) Scala collections and functions in your transforms
 ```scala
-val salesData = Extract[Unit, Map[String, List[Int]]](
+val salesData = Extract[Unit, Map[String, List[Int]]](_ =>
  Map(
   "Alice" -> List(100, 200, 150),
   "Bob" -> List(50, 50, 75),
@@ -337,6 +337,12 @@ val pipeline =
    salesData ~> calculateBonus ~> printResults
 
 pipeline.unsafeRun(())
+```
+Prints:
+```
+Alice: $450 - Standard Bonus
+Bob: $175 - Standard Bonus
+Carol: $600 - High Bonus
 ```
 
 
