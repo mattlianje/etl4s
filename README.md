@@ -301,9 +301,10 @@ val agePipeline = Extract(25) ~> Transform(age => s"Age: $age")
 val combined = (for {
   name <- namePipeline
   age <- agePipeline
-} yield Extract(s"$name | $age") ~> 
-  Transform(_.toUpperCase) ~> 
-  Load(println)).flatten
+} yield Extract(s"$name | $age") ~>
+        Transform(_.toUpperCase) ~>
+        Load(println)
+).flatten
 
 combined.unsafeRun(())
 ```
