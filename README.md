@@ -21,12 +21,12 @@ A lightweight, zero-dependency, library for writing type-safe, beautiful ✨🍰
 
 **etl4s** is on MavenCentral:
 ```scala
-"xyz.matthieucourt" % "etl4s_2.13" % "0.0.4"
+"xyz.matthieucourt" % "etl4s_2.13" % "0.0.5"
 ```
 
 Try it in your repl:
 ```bash
-scala-cli repl --dep xyz.matthieucourt:etl4s_2.13:0.0.4
+scala-cli repl --dep xyz.matthieucourt:etl4s_2.13:0.0.5
 ```
 
 All you need:
