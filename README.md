@@ -274,15 +274,15 @@ List(
 Simple UNIX-pipe style chaining of two pipelines:
 ```scala
 val plusFiveExclaim: Pipeline[Int, String] =
-          ~> Transform((x: Int) => x + 5)
-          ~> Transform((x: Int) => x.toString + "!")
+    Transform((x: Int) => x + 5) ~> 
+    Transform((x: Int) => x.toString + "!")
 
 val doubleString: Pipeline[String, String] =
-          Extract((s: String) => s) ~> Transform[String, String](x => x ++ x)
+    Extract((s: String) => s) ~> 
+    Transform[String, String](x => x ++ x)
 
-val plusFiveExclaimDouble: Pipeline[Int, String] = plusFiveExclaim ~> doubleString
-
-println(plusFiveExclaimDouble(2))
+val pipeline: Pipeline[Int, String] = plusFiveExclaim ~> doubleString
+println(pipeline.unsafeRun(2))
 ```
 Prints:
 ```
@@ -300,12 +300,12 @@ val namePipeline = Extract("alice") ~> fetchUser ~> loadUser
 val agePipeline = Extract(25) ~> Transform(age => s"Age: $age")
 
 // Combine them
-val combined = for {
+val combined = (for {
   name <- namePipeline
   age <- agePipeline
 } yield Extract(s"$name | $age") ~> 
   Transform(_.toUpperCase) ~> 
-  Load(println)
+  Load(println)).flatten
 
 combined.unsafeRun(())
 ```
