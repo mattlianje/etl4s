@@ -295,11 +295,9 @@ Connect the output of two pipelines to a third:
 val fetchUser = Transform[String, String](id => s"Fetching $id")
 val loadUser = Load[String, String](msg => s"Loaded: $msg")
 
-// Create two simple pipelines
 val namePipeline = Extract("alice") ~> fetchUser ~> loadUser
 val agePipeline = Extract(25) ~> Transform(age => s"Age: $age")
 
-// Combine them
 val combined = (for {
   name <- namePipeline
   age <- agePipeline
