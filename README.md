@@ -194,8 +194,11 @@ val configuredPipeline = for {
 
 /* Run with config */
 val result = configuredPipeline.run(config).unsafeRun(())
-
-// "User loaded with key `secret`: Fetching user user123 from https://api.com"
+println(result)
+```
+Prints:
+```
+"User loaded with key `secret`: Fetching user user123 from https://api.com"
 ```
 
 
@@ -225,9 +228,11 @@ val processUser = Transform[DataWriter[String], DataWriter[String]] { writerInpu
 
 val pipeline = Extract("123") ~> fetchUser ~> processUser
 val (logs, result) = pipeline.unsafeRun(()).run()
-
-// Logs: ["Fetching user 123", "Processing User 123"]
-// Result: "Processed: User 123"
+```
+Yields:
+```
+Logs: ["Fetching user 123", "Processing User 123"]
+Result: "Processed: User 123"
 ```
 
 
