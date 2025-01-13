@@ -312,6 +312,33 @@ Prints:
 "LOADED: FETCHING ALICE | AGE: 25"
 ```
 
+#### Regular Scala Inside
+Use normal (more procedural-style) Scala collections and functions in your transforms
+```scala
+val salesData = Extract[Unit, Map[String, List[Int]]](
+ Map(
+  "Alice" -> List(100, 200, 150),
+  "Bob" -> List(50, 50, 75),
+  "Carol" -> List(300, 100, 200)
+ )
+)
+
+val calculateBonus = Transform[Map[String, List[Int]], List[String]] { sales =>
+  sales.map { case (name, amounts) => 
+    val total = amounts.sum
+    val bonus = if (total > 500) "High" else "Standard"
+    s"$name: $$${total} - $bonus Bonus"
+  }.toList
+}
+
+val printResults = Load[List[String], Unit](_.foreach(println))
+
+val pipeline =
+   salesData ~> calculateBonus ~> printResults
+
+pipeline.unsafeRun(())
+```
+
 
 
 ## Real-world examples
