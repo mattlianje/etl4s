@@ -172,7 +172,7 @@ You can use them directly or swap in your own favorites (like their better built
 import etl4s.types.*
 ``` 
 
-#### `Reader[R, A]` Config-driven pipelines
+#### `Reader[R, A]`: Config-driven pipelines
 Need database credentials? Start and end dates for your batch job? API keys? Environment settings?
 Let your pipeline know exactly what it needs to run, and switch configs effortlessly.
 ```scala
@@ -202,7 +202,7 @@ Prints:
 ```
 
 
-#### `Writer[W, A]` Log accumulating pipelines
+#### `Writer[W, A]`: Log accumulating pipelines
 Collect logs at every step of your pipeline and get them all at once with your results.
 No more scattered println's - just clean, organized logging, that shows exactly how your data flowed through the pipeline.
 ```scala
@@ -236,7 +236,7 @@ Result: "Processed: User 123"
 ```
 
 
-#### `Validated[E, A]` Error accumulating pipelines
+#### `Validated[E, A]`: Error accumulating pipelines
 No more failing on the first error! ... And fixing bugs ... one ... by ... one. Stack quality checks and accumulate lists of errors.
 This is perfect for validating data on the edges of your pipelines (Just use `Validated.` `valid`/`invalid`... then `zip` on a `Validated` to "stack"
 your validations).
