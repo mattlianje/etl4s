@@ -21,7 +21,7 @@ A lightweight, zero-dependency, library for writing type-safe, beautiful ✨🍰
 
 **etl4s** is on MavenCentral:
 ```scala
-"xyz.matthieucourt" % "etl4s_2.13" % "0.0.5"
+"xyz.matthieucourt" %% "etl4s" % "0.0.5"
 ```
 
 Try it in your repl:
