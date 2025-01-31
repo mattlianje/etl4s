@@ -16,8 +16,6 @@ A lightweight, zero-dependency, library for writing type-safe, beautiful ✨🍰
 - Built in retry/on-failure mechanism for nodes + pipelines
 
 ## Get started
-> [!WARNING]  
-> Releases sub `1.0.0` are experimental - breaking API changes might happen
 
 **etl4s** is on MavenCentral:
 ```scala
