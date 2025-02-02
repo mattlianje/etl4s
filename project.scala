@@ -3,7 +3,7 @@
 
 //> using publish.name "etl4s"
 //> using publish.organization "xyz.matthieucourt"
-//> using publish.version "0.0.4"
+//> using publish.version "0.0.5"
 //> using publish.url "https://github.com/mattlianje/etl4s"
 //> using publish.vcs "github:mattlianje/etl4s"
 //> using publish.license "GPL-3.0"

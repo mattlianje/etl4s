@@ -514,41 +514,41 @@ class Etl4sSpec extends munit.FunSuite {
   }
 
   test("transform should accumulate multiple validation errors") {
-     case class User(name: String, age: Int, email: String)
-   
-     def validateName(name: String): Validated[String, String] =
-       if (name.isEmpty) Validated.invalid("Name cannot be empty")
-       else if (name.length < 2) Validated.invalid("Name too short")
-       else if (!name.matches("[A-Za-z ]+"))
-         Validated.invalid("Name can only contain letters")
-       else Validated.valid(name)
-   
-     def validateAge(age: Int): Validated[String, Int] =
-       if (age < 0) Validated.invalid("Age must be positive")
-       else if (age > 150) Validated.invalid("Age not realistic")
-       else Validated.valid(age)
-   
-     def validateEmail(email: String): Validated[String, String] =
-       Validated
-         .valid(email)
-         .zip(
-           if (!email.contains("@")) Validated.invalid("Email must contain @")
-           else Validated.valid(email)
-         )
-         .zip(
-           if (!email.contains(".")) Validated.invalid("Email must contain .")
-           else Validated.valid(email)
-         )
-         .map { case ((email, _), _) => email }
-   
-     val validateUser =
-       Transform[(String, Int, String), Validated[String, User]] {
-         case (name, age, email) =>
-           validateName(name)
-             .zip(validateAge(age))
-             .zip(validateEmail(email))
-             .map { case ((name, age), email) => User(name, age, email) }
-       }
+    case class User(name: String, age: Int, email: String)
+
+    def validateName(name: String): Validated[String, String] =
+      if (name.isEmpty) Validated.invalid("Name cannot be empty")
+      else if (name.length < 2) Validated.invalid("Name too short")
+      else if (!name.matches("[A-Za-z ]+"))
+        Validated.invalid("Name can only contain letters")
+      else Validated.valid(name)
+
+    def validateAge(age: Int): Validated[String, Int] =
+      if (age < 0) Validated.invalid("Age must be positive")
+      else if (age > 150) Validated.invalid("Age not realistic")
+      else Validated.valid(age)
+
+    def validateEmail(email: String): Validated[String, String] =
+      Validated
+        .valid(email)
+        .zip(
+          if (!email.contains("@")) Validated.invalid("Email must contain @")
+          else Validated.valid(email)
+        )
+        .zip(
+          if (!email.contains(".")) Validated.invalid("Email must contain .")
+          else Validated.valid(email)
+        )
+        .map { case ((email, _), _) => email }
+
+    val validateUser =
+      Transform[(String, Int, String), Validated[String, User]] {
+        case (name, age, email) =>
+          validateName(name)
+            .zip(validateAge(age))
+            .zip(validateEmail(email))
+            .map { case ((name, age), email) => User(name, age, email) }
+      }
 
     val validInput = ("Matthieu", 27, "matthieu.court@protonmail.com")
     val invalidInput = ("", -1, "invalid")
@@ -574,16 +574,18 @@ class Etl4sSpec extends munit.FunSuite {
     val extract2: Extract[Int, Double] = Extract(_ * 2.0)
     val combined = extract1 andThen extract2
     assertEquals(combined.runSync("hello"), 10.0)
-  
-    val load1: Load[String, Int] = Load(_.toInt) 
-    val load2: Load[Int, String]= Load(x => (x * 2).toString) 
+
+    val load1: Load[String, Int] = Load(_.toInt)
+    val load2: Load[Int, String] = Load(x => (x * 2).toString)
     val combinedLoad = load1 andThen load2
     assertEquals(combinedLoad.runSync("21"), "42")
   }
 
-  test("Transform should compose with Extract and Load in concurrent pipelines") {
+  test(
+    "Transform should compose with Extract and Load in concurrent pipelines"
+  ) {
     var t1Started, t2Started, l1Started = 0L
-    
+
     val e1 = Extract("hello")
     val t1 = Transform[String, Int] { s =>
       t1Started = System.currentTimeMillis()
@@ -600,11 +602,11 @@ class Etl4sSpec extends munit.FunSuite {
       Thread.sleep(100)
       s._2.split("").toList
     }
-    
+
     val pipeline = e1 ~> (t1 &> t2) ~> l1
-    
+
     pipeline.unsafeRun(())
-    
+
     assert(
       Math.abs(t1Started - t2Started) < 50,
       "t1 and t2 should start around same time"
@@ -613,38 +615,41 @@ class Etl4sSpec extends munit.FunSuite {
 
   test("ETL pipeline with Reader config and Writer logs") {
     case class Config(url: String, key: String)
-    type Log = List[String]  
+    type Log = List[String]
     type DataWriter[A] = Writer[Log, A]
-  
-    val fetchUser = Reader[Config, Transform[String, DataWriter[String]]] { config =>
-      Transform { id =>
-        Writer(
-          List(s"Fetching user $id from ${config.url}"),
-          s"User $id"
-        )
-      }
-    }
-  
-    val processUser = Reader[Config, Transform[DataWriter[String], DataWriter[String]]] { config =>
-      Transform { writerInput => 
-        for {
-          value <- writerInput
-          result <- Writer(
-            List(s"Processing $value with key ${config.key}"),
-            s"Processed: $value"
+
+    val fetchUser = Reader[Config, Transform[String, DataWriter[String]]] {
+      config =>
+        Transform { id =>
+          Writer(
+            List(s"Fetching user $id from ${config.url}"),
+            s"User $id"
           )
-        } yield result
-      }
+        }
     }
-  
+
+    val processUser =
+      Reader[Config, Transform[DataWriter[String], DataWriter[String]]] {
+        config =>
+          Transform { writerInput =>
+            for {
+              value <- writerInput
+              result <- Writer(
+                List(s"Processing $value with key ${config.key}"),
+                s"Processed: $value"
+              )
+            } yield result
+          }
+      }
+
     val configuredPipeline = for {
       fetch <- fetchUser
       process <- processUser
     } yield Extract("123") ~> fetch ~> process
-  
+
     val config = Config("https://api.com", "secret")
     val (logs, result) = configuredPipeline.run(config).unsafeRun(()).run()
-  
+
     assertEquals(
       logs,
       List(
@@ -657,15 +662,53 @@ class Etl4sSpec extends munit.FunSuite {
 
   test("pipelines should compose with ~>") {
     val plusFiveExclaim: Pipeline[Int, String] =
-      Transform((x: Int) => x + 5) ~> 
-      Transform((x: Int) => x.toString + "!")
-  
+      Transform((x: Int) => x + 5) ~>
+        Transform((x: Int) => x.toString + "!")
+
     val doubleString: Pipeline[String, String] =
-      Extract((s: String) => s) ~> 
-      Transform[String, String](x => x ++ x)
-  
+      Extract((s: String) => s) ~>
+        Transform[String, String](x => x ++ x)
+
     val pipeline: Pipeline[Int, String] = plusFiveExclaim ~> doubleString
-  
+
     assertEquals(pipeline.unsafeRun(2), "7!7!")
+  }
+
+  test("should flatten nested tuples up to 10 elements") {
+    val e1 = Extract(1)
+    val e2 = Extract("two")
+    val e3 = Extract(3.0)
+    val e4 = Extract(true)
+    val e5 = Extract('c')
+    val e6 = Extract(6L)
+    val e7 = Extract(7.0f)
+    val e8 = Extract("eight")
+    val e9 = Extract(9)
+    val e10 = Extract(10L)
+
+    val combined =
+      (e1 &> e2 &> e3 &> e4 &> e5 &> e6 &> e7 &> e8 &> e9 &> e10).zip
+
+    val result = combined.runSync(())
+
+    val expected = (1, "two", 3.0, true, 'c', 6L, 7.0f, "eight", 9, 10L)
+
+    assertEquals(result, expected)
+
+    val transform = Transform[
+      (Int, String, Double, Boolean, Char, Long, Float, String, Int, Long),
+      String
+    ] { case (a1, a2, a3, a4, a5, a6, a7, a8, a9, a10) =>
+      s"Combined: $a1,$a2,$a3,$a4,$a5,$a6,$a7,$a8,$a9,$a10"
+    }
+
+    val load = Load[String, String](identity)
+
+    val pipeline = combined ~> transform ~> load
+    val pipelineResult = pipeline.unsafeRun(())
+
+    assert(
+      pipelineResult.startsWith("Combined: 1,two,3.0,true,c,6,7.0,eight,9,10")
+    )
   }
 }

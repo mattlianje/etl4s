@@ -51,10 +51,11 @@ object types {
       def combine(x: List[String], y: List[String]) = x ++ y
     }
 
-    implicit val vectorMonoid: Monoid[Vector[String]] = new Monoid[Vector[String]] {
-      def empty = Vector.empty[String]
-      def combine(x: Vector[String], y: Vector[String]) = x ++ y
-    }
+    implicit val vectorMonoid: Monoid[Vector[String]] =
+      new Monoid[Vector[String]] {
+        def empty = Vector.empty[String]
+        def combine(x: Vector[String], y: Vector[String]) = x ++ y
+      }
   }
 
   case class Writer[L, A](run: () => (L, A))(implicit L: Monoid[L]) {
@@ -73,13 +74,13 @@ object types {
   }
 
   object Writer {
-    def apply[L: Monoid, A](l: L, a: A): Writer[L, A] = 
+    def apply[L: Monoid, A](l: L, a: A): Writer[L, A] =
       Writer(() => (l, a))
-      
-    def tell[L: Monoid](l: L): Writer[L, Unit] = 
+
+    def tell[L: Monoid](l: L): Writer[L, Unit] =
       Writer(() => (l, ()))
 
-    def pure[L: Monoid, A](a: A): Writer[L, A] = 
+    def pure[L: Monoid, A](a: A): Writer[L, A] =
       Writer(() => (Monoid[L].empty, a))
   }
 }
@@ -197,7 +198,9 @@ object core {
         val b = f(a)
         g(b).f(a)
       })
-    def andThen[C](that: Extract[B, C]): Extract[A, C] = Extract(f andThen that.f)
+    def andThen[C](that: Extract[B, C]): Extract[A, C] = Extract(
+      f andThen that.f
+    )
   }
 
   object Extract {
@@ -242,7 +245,7 @@ object core {
         val b = f(a)
         g(b).f(a)
       })
-   def andThen[C](that: Load[B, C]): Load[A, C] = Load(f andThen that.f)
+    def andThen[C](that: Load[B, C]): Load[A, C] = Load(f andThen that.f)
   }
 
   object Load {
@@ -310,15 +313,15 @@ object core {
   }
 
   implicit class NodeOps[A, B](node: Node[A, B]) {
-    def ~>[C](next: Node[B, C]): Pipeline[A, C] = 
-      Pipeline(new Node[A, C] { 
-        def runSync: A => C = node.runSync andThen next.runSync 
-        def runAsync(implicit ec: ExecutionContext): A => Future[C] = { a => 
-          node.runAsync(ec)(a).flatMap(next.runAsync(ec)) 
-        } 
+    def ~>[C](next: Node[B, C]): Pipeline[A, C] =
+      Pipeline(new Node[A, C] {
+        def runSync: A => C = node.runSync andThen next.runSync
+        def runAsync(implicit ec: ExecutionContext): A => Future[C] = { a =>
+          node.runAsync(ec)(a).flatMap(next.runAsync(ec))
+        }
       })
   }
-  
+
   implicit def pipelineToNode[A, B](p: Pipeline[A, B]): Node[A, B] = p.node
 
   implicit class ExtractOps[I, O1](e1: Extract[I, O1]) {
@@ -374,29 +377,32 @@ object core {
   }
 
   implicit class TransformOps[I, O1](t1: Transform[I, O1]) {
-    def &[O2](t2: Transform[I, O2]): Transform[I, (O1, O2)] = Transform { input =>
+    def &[O2](t2: Transform[I, O2]): Transform[I, (O1, O2)] = Transform {
+      input =>
         (t1.runSync(input), t2.runSync(input))
     }
 
-    def &>[O2](t2: Transform[I, O2])(implicit ec: ExecutionContext): Transform[I, (O1, O2)] = 
-        Transform { input =>
+    def &>[O2](t2: Transform[I, O2])(implicit
+        ec: ExecutionContext
+    ): Transform[I, (O1, O2)] =
+      Transform { input =>
         val f1 = t1.runAsync.apply(input.asInstanceOf[I])
         val f2 = t2.runAsync.apply(input.asInstanceOf[I])
         Await.result(
-            for {
-                r1 <- f1
-                r2 <- f2
-            } yield (r1, r2),
-            Duration.Inf
+          for {
+            r1 <- f1
+            r2 <- f2
+          } yield (r1, r2),
+          Duration.Inf
         )
-    }
+      }
 
     def zip[Out](implicit
         flattener: Flatten.Aux[O1, Out]
     ): Transform[I, Out] = Transform[I, Out] { i =>
-        flattener(t1.runSync(i))
+      flattener(t1.runSync(i))
     }
- }
+  }
 
   /* Yuck - but don't want to use shapeless */
   trait Flatten[A] {
@@ -458,7 +464,99 @@ object core {
       }
   }
 
-  object Flatten extends P4 {
+  trait P5 extends P4 {
+    implicit def tuple7[A, B, C, D, E, F, G]
+        : Flatten.Aux[((((((A, B), C), D), E), F), G), (A, B, C, D, E, F, G)] =
+      new Flatten[((((((A, B), C), D), E), F), G)] {
+        type Out = (A, B, C, D, E, F, G)
+        def apply(t: ((((((A, B), C), D), E), F), G)): (A, B, C, D, E, F, G) = {
+          val ((((((a, b), c), d), e), f), g) = t
+          (a, b, c, d, e, f, g)
+        }
+      }
+  }
+
+  trait P6 extends P5 {
+    implicit def tuple8[A, B, C, D, E, F, G, H]: Flatten.Aux[
+      (((((((A, B), C), D), E), F), G), H),
+      (A, B, C, D, E, F, G, H)
+    ] =
+      new Flatten[(((((((A, B), C), D), E), F), G), H)] {
+        type Out = (A, B, C, D, E, F, G, H)
+        def apply(
+            t: (((((((A, B), C), D), E), F), G), H)
+        ): (A, B, C, D, E, F, G, H) = {
+          val (((((((a, b), c), d), e), f), g), h) = t
+          (a, b, c, d, e, f, g, h)
+        }
+      }
+  }
+
+  trait P7 extends P6 {
+    implicit def tuple9[A, B, C, D, E, F, G, H, I]: Flatten.Aux[
+      ((((((((A, B), C), D), E), F), G), H), I),
+      (A, B, C, D, E, F, G, H, I)
+    ] =
+      new Flatten[((((((((A, B), C), D), E), F), G), H), I)] {
+        type Out = (A, B, C, D, E, F, G, H, I)
+        def apply(
+            t: ((((((((A, B), C), D), E), F), G), H), I)
+        ): (A, B, C, D, E, F, G, H, I) = {
+          val ((((((((a, b), c), d), e), f), g), h), i) = t
+          (a, b, c, d, e, f, g, h, i)
+        }
+      }
+  }
+
+  trait P8 extends P7 {
+    implicit def tuple10[A, B, C, D, E, F, G, H, I, J]: Flatten.Aux[
+      (((((((((A, B), C), D), E), F), G), H), I), J),
+      (A, B, C, D, E, F, G, H, I, J)
+    ] =
+      new Flatten[(((((((((A, B), C), D), E), F), G), H), I), J)] {
+        type Out = (A, B, C, D, E, F, G, H, I, J)
+        def apply(
+            t: (((((((((A, B), C), D), E), F), G), H), I), J)
+        ): (A, B, C, D, E, F, G, H, I, J) = {
+          val (((((((((a, b), c), d), e), f), g), h), i), j) = t
+          (a, b, c, d, e, f, g, h, i, j)
+        }
+      }
+  }
+
+  trait P9 extends P8 {
+    implicit def tuple11[A, B, C, D, E, F, G, H, I, J, K]: Flatten.Aux[
+      ((((((((((A, B), C), D), E), F), G), H), I), J), K),
+      (A, B, C, D, E, F, G, H, I, J, K)
+    ] =
+      new Flatten[((((((((((A, B), C), D), E), F), G), H), I), J), K)] {
+        type Out = (A, B, C, D, E, F, G, H, I, J, K)
+        def apply(
+            t: ((((((((((A, B), C), D), E), F), G), H), I), J), K)
+        ): (A, B, C, D, E, F, G, H, I, J, K) = {
+          val ((((((((((a, b), c), d), e), f), g), h), i), j), k) = t
+          (a, b, c, d, e, f, g, h, i, j, k)
+        }
+      }
+  }
+
+  trait P10 extends P9 {
+    implicit def tuple12[A, B, C, D, E, F, G, H, I, J, K, L]: Flatten.Aux[
+      (((((((((((A, B), C), D), E), F), G), H), I), J), K), L),
+      (A, B, C, D, E, F, G, H, I, J, K, L)
+    ] =
+      new Flatten[(((((((((((A, B), C), D), E), F), G), H), I), J), K), L)] {
+        type Out = (A, B, C, D, E, F, G, H, I, J, K, L)
+        def apply(
+            t: (((((((((((A, B), C), D), E), F), G), H), I), J), K), L)
+        ): (A, B, C, D, E, F, G, H, I, J, K, L) = {
+          val (((((((((((a, b), c), d), e), f), g), h), i), j), k), l) = t
+          (a, b, c, d, e, f, g, h, i, j, k, l)
+        }
+      }
+  }
+
+  object Flatten extends P10 {
     type Aux[A, B] = Flatten[A] { type Out = B }
   }
 }
@@ -480,7 +578,7 @@ ComposedNode::= Node & Node              (* Sequential composition *)
              | Node andThen Node         (* Same-type chaining *)
 
 (* Type System *)
-Type        ::= Identifier | GenericType | EffectType 
+Type        ::= Identifier | GenericType | EffectType
 GenericType ::= Identifier [Type {, Type}]
 EffectType  ::= Reader [Type, Type]
              | Writer [Type, Type]
@@ -493,5 +591,4 @@ Zip         ::= Node.zip                 (* Flattens any nested tuple *)
 (* Base Elements *)
 Function    ::= Identifier | (Params => Expr)
 Identifier  ::= Letter {Letter | Digit}
-*/
-
+ */
