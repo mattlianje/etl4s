@@ -276,6 +276,8 @@ List(
 #### Chain two pipelines
 Simple UNIX-pipe style chaining of two pipelines:
 ```scala
+import etl4s.core.*
+
 val plusFiveExclaim: Pipeline[Int, String] =
     Transform((x: Int) => x + 5) ~> 
     Transform((x: Int) => x.toString + "!")
@@ -295,19 +297,19 @@ Prints:
 #### Complex chaining
 Connect the output of two pipelines to a third:
 ```scala
+import etl4s.core.*
+
 val fetchUser = Transform[String, String](id => s"Fetching $id")
 val loadUser = Load[String, String](msg => s"Loaded: $msg")
 
 val namePipeline = Extract("alice") ~> fetchUser ~> loadUser
 val agePipeline = Extract(25) ~> Transform(age => s"Age: $age")
 
-val combined = (for {
+val combined: Pipeline[Unit, Unit] = for {
   name <- namePipeline
   age <- agePipeline
-} yield Extract(s"$name | $age") ~>
-        Transform(_.toUpperCase) ~>
-        Load(println)
-).flatten
+  combined <- Extract(s"$name | $age") ~> Transform(_.toUpperCase) ~> Load(println)
+} yield combined
 
 combined.unsafeRun(())
 ```
@@ -319,6 +321,8 @@ Prints:
 #### Regular Scala Inside
 Use normal (more procedural-style) Scala collections and functions in your transforms
 ```scala
+import etl4s.core.*
+
 val salesData = Extract[Unit, Map[String, List[Int]]](_ =>
  Map(
   "Alice" -> List(100, 200, 150),
