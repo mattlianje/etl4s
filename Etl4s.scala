@@ -1,11 +1,28 @@
-package etl4s
-
 import scala.concurrent.{Future, ExecutionContext}
 import scala.concurrent.duration._
 import scala.concurrent.Await
 import scala.util.{Try, Success, Failure}
 
-object types {
+package object etl4s {
+  implicit class NodeOps[A, B](node: Node[A, B]) {
+    def ~>[C](next: Node[B, C]): Pipeline[A, C] =
+      Pipeline(new Node[A, C] {
+        def runSync: A => C = node.runSync andThen next.runSync
+        def runAsync(implicit ec: ExecutionContext): A => Future[C] = { a =>
+          node.runAsync(ec)(a).flatMap(next.runAsync(ec))
+        }
+      })
+  }
+  implicit def pipelineToNode[A, B](p: Pipeline[A, B]): Node[A, B] = p.node
+
+  implicit def extractToPipeline[A, B](e: Extract[A, B]): Pipeline[A, B] =
+    Pipeline(e)
+  implicit def transformToPipeline[A, B](t: Transform[A, B]): Pipeline[A, B] =
+    Pipeline(t)
+  implicit def loadToPipeline[A, B](l: Load[A, B]): Pipeline[A, B] = Pipeline(l)
+}
+
+package etl4s {
   case class Reader[R, A](run: R => A) {
     def map[B](f: A => B): Reader[R, B] = Reader(r => f(run(r)))
     def flatMap[B](f: A => Reader[R, B]): Reader[R, B] =
@@ -83,10 +100,6 @@ object types {
     def pure[L: Monoid, A](a: A): Writer[L, A] =
       Writer(() => (Monoid[L].empty, a))
   }
-}
-
-object core {
-  import types._
 
   case class RetryConfig(
       maxAttempts: Int = 3,
@@ -95,6 +108,59 @@ object core {
   )
 
   sealed trait Node[-A, +B] { self =>
+
+    def &[AA <: A, C](that: Node[AA, C]): Node[AA, (B, C)] =
+      new Node[AA, (B, C)] {
+        def runSync: AA => (B, C) = { a =>
+          (self.runSync(a), that.runSync(a))
+        }
+        def runAsync(implicit ec: ExecutionContext): AA => Future[(B, C)] = {
+          a =>
+            for {
+              r1 <- self.runAsync(ec)(a)
+              r2 <- that.runAsync(ec)(a)
+            } yield (r1, r2)
+        }
+      }
+
+    def &>[AA <: A, C](
+        that: Node[AA, C]
+    )(implicit ec: ExecutionContext): Node[AA, (B, C)] = {
+      new Node[AA, (B, C)] {
+        def runSync: AA => (B, C) = { a =>
+          val f1 = Future(self.runSync(a))
+          val f2 = Future(that.runSync(a))
+          val combined = for {
+            r1 <- f1
+            r2 <- f2
+          } yield (r1, r2)
+          // Explicit return
+          Await.result(combined, Duration.Inf): (B, C)
+        }
+
+        def runAsync(implicit ec: ExecutionContext): AA => Future[(B, C)] = {
+          a =>
+            val f1 = self.runAsync(ec)(a)
+            val f2 = that.runAsync(ec)(a)
+            for {
+              r1 <- f1
+              r2 <- f2
+            } yield (r1, r2)
+        }
+      }
+    }
+
+    def zip[BB >: B, Out](implicit
+        flattener: Flatten.Aux[BB, Out]
+    ): Node[A, Out] = new Node[A, Out] {
+      def runSync: A => Out = { a =>
+        flattener(self.runSync(a))
+      }
+      def runAsync(implicit ec: ExecutionContext): A => Future[Out] = { a =>
+        self.runAsync(ec)(a).map(b => flattener(b))(ec)
+      }
+    }
+
     def runSync: A => B
     def runAsync(implicit ec: ExecutionContext): A => Future[B]
     def run[C]: C => A => B = _ => runSync
@@ -257,14 +323,51 @@ object core {
   }
 
   case class Pipeline[A, B](node: Node[A, B]) {
-    def ~>[C](next: Node[B, C]): Pipeline[A, C] = {
+    def ~>[C](next: Node[B, C]): Pipeline[A, C] =
       Pipeline(new Node[A, C] {
         def runSync: A => C = node.runSync andThen next.runSync
         def runAsync(implicit ec: ExecutionContext): A => Future[C] = { a =>
           node.runAsync.apply(a).flatMap(next.runAsync.apply)
         }
       })
-    }
+
+    def &[C](that: Pipeline[A, C]): Pipeline[A, (B, C)] =
+      Pipeline(new Node[A, (B, C)] {
+        def runSync: A => (B, C) = { a =>
+          (node.runSync(a), that.node.runSync(a))
+        }
+        def runAsync(implicit ec: ExecutionContext): A => Future[(B, C)] = {
+          a =>
+            for {
+              r1 <- node.runAsync(ec)(a)
+              r2 <- that.node.runAsync(ec)(a)
+            } yield (r1, r2)
+        }
+      })
+
+    def &>[C](
+        that: Pipeline[A, C]
+    )(implicit ec: ExecutionContext): Pipeline[A, (B, C)] =
+      Pipeline(new Node[A, (B, C)] {
+        def runSync: A => (B, C) = { a =>
+          val f1 = Future(node.runSync(a))
+          val f2 = Future(that.node.runSync(a))
+          val combined = for {
+            r1 <- f1
+            r2 <- f2
+          } yield (r1, r2)
+          Await.result(combined, Duration.Inf)
+        }
+        def runAsync(implicit ec: ExecutionContext): A => Future[(B, C)] = {
+          a =>
+            val f1 = node.runAsync(ec)(a)
+            val f2 = that.node.runAsync(ec)(a)
+            for {
+              r1 <- f1
+              r2 <- f2
+            } yield (r1, r2)
+        }
+      })
 
     def flatMap[C](f: B => Pipeline[A, C]): Pipeline[A, C] = {
       Pipeline(new Node[A, C] {
@@ -312,99 +415,10 @@ object core {
     def pure[A]: Pipeline[A, A] = Pipeline(Node.pure[A])
   }
 
-  implicit class NodeOps[A, B](node: Node[A, B]) {
-    def ~>[C](next: Node[B, C]): Pipeline[A, C] =
-      Pipeline(new Node[A, C] {
-        def runSync: A => C = node.runSync andThen next.runSync
-        def runAsync(implicit ec: ExecutionContext): A => Future[C] = { a =>
-          node.runAsync(ec)(a).flatMap(next.runAsync(ec))
-        }
-      })
-  }
-
-  implicit def pipelineToNode[A, B](p: Pipeline[A, B]): Node[A, B] = p.node
-
-  implicit class ExtractOps[I, O1](e1: Extract[I, O1]) {
-    def &[O2](e2: Extract[I, O2]): Extract[I, (O1, O2)] = Extract { input =>
-      (e1.runSync(input), e2.runSync(input))
-    }
-
-    def &>[O2](e2: Extract[I, O2])(implicit
-        ec: ExecutionContext
-    ): Extract[I, (O1, O2)] = Extract { input =>
-      val f1 = e1.runAsync.apply(input.asInstanceOf[I])
-      val f2 = e2.runAsync.apply(input.asInstanceOf[I])
-      Await.result(
-        for {
-          r1 <- f1
-          r2 <- f2
-        } yield (r1, r2),
-        Duration.Inf
-      )
-    }
-
-    def zip[Out](implicit
-        flattener: Flatten.Aux[O1, Out]
-    ): Extract[I, Out] = Extract[I, Out] { i =>
-      flattener(e1.runSync(i))
-    }
-  }
-
-  implicit class LoadOps[I, O1](l1: Load[I, O1]) {
-    def &[O2](l2: Load[I, O2]): Load[I, (O1, O2)] = Load { input =>
-      (l1.runSync(input), l2.runSync(input))
-    }
-
-    def &>[O2](l2: Load[I, O2])(implicit
-        ec: ExecutionContext
-    ): Load[I, (O1, O2)] =
-      Load { input =>
-        val f1 = l1.runAsync.apply(input.asInstanceOf[I])
-        val f2 = l2.runAsync.apply(input.asInstanceOf[I])
-        Await.result(
-          for {
-            r1 <- f1
-            r2 <- f2
-          } yield (r1, r2),
-          Duration.Inf
-        )
-      }
-    def zip[Out](implicit
-        flattener: Flatten.Aux[O1, Out]
-    ): Load[I, Out] = Load[I, Out] { i =>
-      flattener(l1.runSync(i))
-    }
-  }
-
-  implicit class TransformOps[I, O1](t1: Transform[I, O1]) {
-    def &[O2](t2: Transform[I, O2]): Transform[I, (O1, O2)] = Transform {
-      input =>
-        (t1.runSync(input), t2.runSync(input))
-    }
-
-    def &>[O2](t2: Transform[I, O2])(implicit
-        ec: ExecutionContext
-    ): Transform[I, (O1, O2)] =
-      Transform { input =>
-        val f1 = t1.runAsync.apply(input.asInstanceOf[I])
-        val f2 = t2.runAsync.apply(input.asInstanceOf[I])
-        Await.result(
-          for {
-            r1 <- f1
-            r2 <- f2
-          } yield (r1, r2),
-          Duration.Inf
-        )
-      }
-
-    def zip[Out](implicit
-        flattener: Flatten.Aux[O1, Out]
-    ): Transform[I, Out] = Transform[I, Out] { i =>
-      flattener(t1.runSync(i))
-    }
-  }
-
-  /* Yuck - but don't want to use shapeless */
+  /**
+    * Yuck - but don't want to use shapeless
+    * Also can't nest past 7-8ish (not sure) to cross build w/ 2.12
+    */
   trait Flatten[A] {
     type Out
     def apply(a: A): Out

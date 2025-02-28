@@ -8,8 +8,6 @@ import java.time.LocalDate
 import java.time.temporal.ChronoUnit
 
 class Etl4sSpec extends munit.FunSuite {
-  import core._
-  import types._
 
   test("sequential pipeline should combine extracts and loads correctly") {
     val e1 = Extract(42)
@@ -711,4 +709,220 @@ class Etl4sSpec extends munit.FunSuite {
       pipelineResult.startsWith("Combined: 1,two,3.0,true,c,6,7.0,eight,9,10")
     )
   }
+
+  test("pipeline should support both sequential and parallel composition") {
+    var p1Started, p2Started = 0L
+
+    val p1 = Pipeline(Extract[Unit, Int] { _ =>
+      p1Started = System.currentTimeMillis()
+      Thread.sleep(100)
+      42
+    })
+
+    val p2 = Pipeline(Extract[Unit, String] { _ =>
+      p2Started = System.currentTimeMillis()
+      Thread.sleep(100)
+      "hello"
+    })
+
+    val sequential = p1 & p2
+    val (seqNum, seqStr) = sequential.unsafeRun(())
+    assertEquals(seqNum, 42)
+    assertEquals(seqStr, "hello")
+    assert(
+      Math.abs(p1Started - p2Started) >= 100,
+      "Sequential operations should run one after another"
+    )
+
+    p1Started = 0L
+    p2Started = 0L
+
+    val parallel = p1 &> p2
+    val (parNum, parStr) = parallel.unsafeRun(())
+    assertEquals(parNum, 42)
+    assertEquals(parStr, "hello")
+    assert(
+      Math.abs(p1Started - p2Started) < 50,
+      "Parallel operations should start at roughly the same time"
+    )
+  }
+
+  test("should fuse two pipelines then split and return one result") {
+    case class User(name: String, age: Int)
+    case class Order(id: Int, amount: Double)
+    case class Report(text: String)
+    case class Notification(message: String)
+
+    val userPipeline =
+      Extract("Alice") ~> Transform[String, User](name => User(name, 25))
+    val orderPipeline =
+      Extract(42) ~> Transform[Int, Order](id => Order(id, 99.99))
+
+    val fusedPipeline = (userPipeline & orderPipeline).zip ~>
+      Transform[(User, Order), (Report, Notification)] { case (user, order) =>
+        val report = Report(s"User ${user.name} spent ${order.amount}")
+        val notification =
+          Notification(s"Order ${order.id} processed for ${user.name}")
+        (report, notification)
+      }
+
+    val reportPipeline =
+      fusedPipeline ~> Transform[(Report, Notification), Report](_._1)
+
+    val result = reportPipeline.unsafeRun(())
+    assertEquals(result, Report("User Alice spent 99.99"))
+  }
+
+  test("showcase multi-source pipeline with multiple writes") {
+    case class A(value: String)
+    case class B(value: Int)
+    case class C(value: Double)
+    case class D(a: String, b: Int)
+    case class E(value: Double)
+    case class F(d: D, e: E)
+    case class Result(value: String)
+
+    val s1 = Extract("source1") ~> Transform[String, A](s => A(s))
+    val s2 = Extract(42) ~> Transform[Int, B](n => B(n))
+    val s3 = Extract(3.14) ~> Transform[Double, C](d => C(d))
+
+    val tD = Transform[(A, B), D] { case (a, b) => D(a.value, b.value) }
+    val tE = Transform[C, E](c => E(c.value * 2))
+    val tF = Transform[(D, E), F] { case (d, e) => F(d, e) }
+
+    val w1 = Transform[F, Result] { f =>
+      println(s"W1: Writing ${f.d.a}")
+      Result(s"W1: ${f.d.a}")
+    }
+    val w2 = Transform[F, Unit] { f =>
+      println(s"W2: Writing ${f.d.b}")
+    }
+    val w3 = Transform[F, Unit] { f =>
+      println(s"W3: Writing ${f.e.value}")
+    }
+
+    val pipeline =
+      (
+        ((s1 & s2) ~> tD) &
+          (s3 ~> tE)
+      ) ~> tF ~>
+        (w1 & w2 & w3).zip
+
+    val R = pipeline.unsafeRun(())._1
+
+    assertEquals(R, Result("W1: source1"))
+  }
+
+  test("Pretty pipeline 1") {
+
+    val s1 = Extract("foo") ~> Transform[String, String](_.toUpperCase)
+    val s2 = Extract(10) ~> Transform[Int, String](n => s"num:$n")
+    val s3 = Extract(2.5) ~> Transform[Double, String](d => f"double:$d%.2f")
+
+    val D: Transform[(String, String), String] = Transform { case (a, b) =>
+      s"$a + $b"
+    }
+    val E: Transform[String, String] = Transform(c => s"$c processed")
+    val F: Transform[(String, String), String] = Transform { case (d, e) =>
+      s"[$d | $e]"
+    }
+
+    val w1: Load[String, String] = Load(s => { println(s"W1: $s"); s })
+    val w2: Load[String, Unit] = Load(s => println(s"W2: $s"))
+    val w3: Load[String, Unit] = Load(s => println(s"W3: $s"))
+
+    val R = Load[(String, Unit, Unit), String](_._1)
+
+    val pipeline: Pipeline[Unit, String] =
+      (
+        (s1 & s2) ~> D &
+          (s3 ~> E)
+      ) ~> F ~>
+        (w1 & w2 & w3).zip ~> R
+
+    val result = pipeline.unsafeRun(())
+    assert(result == "[FOO + num:10 | double:2.50 processed]")
+  }
+
+  test("Pretty pipeline 2") {
+    /* Re-use existing pipelines */
+    val fetchUser: Pipeline[Unit, String] =
+      Extract("john_doe") ~> Transform[String, String](_.toUpperCase)
+
+    /* ... or define new sources */
+    val fetchOrder: Extract[Unit, String] = Extract("order 42")
+    val fetchPayment: Extract[Unit, String] = Extract("99.99")
+
+    val D: Transform[(String, String), String] =
+      Transform { case (user, order) => s"$user placed $order" }
+    val E: Transform[String, String] =
+      Transform(payment => s"Validated: $payment")
+    val F: Transform[(String, String), String] =
+      Transform { case (userOrder, payment) =>
+        s"REPORT: [$userOrder | $payment]"
+      }
+
+    /* Define multiple sinks */
+    val saveToDB: Load[String, String] = Load(report => {
+      println(s"DB Save: $report"); report
+    })
+    val sendEmail: Load[String, Unit] =
+      Load(report => println(s"Email Sent: $report"))
+    val logReport: Load[String, Unit] =
+      Load(report => println(s"Log Entry: $report"))
+
+    /* So you can connect your pipeline to others */
+    val R = Load[(String, Unit, Unit), String](_._1)
+
+    val pipeline: Pipeline[Unit, String] =
+      (
+        (fetchUser & fetchOrder) ~> D &
+          (fetchPayment ~> E)
+      ) ~> F ~>
+        (saveToDB & sendEmail & logReport).zip ~> R
+
+    /* Run at end of World ...
+     * Performs side effects then returns: "[JOHN_DOE placed order 42 | Validated: 99.99]"
+     */
+    val result: String = pipeline.unsafeRun(())
+  }
+
 }
+
+/*
+ digraph ETL {
+  //rankdir=LR;
+  node [shape=box, style=rounded, fontname="Helvetica", fontsize=12];
+  edge [fontname="Helvetica", fontsize=10];
+
+  {
+    node [fillcolor="#e1f5fe", style="filled,rounded"]
+    s1; s2; s3;
+  }
+
+  {
+    node [fillcolor="#fff3e0", style="filled,rounded"]
+    D; E; F;
+  }
+
+  {
+    node [fillcolor="#f9fbe7", style="filled,rounded"]
+    w1; w2; w3;
+  }
+
+  R [fillcolor="#dcedc8", style="filled,rounded"];
+
+  s1 -> D;
+  s2 -> D;
+  s3 -> E;
+  D -> F;
+  E -> F;
+  F -> w1;
+  F -> w2;
+  F -> w3;
+  w1 -> R;
+
+  {rank=same; s1; s2; s3}
+  {rank=same; w1; w2; w3}
+ }
+ */
