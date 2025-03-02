@@ -134,7 +134,6 @@ package etl4s {
             r1 <- f1
             r2 <- f2
           } yield (r1, r2)
-          // Explicit return
           Await.result(combined, Duration.Inf): (B, C)
         }
 
