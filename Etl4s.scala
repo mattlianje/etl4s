@@ -13,6 +13,7 @@ package object etl4s {
         }
       })
   }
+  /* Implicit conversions for Scala 2.x compat */
   implicit def pipelineToNode[A, B](p: Pipeline[A, B]): Node[A, B] = p.node
 
   implicit def extractToPipeline[A, B](e: Extract[A, B]): Pipeline[A, B] =
@@ -413,9 +414,13 @@ package etl4s {
 
   object Pipeline {
     def pure[A]: Pipeline[A, A] = Pipeline(Node.pure[A])
+
+    /* To conjur up pipelines directly */
+    def apply[A, B](f: A => B): Pipeline[A, B] = Pipeline(Transform(f))
   }
 
   /**
+    * Flatten - utility typeclasses for tuple flattening
     * Yuck - but don't want to use shapeless
     * Also can't nest past 7-8ish (not sure) to cross build w/ 2.12
     */
