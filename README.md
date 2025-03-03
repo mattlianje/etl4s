@@ -36,16 +36,29 @@ import etl4s.*
 **etl4s** has 2 building blocks
 
 #### `Pipeline[-In, +Out]`
-A fully created pipeline composed of nodes chained with `~>`. It takes a type `In` and gives a `Out` when run.
-Call `unsafeRun()` to "run-or-throw" - `safeRun()` will yield a `Try[Out]` Monad.
+A pipeline is a composable unit of computation that takes an input of type `In` and produces an output of type `Out` when executed. 
+Pipelines remain lazy until explicitly run with `unsafeRun` or `safeRun`.
+
+You can create pipelines in 3 ways:
+
+1. By stitching nodes together with the ~> operator
 ```scala
-import etl4s.*
-
-val p1: Pipeline[Int, Int] = Extract((x: Int) => x) ~> Transform[Int, Int](_ + 5)
-
-/* Or, create a pipeline by wrapping an expression with `Pipeline` directly */
-val p2: Pipeline[Int, Int] = Pipeline((x: Int) => x + 5)
+val p1 = Extract((x: Int) => x) ~> Transform[Int, Int](_ + 5)
 ```
+
+2. By wrapping a function directly
+```scala
+val p2 = Pipeline((x: Int) => x + 5)
+```
+
+3. By combining existing pipelines
+```scala
+val p3 = p1 ~> p2  /* pipeline[Int, Int] that adds 5 twice */
+```
+To execute a pipeline:
+
+pipeline.unsafeRun(input) runs the pipeline and returns the result, throwing any exceptions
+pipeline.safeRun(input) returns a `Try[Out]`, safely containing either the result or an exception
 
 #### `Node[-In, +Out]`
 `Node` Is the base abstraction of **etl4s**. A pipeline is stitched out of two or more nodes with `~>`. Nodes are just abstractions which defer the application of some run function: `In => Out`. The node types are:
