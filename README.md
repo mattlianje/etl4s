@@ -17,7 +17,7 @@ A lightweight, zero-dependency, library for writing type-safe, beautiful ✨🍰
 
 ## Get started
 
-**etl4s** is on MavenCentral:
+**etl4s** is on MavenCentral and cross-built for Scala, 2.12, 2.13, 3.x:
 ```scala
 "xyz.matthieucourt" %% "etl4s" % "1.0.0"
 ```
