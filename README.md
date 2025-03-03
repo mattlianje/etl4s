@@ -57,8 +57,8 @@ val p3 = p1 ~> p2  /* pipeline[Int, Int] that adds 5 twice */
 ```
 To execute a pipeline:
 
-pipeline.unsafeRun(input) runs the pipeline and returns the result, throwing any exceptions
-pipeline.safeRun(input) returns a `Try[Out]`, safely containing either the result or an exception
+- `pipeline.unsafeRun(input)` runs the pipeline and returns the result, throwing any exceptions
+- `pipeline.safeRun(input)` returns a `Try[Out]`, safely containing either the result or an exception
 
 #### `Node[-In, +Out]`
 `Node` Is the base abstraction of **etl4s**. A pipeline is stitched out of two or more nodes with `~>`. Nodes are just abstractions which defer the application of some run function: `In => Out`. The node types are:
