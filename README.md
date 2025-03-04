@@ -216,9 +216,11 @@ val loadUser = Reader[ApiConfig, Load[String, String]] { config =>
 }
 
 val configuredPipeline = for {
-  userTransform <- fetchUser
-  userLoader    <- loadUser
-} yield Extract("user123") ~> userTransform ~> userLoader
+                          userTransform <- fetchUser
+                          userLoader    <- loadUser
+                        } yield {
+                          Extract("user123") ~> userTransform ~> userLoader
+                        } 
 
 /* Run with config */
 val result = configuredPipeline.run(config).unsafeRun(())
