@@ -40,20 +40,17 @@ A pipeline is a composable unit of computation that takes an input of type `In` 
 Pipelines remain lazy until explicitly run with `unsafeRun` or `safeRun`.
 
 You can create pipelines in 3 ways:
-
-1. By stitching nodes together with the ~> operator
 ```scala
+import etl4s.*
+
+// 1) By stitching nodes together with the ~> operator
 val p1 = Extract((x: Int) => x) ~> Transform[Int, Int](_ + 5)
-```
 
-2. By wrapping a function directly
-```scala
+// 2) By wrapping a function directly
 val p2 = Pipeline((x: Int) => x + 5)
-```
 
-3. By combining existing pipelines
-```scala
-val p3 = p1 ~> p2  /* pipeline[Int, Int] that adds 5 twice */
+// 3) By combining existing pipelines
+val p3 = p1 ~> p2
 ```
 To execute a pipeline:
 
