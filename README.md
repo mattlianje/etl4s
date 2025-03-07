@@ -137,7 +137,8 @@ Failed with: Boom! ... firing missile
 ## Parallelizing Tasks
 **etl4s** has an elegant shorthand for grouping and parallelizing operations that share the same input type:
 ```scala
-// Simulate slow IO operations (e.g: DB calls, API requests)
+/* Simulate slow IO operations (e.g: DB calls, API requests) */
+
 val e1 = Extract { Thread.sleep(100); 42 }
 val e2 = Extract { Thread.sleep(100); "hello" }
 val e3 = Extract { Thread.sleep(100); true }
