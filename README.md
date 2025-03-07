@@ -17,39 +17,53 @@ A lightweight, zero-dependency, library for writing type-safe, beautiful ✨🍰
 
 ## Get started
 
-**etl4s** is on MavenCentral:
+**etl4s** is on MavenCentral and cross-built for Scala, 2.12, 2.13, 3.x:
 ```scala
-"xyz.matthieucourt" %% "etl4s" % "0.0.5"
+"xyz.matthieucourt" %% "etl4s" % "1.0.0"
 ```
 
 Try it in your repl:
 ```bash
-scala-cli repl --dep xyz.matthieucourt:etl4s_2.13:0.0.5
+scala-cli repl --scala 3 --dep xyz.matthieucourt:etl4s_3:1.0.0
 ```
 
 All you need:
 ```scala
-import etl4s.core._
+import etl4s.*
 ```
 
 ## Core Concepts
 **etl4s** has 2 building blocks
 
 #### `Pipeline[-In, +Out]`
-A fully created pipeline composed of nodes chained with `~>`. It takes a type `In` and gives a `Out` when run.
-Call `unsafeRun()` to "run-or-throw" - `safeRun()` will yield a `Try[Out]` Monad.
+`Pipeline`'s are the core abstraction of **etl4s**. They're lazily evaluated data transformations take input `In`
+and produce output type `Out`. A pipeline won't execute until you call `unsafeRun()` or `safeRun()` on it and provide
+the `In`.
+
+Build pipelines by:
+- Chaining nodes with `~>`
+- Wrap functions directly with `Pipeline(x => x + 1)`
+- Connect existing pipelines with the same `~>` operator
 
 #### `Node[-In, +Out]`
-`Node` Is the base abstraction of **etl4s**. A pipeline is stitched out of two or more nodes with `~>`. Nodes are just abstractions which defer the application of some run function: `In => Out`. The node types are:
+`Node`'s are the pipeline building blocks. A Node is just a wrapper around a function `In => Out` that we chain together with ~> to form pipelines.
+The three node types (Extract, Transform, Load) are essentially aliases for the same underlying Node class - they all behave identically under the hood. 
 
-- ##### `Extract[-In, +Out]`
-The start of your pipeline. An extract can either be plugged into another function or pipeline or produce an element "purely" with `Extract(2)`. This is shorthand for `val e: Extract[Unit, Int] = Extract(_ => 2)`
+We use different names purely to make your pipelines more readable and express intent clearly:
 
-- ##### `Transform[-In, +Out]`
-A `Node` that represent a transformation. It can be composed with other nodes via `andThen`
+- `Extract[-In, +Out]` - Gets your data. Can create data from scratch with Extract(2) (shorthand for Extract(_ => 2))
+- `Transform[-In, +Out]` - Changes data shape or content
+- `Load[-In, +Out]` - Finalizes the pipeline, often with a side-effect like writing to storage
 
-- ##### `Load[-In, +Out]` 
-A `Node` used to represent the end of a pipeline.
+You can type annotate nodes:
+```scala
+val plus5: Transform[Int, Int] = Transform(_ + 5)
+```
+
+Or create them directly
+```scala
+val plus5 = Transform[Int, Int](_ + 5)
+```
 
 ## Type safety
 **etl4s** won't let you chain together "blocks" that don't fit together:
@@ -81,6 +95,7 @@ and see [functional ETL](https://maximebeauchemin.medium.com/functional-data-eng
 #### `withRetry`
 Give retry capability using the built-in `RetryConfig`:
 ```scala
+import etl4s.*
 import scala.concurrent.duration.*
 
 val riskyTransformWithRetry = Transform[Int, String] {
@@ -102,6 +117,8 @@ Success after 3 attempts
 #### `onFailure`
 Catch exceptions and perform some action:
 ```scala
+import etl4s.*
+
 val riskyExtract =
     Extract[Unit, String](_ => throw new RuntimeException("Boom!"))
 
@@ -165,15 +182,14 @@ val pipeline =
 
 ## Built-in Tools
 **etl4s** comes with 3 extra abstractions to make your pipelines hard like iron, and flexible like bamboo.
-You can use them directly or swap in your own favorites (like their better built homologues from [Cats](https://typelevel.org/cats/)). Just:
-```scala
-import etl4s.types.*
-``` 
+You can use them directly or swap in your own favorites (like their better built homologues from [Cats](https://typelevel.org/cats/)).
 
 #### `Reader[R, A]`: Config-driven pipelines
 Need database credentials? Start and end dates for your batch job? API keys? Environment settings?
 Let your pipeline know exactly what it needs to run, and switch configs effortlessly.
 ```scala
+import etl4s.*
+
 case class ApiConfig(url: String, key: String)
 val config = ApiConfig("https://api.com", "secret")
 
@@ -186,9 +202,11 @@ val loadUser = Reader[ApiConfig, Load[String, String]] { config =>
 }
 
 val configuredPipeline = for {
-  userTransform <- fetchUser
-  userLoader    <- loadUser
-} yield Extract("user123") ~> userTransform ~> userLoader
+                          userTransform <- fetchUser
+                          userLoader    <- loadUser
+                        } yield {
+                          Extract("user123") ~> userTransform ~> userLoader
+                        } 
 
 /* Run with config */
 val result = configuredPipeline.run(config).unsafeRun(())
@@ -204,6 +222,8 @@ Prints:
 Collect logs at every step of your pipeline and get them all at once with your results.
 No more scattered println's - just clean, organized logging, that shows exactly how your data flowed through the pipeline.
 ```scala
+import etl4s.*
+
 type Log = List[String]
 type DataWriter[A] = Writer[Log, A]
 
@@ -240,6 +260,8 @@ This is perfect for validating data on the edges of your pipelines (Just use `Va
 your validations).
 
 ```scala
+import etl4s.*
+
 case class User(name: String, age: Int)
 
 def validateName(name: String): Validated[String, String] =
@@ -276,7 +298,7 @@ List(
 #### Chain two pipelines
 Simple UNIX-pipe style chaining of two pipelines:
 ```scala
-import etl4s.core.*
+import etl4s.*
 
 val plusFiveExclaim: Pipeline[Int, String] =
     Transform((x: Int) => x + 5) ~> 
@@ -297,7 +319,7 @@ Prints:
 #### Complex chaining
 Connect the output of two pipelines to a third:
 ```scala
-import etl4s.core.*
+import etl4s.*
 
 val fetchUser = Transform[String, String](id => s"Fetching $id")
 val loadUser = Load[String, String](msg => s"Loaded: $msg")
@@ -321,7 +343,7 @@ Prints:
 #### Regular Scala Inside
 Use normal (more procedural-style) Scala collections and functions in your transforms
 ```scala
-import etl4s.core.*
+import etl4s.*
 
 val salesData = Extract[Unit, Map[String, List[Int]]](_ =>
  Map(
