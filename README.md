@@ -36,7 +36,7 @@ import etl4s.*
 **etl4s** has 2 building blocks
 
 #### `Pipeline[-In, +Out]`
-Pipelines are the core abstraction of **etl4s**. They're lazily evaluated data transformations take input `In`
+`Pipeline`'s are the core abstraction of **etl4s**. They're lazily evaluated data transformations take input `In`
 and produce output type `Out`. A pipeline won't execute until you call `unsafeRun()` or `safeRun()` on it its input.
 
 Build pipelines by:
@@ -45,14 +45,14 @@ Build pipelines by:
 - Connect existing pipelines with the same `~>` operator
 
 #### `Node[-In, +Out]`
-Nodes are the pipeline building blocks. A Node is just a wrapper around a function `In => Out` that we chain together with ~> to form pipelines.
+`Node`'s are the pipeline building blocks. A Node is just a wrapper around a function `In => Out` that we chain together with ~> to form pipelines.
 The three node types (Extract, Transform, Load) are essentially aliases for the same underlying Node class - they all behave identically under the hood. 
 
 We use different names purely to make your pipelines more readable and express intent clearly:
 
-`Extract[-In, +Out]` - Gets your data. Can create data from scratch with Extract(2) (shorthand for Extract(_ => 2))
-`Transform[-In, +Out]` - Changes data shape or content
-`Load[-In, +Out]` - Finalizes the pipeline, often with a side-effect like writing to storage
+-`Extract[-In, +Out]` - Gets your data. Can create data from scratch with Extract(2) (shorthand for Extract(_ => 2))
+-`Transform[-In, +Out]` - Changes data shape or content
+-`Load[-In, +Out]` - Finalizes the pipeline, often with a side-effect like writing to storage
 
 You can type annotate nodes:
 ```scala
