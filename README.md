@@ -50,9 +50,9 @@ The three node types (Extract, Transform, Load) are essentially aliases for the 
 
 We use different names purely to make your pipelines more readable and express intent clearly:
 
--`Extract[-In, +Out]` - Gets your data. Can create data from scratch with Extract(2) (shorthand for Extract(_ => 2))
--`Transform[-In, +Out]` - Changes data shape or content
--`Load[-In, +Out]` - Finalizes the pipeline, often with a side-effect like writing to storage
+- `Extract[-In, +Out]` - Gets your data. Can create data from scratch with Extract(2) (shorthand for Extract(_ => 2))
+- `Transform[-In, +Out]` - Changes data shape or content
+- `Load[-In, +Out]` - Finalizes the pipeline, often with a side-effect like writing to storage
 
 You can type annotate nodes:
 ```scala
