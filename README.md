@@ -37,7 +37,8 @@ import etl4s.*
 
 #### `Pipeline[-In, +Out]`
 `Pipeline`'s are the core abstraction of **etl4s**. They're lazily evaluated data transformations take input `In`
-and produce output type `Out`. A pipeline won't execute until you call `unsafeRun()` or `safeRun()` on it its input.
+and produce output type `Out`. A pipeline won't execute until you call `unsafeRun()` or `safeRun()` on it and provide
+the `In`.
 
 Build pipelines by:
 - Chaining nodes with `~>`
