@@ -36,38 +36,23 @@ import etl4s.*
 **etl4s** has 2 building blocks
 
 #### `Pipeline[-In, +Out]`
-A pipeline is a composable unit of computation that takes an input of type `In` and produces an output of type `Out` when executed. 
-Pipelines remain lazy until explicitly run with `unsafeRun` or `safeRun`.
+Pipelines are the core abstraction of **etl4s**. They're lazily evaluated data transformations take input `In`
+and produce output type `Out`. A pipeline won't execute until you call `unsafeRun()` or `safeRun()` on it its input.
 
-You can create pipelines in 3 ways:
-```scala
-import etl4s.*
-
-// 1) By stitching nodes together with the ~> operator
-val p1 = Extract((x: Int) => x) ~> Transform[Int, Int](_ + 5)
-
-// 2) By wrapping a function directly
-val p2 = Pipeline((x: Int) => x + 5)
-
-// 3) By combining existing pipelines
-val p3 = p1 ~> p2
-```
-To execute a pipeline:
-
-- `pipeline.unsafeRun(input)` runs the pipeline and returns the result, throwing any exceptions
-- `pipeline.safeRun(input)` returns a `Try[Out]`, safely containing either the result or an exception
+Build pipelines by:
+- Chaining nodes with `~>`
+- Wrap functions directly with `Pipeline(x => x + 1)`
+- Connect existing pipelines with the same `~>` operator
 
 #### `Node[-In, +Out]`
-`Node` Is the base abstraction of **etl4s**. A pipeline is stitched out of two or more nodes with `~>`. Nodes are just abstractions which defer the application of some run function: `In => Out`. The node types are:
+Nodes are the pipeline building blocks. A Node is just a wrapper around a function `In => Out` that we chain together with ~> to form pipelines.
+The three node types (Extract, Transform, Load) are essentially aliases for the same underlying Node class - they all behave identically under the hood. 
 
-- ##### `Extract[-In, +Out]`
-The start of your pipeline. An extract can either be plugged into another function or pipeline or produce an element "purely" with `Extract(2)`. This is shorthand for `val e: Extract[Unit, Int] = Extract(_ => 2)`
+We use different names purely to make your pipelines more readable and express intent clearly:
 
-- ##### `Transform[-In, +Out]`
-A `Node` that represent a transformation. It can be composed with other nodes via `andThen`
-
-- ##### `Load[-In, +Out]` 
-A `Node` used to represent the end of a pipeline.
+`Extract[-In, +Out]` - Gets your data. Can create data from scratch with Extract(2) (shorthand for Extract(_ => 2))
+`Transform[-In, +Out]` - Changes data shape or content
+`Load[-In, +Out]` - Finalizes the pipeline, often with a side-effect like writing to storage
 
 You can type annotate nodes:
 ```scala
