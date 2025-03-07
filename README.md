@@ -46,7 +46,7 @@ Build pipelines by:
 - Connect existing pipelines with the same `~>` operator
 
 #### `Node[-In, +Out]`
-`Node`'s are the pipeline building blocks. A Node is just a wrapper around a function `In => Out` that we chain together with ~> to form pipelines.
+`Node`'s are the pipeline building blocks. A Node is just a wrapper around a function `In => Out` that we chain together with `~>` to form pipelines.
 The three node types (Extract, Transform, Load) are essentially aliases for the same underlying Node class - they all behave identically under the hood. 
 
 We use different names purely to make your pipelines more readable and express intent clearly:
