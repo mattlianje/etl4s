@@ -13,6 +13,28 @@ package object etl4s {
         }
       })
   }
+
+  implicit class PipelineSequence[A, B](val pipeline: Pipeline[A, B]) {
+
+    /** Sequences two pipelines, running the second after the first completes.
+      * The second pipeline must take Unit as input and will be executed
+      * regardless of the output from the first pipeline.
+      *
+      * It makes intuitive sense that subsequent pipelines must take Unit but
+      * TODO think how to communicate this to user.
+      */
+    def >>[C](next: Pipeline[Unit, C]): Pipeline[A, C] =
+      Pipeline(new Node[A, C] {
+        def runSync: A => C = a => {
+          pipeline.unsafeRun(a) // Run first pipeline, discard result
+          next.unsafeRun(()) // Then run second pipeline with Unit input
+        }
+
+        def runAsync(implicit ec: ExecutionContext): A => Future[C] =
+          a => pipeline.runAsync(ec)(a).flatMap(_ => next.runAsync(ec)(()))(ec)
+      })
+  }
+
   /* Implicit conversions for Scala 2.x compat */
   implicit def pipelineToNode[A, B](p: Pipeline[A, B]): Node[A, B] = p.node
 
@@ -418,10 +440,9 @@ package etl4s {
     def apply[A, B](f: A => B): Pipeline[A, B] = Pipeline(Transform(f))
   }
 
-  /**
-    * Flatten - utility typeclasses for tuple flattening
-    * Yuck - but don't want to use shapeless
-    * Also can't nest past 7-8ish (not sure) to cross build w/ 2.12
+  /** Flatten - utility typeclasses for tuple flattening Yuck - but don't want
+    * to use shapeless Also can't nest past 7-8ish (not sure) to cross build w/
+    * 2.12
     */
   trait Flatten[A] {
     type Out

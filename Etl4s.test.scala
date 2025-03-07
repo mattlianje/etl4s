@@ -887,6 +887,33 @@ class Etl4sSpec extends munit.FunSuite {
     val result: String = pipeline.unsafeRun(())
   }
 
+  test(
+    ">> operator should execute pipelines in sequence regardless of output"
+  ) {
+    var executionOrder = List[String]()
+
+    val p1 = Pipeline[Unit, Int]((u: Unit) => {
+      executionOrder = executionOrder :+ "p1"
+      42
+    })
+
+    val p2 = Pipeline[Unit, String]((u: Unit) => {
+      executionOrder = executionOrder :+ "p2"
+      "hello"
+    })
+
+    val p3 = Pipeline[Unit, Boolean]((u: Unit) => {
+      executionOrder = executionOrder :+ "p3"
+      true
+    })
+
+    val sequentialPipeline = p1 >> p2 >> p3
+    val result = sequentialPipeline.unsafeRun(())
+
+    assertEquals(result, true)
+
+    assertEquals(executionOrder, List("p1", "p2", "p3"))
+  }
 }
 
 /*
