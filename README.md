@@ -9,7 +9,6 @@ A lightweight, zero-dependency, library for writing type-safe, beautiful ✨🍰
 
 ## Features
 - White-board style ETL
-- Monadic composition for sequencing pipelines
 - Drop **Etl4s.scala** into any Scala project like a header file
 - Type-safe, compile-time checked pipelines
 - Effortless concurrent execution of parallelizable tasks
