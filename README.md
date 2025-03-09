@@ -139,7 +139,7 @@ val sequential: Extract[Unit, ((Int, String), Boolean)] =
      e1 & e2 & e3
 ```
 
-Parallel run of e1, e2, e3 on their own JVM threads with Scala Futures **(~100ms total, same result, 3X faster!)**
+Parallel run of e1, e2, e3 on their own JVM threads with Scala Futures **(~100ms total, same result, 3X faster)**
 ```scala
 import scala.concurrent.ExecutionContext.Implicits.global
 
