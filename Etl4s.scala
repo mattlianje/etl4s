@@ -5,6 +5,9 @@ import scala.util.{Try, Success, Failure}
 
 package object etl4s {
   implicit class NodeOps[A, B](node: Node[A, B]) {
+
+    /** Base etl4s connection operator (for nodes and pipelines)
+      */
     def ~>[C](next: Node[B, C]): Pipeline[A, C] =
       Pipeline(new Node[A, C] {
         def runSync: A => C = node.runSync andThen next.runSync
@@ -26,8 +29,8 @@ package object etl4s {
     def >>[C](next: Pipeline[Unit, C]): Pipeline[A, C] =
       Pipeline(new Node[A, C] {
         def runSync: A => C = a => {
-          pipeline.unsafeRun(a) // Run first pipeline, discard result
-          next.unsafeRun(()) // Then run second pipeline with Unit input
+          pipeline.unsafeRun(a)
+          next.unsafeRun(())
         }
 
         def runAsync(implicit ec: ExecutionContext): A => Future[C] =
@@ -46,6 +49,10 @@ package object etl4s {
 }
 
 package etl4s {
+
+  /** Base etl4s dependency injection Reader monad I encourage you to use the
+    * better built homologues from Cats or elsewhere
+    */
   case class Reader[R, A](run: R => A) {
     def map[B](f: A => B): Reader[R, B] = Reader(r => f(run(r)))
     def flatMap[B](f: A => Reader[R, B]): Reader[R, B] =
@@ -57,6 +64,9 @@ package etl4s {
     def ask[R]: Reader[R, R] = Reader(identity)
   }
 
+  /** Validated monad for error accumulating pipelines... Same recommendation as
+    * above
+    */
   case class Validated[+E, +A](value: Either[List[E], A]) {
     def map[B](f: A => B): Validated[E, B] =
       Validated(value.map(f))
@@ -78,6 +88,8 @@ package etl4s {
     def invalid[E, A](e: E): Validated[E, A] = Validated(Left(List(e)))
   }
 
+  /** Basic Monoid to help encode Writer
+    */
   trait Monoid[A] {
     def empty: A
     def combine(x: A, y: A): A
@@ -98,6 +110,9 @@ package etl4s {
       }
   }
 
+  /** Writer to encode log accumulating pipelines Same recommendation for using
+    * better production grade implementations
+    */
   case class Writer[L, A](run: () => (L, A))(implicit L: Monoid[L]) {
     def map[B](f: A => B): Writer[L, B] = Writer(() => {
       val (l, a) = run()
