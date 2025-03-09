@@ -54,16 +54,6 @@ We use different names purely to make your pipelines more readable and express i
 - `Transform[-In, +Out]` - Changes data shape or content
 - `Load[-In, +Out]` - Finalizes the pipeline, often with a side-effect like writing to storage
 
-You can type annotate nodes:
-```scala
-val plus5: Transform[Int, Int] = Transform(_ + 5)
-```
-
-Or create them directly
-```scala
-val plus5 = Transform[Int, Int](_ + 5)
-```
-
 ## Type safety
 **etl4s** won't let you chain together "blocks" that don't fit together:
 ```scala
