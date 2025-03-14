@@ -36,7 +36,7 @@ class Etl4sSpec extends munit.FunSuite {
 
   test("parallel pipeline should execute extracts and loads concurrently") {
     var e1Started, e2Started, e3Started = 0L
-    var l1Started, l2Started = 0L
+    var l1Started, l2Started            = 0L
 
     val e1 = Extract[Unit, Int] { _ =>
       e1Started = System.currentTimeMillis()
@@ -108,11 +108,11 @@ class Etl4sSpec extends munit.FunSuite {
       Transform(id => s"Fetching order $id")
     val loadOrder: Load[String, String] = Load(msg => s"Order loaded: $msg")
 
-    val userPipeline = Extract("user123") ~> fetchUser ~> loadUser
+    val userPipeline   = Extract("user123") ~> fetchUser ~> loadUser
     val ordersPipeline = Extract(42) ~> fetchOrder ~> loadOrder
 
     val combinedPipeline = (for {
-      userData <- userPipeline
+      userData  <- userPipeline
       orderData <- ordersPipeline
     } yield Extract(s"$userData | $orderData") ~>
       Transform { _.toUpperCase } ~>
@@ -147,14 +147,14 @@ class Etl4sSpec extends munit.FunSuite {
     }
 
     val configuredPipeline = for {
-      userTransform <- fetchUser
-      userLoader <- loadUser
+      userTransform  <- fetchUser
+      userLoader     <- loadUser
       orderTransform <- fetchOrder
-      orderLoader <- loadOrder
-      userPipeline = Extract("user123") ~> userTransform ~> userLoader
+      orderLoader    <- loadOrder
+      userPipeline  = Extract("user123") ~> userTransform ~> userLoader
       orderPipeline = Extract(42) ~> orderTransform ~> orderLoader
       combined = for {
-        userData <- userPipeline
+        userData  <- userPipeline
         orderData <- orderPipeline
       } yield Extract(s"$userData | $orderData") ~>
         Transform[String, String](_.toUpperCase) ~>
@@ -227,7 +227,7 @@ class Etl4sSpec extends munit.FunSuite {
     case class Order(userId: Int, item: String)
 
     val pipeline = for {
-      user <- Pipeline(Extract(User(1, "Alice")))
+      user  <- Pipeline(Extract(User(1, "Alice")))
       order <- Pipeline(Extract(Order(1, "Book")))
     } yield Pipeline(
       Extract(s"User ${user.name} ordered ${order.item}")
@@ -297,7 +297,7 @@ class Etl4sSpec extends munit.FunSuite {
     val result = (e1 &> e2 &> e3).zip.runSync(())
     assertEquals(result, (1, "two", "three"))
 
-    val e4 = Extract[Unit, Double](_ => 4.0)
+    val e4      = Extract[Unit, Double](_ => 4.0)
     val result2 = (e1 &> e2 &> e3 &> e4).zip.runSync(())
     assertEquals(result2, (1, "two", "three", 4.0))
   }
@@ -307,9 +307,8 @@ class Etl4sSpec extends munit.FunSuite {
     val e2 = Extract("two")
     val e3 = Extract("three")
 
-    val transform = Transform[(Int, String, String), String] {
-      case (num, s1, s2) =>
-        s"Number: $num, First: $s1, Second: $s2"
+    val transform = Transform[(Int, String, String), String] { case (num, s1, s2) =>
+      s"Number: $num, First: $s1, Second: $s2"
     }
 
     val load = Load[String, String](s => s"Final: $s")
@@ -321,13 +320,12 @@ class Etl4sSpec extends munit.FunSuite {
     assertEquals(result, "Final: Number: 1, First: two, Second: three")
 
     val e4 = Extract[Unit, Double](_ => 4.0)
-    val transform2 = Transform[(Int, String, String, Double), String] {
-      case (num, s1, s2, d) =>
-        s"Number: $num, First: $s1, Second: $s2, Double: $d"
+    val transform2 = Transform[(Int, String, String, Double), String] { case (num, s1, s2, d) =>
+      s"Number: $num, First: $s1, Second: $s2, Double: $d"
     }
 
     val pipeline2 = (e1 &> e2 &> e3 &> e4).zip ~> transform2 ~> load
-    val result2 = pipeline2.unsafeRun(())
+    val result2   = pipeline2.unsafeRun(())
     assertEquals(
       result2,
       "Final: Number: 1, First: two, Second: three, Double: 4.0"
@@ -341,7 +339,7 @@ class Etl4sSpec extends munit.FunSuite {
 
     val input = Map(
       "alice" -> Person("Alice", 25, List(95, 88, 92)),
-      "bob" -> Person("Bob", 23, List(88, 85, 90))
+      "bob"   -> Person("Bob", 23, List(88, 85, 90))
     )
 
     val process: Transform[Map[String, Person], Map[String, String]] = for {
@@ -361,7 +359,7 @@ class Etl4sSpec extends munit.FunSuite {
 
     val expected = Map(
       "alice" -> "A",
-      "bob" -> "B"
+      "bob"   -> "B"
     )
 
     assertEquals(process.runSync(input), expected)
@@ -375,7 +373,7 @@ class Etl4sSpec extends munit.FunSuite {
     val e1 = Extract[Unit, Map[String, Person]]((u: Unit) =>
       Map(
         "alice" -> Person("Alice", 25, List(95, 88, 92)),
-        "bob" -> Person("Bob", 23, List(88, 85, 90))
+        "bob"   -> Person("Bob", 23, List(88, 85, 90))
       )
     )
 
@@ -385,11 +383,10 @@ class Etl4sSpec extends munit.FunSuite {
           id -> (p.scores.sum.toDouble / p.scores.length)
         }
       )
-      gradesByAge <- Transform[Map[String, Person], Map[String, String]](
-        people =>
-          people.map { case (id, p) =>
-            id -> (if (p.age > 24) "Old " else "Young ")
-          }
+      gradesByAge <- Transform[Map[String, Person], Map[String, String]](people =>
+        people.map { case (id, p) =>
+          id -> (if (p.age > 24) "Old " else "Young ")
+        }
       )
       finalGrades <- Transform[Map[String, Person], Map[String, String]](_ =>
         avgScores.map { case (id, score) =>
@@ -448,11 +445,10 @@ class Etl4sSpec extends munit.FunSuite {
         for {
           dfs <- Transform.pure[Map[String, Map[String, Double]]]
 
-          margins: Map[String, Double] = dfs("sales").map {
-            case (product, revenue) =>
-              val cost = dfs("costs").getOrElse(product, 0.0)
-              val margin = revenue - cost
-              product -> margin
+          margins: Map[String, Double] = dfs("sales").map { case (product, revenue) =>
+            val cost   = dfs("costs").getOrElse(product, 0.0)
+            val margin = revenue - cost
+            product -> margin
           }
 
           enriched <- Transform[Map[String, Map[String, Double]], Map[
@@ -480,7 +476,7 @@ class Etl4sSpec extends munit.FunSuite {
     val config = DataConfig(threshold = 100.0)
 
     val pipeline = inputDfs ~> process.run(config) ~> load
-    val result = pipeline.unsafeRun(())
+    val result   = pipeline.unsafeRun(())
 
     assert(result.contains("product2 -> High margin"))
     assert(result.contains("product1 -> Low margin"))
@@ -540,18 +536,17 @@ class Etl4sSpec extends munit.FunSuite {
         .map { case ((email, _), _) => email }
 
     val validateUser =
-      Transform[(String, Int, String), Validated[String, User]] {
-        case (name, age, email) =>
-          validateName(name)
-            .zip(validateAge(age))
-            .zip(validateEmail(email))
-            .map { case ((name, age), email) => User(name, age, email) }
+      Transform[(String, Int, String), Validated[String, User]] { case (name, age, email) =>
+        validateName(name)
+          .zip(validateAge(age))
+          .zip(validateEmail(email))
+          .map { case ((name, age), email) => User(name, age, email) }
       }
 
-    val validInput = ("Matthieu", 27, "matthieu.court@protonmail.com")
+    val validInput   = ("Matthieu", 27, "matthieu.court@protonmail.com")
     val invalidInput = ("", -1, "invalid")
 
-    val validResult = validateUser.runSync(validInput)
+    val validResult   = validateUser.runSync(validInput)
     val invalidResult = validateUser.runSync(invalidInput)
 
     assert(validResult.value.isRight)
@@ -570,12 +565,12 @@ class Etl4sSpec extends munit.FunSuite {
   test("Extract and Load should support andThen composition") {
     val extract1: Extract[String, Int] = Extract(_.length)
     val extract2: Extract[Int, Double] = Extract(_ * 2.0)
-    val combined = extract1 andThen extract2
+    val combined                       = extract1 andThen extract2
     assertEquals(combined.runSync("hello"), 10.0)
 
     val load1: Load[String, Int] = Load(_.toInt)
     val load2: Load[Int, String] = Load(x => (x * 2).toString)
-    val combinedLoad = load1 andThen load2
+    val combinedLoad             = load1 andThen load2
     assertEquals(combinedLoad.runSync("21"), "42")
   }
 
@@ -613,39 +608,37 @@ class Etl4sSpec extends munit.FunSuite {
 
   test("ETL pipeline with Reader config and Writer logs") {
     case class Config(url: String, key: String)
-    type Log = List[String]
+    type Log           = List[String]
     type DataWriter[A] = Writer[Log, A]
 
-    val fetchUser = Reader[Config, Transform[String, DataWriter[String]]] {
-      config =>
-        Transform { id =>
-          Writer(
-            List(s"Fetching user $id from ${config.url}"),
-            s"User $id"
-          )
-        }
+    val fetchUser = Reader[Config, Transform[String, DataWriter[String]]] { config =>
+      Transform { id =>
+        Writer(
+          List(s"Fetching user $id from ${config.url}"),
+          s"User $id"
+        )
+      }
     }
 
     val processUser =
-      Reader[Config, Transform[DataWriter[String], DataWriter[String]]] {
-        config =>
-          Transform { writerInput =>
-            for {
-              value <- writerInput
-              result <- Writer(
-                List(s"Processing $value with key ${config.key}"),
-                s"Processed: $value"
-              )
-            } yield result
-          }
+      Reader[Config, Transform[DataWriter[String], DataWriter[String]]] { config =>
+        Transform { writerInput =>
+          for {
+            value <- writerInput
+            result <- Writer(
+              List(s"Processing $value with key ${config.key}"),
+              s"Processed: $value"
+            )
+          } yield result
+        }
       }
 
     val configuredPipeline = for {
-      fetch <- fetchUser
+      fetch   <- fetchUser
       process <- processUser
     } yield Extract("123") ~> fetch ~> process
 
-    val config = Config("https://api.com", "secret")
+    val config         = Config("https://api.com", "secret")
     val (logs, result) = configuredPipeline.run(config).unsafeRun(()).run()
 
     assertEquals(
@@ -673,15 +666,15 @@ class Etl4sSpec extends munit.FunSuite {
   }
 
   test("should flatten nested tuples up to 10 elements") {
-    val e1 = Extract(1)
-    val e2 = Extract("two")
-    val e3 = Extract(3.0)
-    val e4 = Extract(true)
-    val e5 = Extract('c')
-    val e6 = Extract(6L)
-    val e7 = Extract(7.0f)
-    val e8 = Extract("eight")
-    val e9 = Extract(9)
+    val e1  = Extract(1)
+    val e2  = Extract("two")
+    val e3  = Extract(3.0)
+    val e4  = Extract(true)
+    val e5  = Extract('c')
+    val e6  = Extract(6L)
+    val e7  = Extract(7.0f)
+    val e8  = Extract("eight")
+    val e9  = Extract(9)
     val e10 = Extract(10L)
 
     val combined =
@@ -702,7 +695,7 @@ class Etl4sSpec extends munit.FunSuite {
 
     val load = Load[String, String](identity)
 
-    val pipeline = combined ~> transform ~> load
+    val pipeline       = combined ~> transform ~> load
     val pipelineResult = pipeline.unsafeRun(())
 
     assert(
@@ -725,7 +718,7 @@ class Etl4sSpec extends munit.FunSuite {
       "hello"
     })
 
-    val sequential = p1 & p2
+    val sequential       = p1 & p2
     val (seqNum, seqStr) = sequential.unsafeRun(())
     assertEquals(seqNum, 42)
     assertEquals(seqStr, "hello")
@@ -737,7 +730,7 @@ class Etl4sSpec extends munit.FunSuite {
     p1Started = 0L
     p2Started = 0L
 
-    val parallel = p1 &> p2
+    val parallel         = p1 &> p2
     val (parNum, parStr) = parallel.unsafeRun(())
     assertEquals(parNum, 42)
     assertEquals(parStr, "hello")
@@ -828,8 +821,8 @@ class Etl4sSpec extends munit.FunSuite {
     }
 
     val w1: Load[String, String] = Load(s => { println(s"W1: $s"); s })
-    val w2: Load[String, Unit] = Load(s => println(s"W2: $s"))
-    val w3: Load[String, Unit] = Load(s => println(s"W3: $s"))
+    val w2: Load[String, Unit]   = Load(s => println(s"W2: $s"))
+    val w3: Load[String, Unit]   = Load(s => println(s"W3: $s"))
 
     val R = Load[(String, Unit, Unit), String](_._1)
 
@@ -850,7 +843,7 @@ class Etl4sSpec extends munit.FunSuite {
       Extract("john_doe") ~> Transform[String, String](_.toUpperCase)
 
     /* ... or define new sources */
-    val fetchOrder: Extract[Unit, String] = Extract("order 42")
+    val fetchOrder: Extract[Unit, String]   = Extract("order 42")
     val fetchPayment: Extract[Unit, String] = Extract("99.99")
 
     val D: Transform[(String, String), String] =
@@ -908,7 +901,7 @@ class Etl4sSpec extends munit.FunSuite {
     })
 
     val sequentialPipeline = p1 >> p2 >> p3
-    val result = sequentialPipeline.unsafeRun(())
+    val result             = sequentialPipeline.unsafeRun(())
 
     assertEquals(result, true)
 
