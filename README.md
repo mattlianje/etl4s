@@ -394,4 +394,34 @@ See the [tutorial](tutorial.md) for examples of **etl4s** in combat. It works gr
 - [Akka Streams DSL](https://doc.akka.io/libraries/akka-core/current/stream/stream-graphs.html#constructing-graphs)
 - Various Rich Hickey talks
 
+```mermaid
+graph TD
+    A[User Source] --> B[Combine]
+    C[Order Source] --> B
+    D[Payment Source] --> E[Validate]
+    B --> F[Create Report]
+    E --> F
+    F --> G[DB Sink]
+    F --> H[Email Sink]
+    F --> I[Log Sink]
+    K[Config] -->|DI| A
+    K -->|DI| C
+    K -->|DI| D
+    K -->|DI| B
+    K -->|DI| E
+    K -->|DI| G
+    K -->|DI| H
+    K -->|DI| I
+    
+    classDef extract fill:#b5e8ff
+    classDef transform fill:#ffd166
+    classDef load fill:#a3d9a5
+    classDef config fill:#f4acb7
+    
+    class A,C,D extract
+    class B,E,F transform
+    class G,H,I load
+    class K config
+```
+
 
