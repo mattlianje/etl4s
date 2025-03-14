@@ -6,7 +6,7 @@ import scala.util.{Try, Success, Failure}
 package object etl4s {
   implicit class NodeOps[A, B](node: Node[A, B]) {
 
-    /** Base etl4s connection operator (for nodes and pipelines) This is the key
+    /** Base etl4s connection operator (for nodes and pipelines). This is the key
       * operator (~>) that connects nodes together to form pipelines. It's
       * similar to a Unix pipe (|) that connects commands
       */
@@ -25,7 +25,7 @@ package object etl4s {
 
     /** Sequences two pipelines, running the second after the first completes.
       * The '>>' operator runs pipelines in sequence, ignoring the output of the
-      * first This is useful for side effects or when you want to run steps in
+      * first. This is useful for side effects or when you want to run steps in
       * order but don't need to pass data between them
       */
     def >>[C](next: Pipeline[Unit, C]): Pipeline[A, C] =
@@ -68,9 +68,9 @@ package etl4s {
     def ask[R]: Reader[R, R]           = Reader(identity)
   }
 
-  /** Validated: A way to accumulate errors instead of failing fast This is
+  /** Validated: A way to accumulate errors instead of failing fast. This is
     * useful for validating inputs where you want to return all errors at once
-    * Rather than stopping at the first error
+    * rather than stopping at the first error
     */
   case class Validated[+E, +A](value: Either[List[E], A]) {
     def map[B](f: A => B): Validated[E, B] =
@@ -117,7 +117,7 @@ package etl4s {
       }
   }
 
-  /** Writer: Used to accumulate logs or other information during execution This
+  /** Writer: Used to accumulate logs or other information during execution. This
     * lets you track what happened during your pipeline execution without having
     * to pass around a log variable
     */
@@ -153,8 +153,8 @@ package etl4s {
     backoffFactor: Double = 2.0
   )
 
-  /** Node: The core building block of the ETL pipeline A Node processes data of
-    * type A and produces data of type B This can be done either synchronously
+  /** Node: The core building block of the ETL pipeline. A Node processes data of
+    * type A and produces data of type B. This can be done either synchronously
     * (runSync) or asynchronously (runAsync)
     */
   sealed trait Node[-A, +B] { self =>
@@ -304,7 +304,7 @@ package etl4s {
     }
   }
 
-  /** Extract: The "E" in ETL - Extracts data from a source This is typically
+  /** Extract: The "E" in ETL - Extracts data from a source. This is typically
     * the first stage in an ETL pipeline It gets data from somewhere (database,
     * file, API, etc.)
     */
@@ -335,7 +335,7 @@ package etl4s {
       Extract(a => Await.result(f(a), Duration.Inf))
   }
 
-  /** Transform: The "T" in ETL - Transforms data from one form to another This
+  /** Transform: The "T" in ETL - Transforms data from one form to another. This
     * is typically the middle stage in an ETL pipeline It processes and changes
     * the data in some way
     */
@@ -361,7 +361,7 @@ package etl4s {
 
   }
 
-  /** Load: The "L" in ETL - Loads data into a destination This is typically the
+  /** Load: The "L" in ETL - Loads data into a destination. This is typically the
     * final stage in an ETL pipeline It writes data somewhere (database, file,
     * API, etc.)
     */
