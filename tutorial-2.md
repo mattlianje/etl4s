@@ -8,48 +8,50 @@ to swap out components based on environment needs.
 graph TD
     K[Config]
     
-    subgraph "ETL Pipeline"
-        subgraph "Extract" 
-            A[User Source]
-            C[Order Source]
-            D[Payment Source]
-        end
-        
-        subgraph "Transform"
-            B[Combine]
-            E[Validate]
-            F[Create Report]
-        end
-        
-        subgraph "Load"
-            G[DB Sink]
-            H[Email Sink]
-            I[Log Sink]
-        end
-        
-        A --> B
-        C --> B
-        D --> E
-        B --> F
-        E --> F
-        F --> G & H & I
+    subgraph Extract
+        A[User Source]
+        C[Order Source]
+        D[Payment Source]
     end
+        
+    subgraph Transform
+        B[Combine]
+        E[Validate]
+        F[Create Report]
+    end
+        
+    subgraph Load
+        G[DB Sink]
+        H[Email Sink]
+        I[Log Sink]
+    end
+        
+    A --> B
+    C --> B
+    D --> E
+    B --> F
+    E --> F
+    F --> G & H & I
     
-    K -.->|"DI"| Extract
-    K -.->|"DI"| Transform 
-    K -.->|"DI"| Load
+    K -.->|"DI"| A
+    K -.->|"DI"| C
+    K -.->|"DI"| D
+    K -.->|"DI"| B
+    K -.->|"DI"| E
+    K -.->|"DI"| F
+    K -.->|"DI"| G
+    K -.->|"DI"| H
+    K -.->|"DI"| I
     
     classDef extract fill:#b5e8ff,stroke:#0077b6
     classDef transform fill:#ffd166,stroke:#e09f3e
     classDef load fill:#a3d9a5,stroke:#2a9134
     classDef config fill:#f4acb7,stroke:#9d4edd
-    classDef subgraph fill:none,stroke:#ccc,stroke-dasharray: 5 5
     
     class A,C,D extract
     class B,E,F transform
-    class G,H,I load
+    class G,H,I,J load
     class K config
-    class Extract,Transform,Load subgraph
 ```
 
 ## Setup
