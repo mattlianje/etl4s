@@ -49,7 +49,7 @@ val cleanup  = Pipeline[Unit, Unit](_ => println("Cleanup complete"))
 
 /* Compose and run */
 val pipeline =
-    (getUser & getOrder) ~> process ~> (saveDb & notify) >> cleanup // '>>' runs pipeline A after B
+    (getUser & getOrder) ~> process ~> (saveDb & notify) >> cleanup // '>>' runs pipeline B after A
 val result = pipeline.unsafeRun(())
 ```
 
