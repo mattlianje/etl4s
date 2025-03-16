@@ -45,10 +45,10 @@ val process  = Transform[(String, String), String] { case (user, order) =>
 }
 val saveDb   = Load[String, String](s => { println(s"DB: $s"); s })
 val notify   = Load[String, Unit](s => println(s"Email: $s"))
-val cleanup  = Extract(()) ~> Load[Unit, Unit](_ => println("Cleanup complete"))
+val cleanup  = Pipeline[Unit, Unit](_ => println("Cleanup complete"))
 
 /* Compose and run */
-val pipeline = (getUser &> getOrder) ~> process ~> (saveDb & notify) >> cleanup  // ">>" sequences pipelines (ignores first result)
+val pipeline = (getUser &> getOrder) ~> process ~> (saveDb & notify) >> cleanup
 val result = pipeline.unsafeRun(())
 ```
 
