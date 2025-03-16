@@ -213,8 +213,7 @@ val pipeline =
 **etl4s** comes with 3 extra abstractions to make your pipelines hard like iron, and flexible like bamboo.
 You can use them directly or swap in your own favorites (like their better built homologues from [Cats](https://typelevel.org/cats/)).
 
-<details>
-<summary>`Reader[R, A]`: Config-driven pipelines </summary>
+#### `Reader[R, A]`: Config-driven pipelines
 Need database credentials? Start and end dates for your batch job? API keys? Environment settings?
 Let your pipeline know exactly what it needs to run, and switch configs effortlessly.
 ```scala
@@ -246,8 +245,6 @@ Prints:
 ```
 "User loaded with key `secret`: Fetching user user123 from https://api.com"
 ```
-</details>
-
 
 #### `Writer[W, A]`: Log accumulating pipelines
 Collect logs at every step of your pipeline and get them all at once with your results.
