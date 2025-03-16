@@ -51,7 +51,7 @@ val A = (getUser & getOrder) ~> process
 val B = saveDb & sendEmail
 val C = Pipeline[Unit, Unit](_ => println("Cleanup complete"))
 
-/* `~>` Connects data flows, `>>` Runs pipelines in sequence */
+/* Connect flows with ~>, Sequence with >> */
 val AB_C = A ~> B >> C
 AB_C.unsafeRun(())
 ```
@@ -112,8 +112,8 @@ etl4s uses a few simple operators to build pipelines:
 | Operator | Name | Description | Example |
 |----------|------|-------------|---------|
 | `~>` | Connect | Chains operations in sequence | `e1 ~> t1 ~> l1` |
-| `&` | Combine | Runs operations sequentially with same input | `t1 & t2` |
-| `&>` | Parallel | Runs operations concurrently with same input | `t1 &> t2` |
+| `&` | Combine | Group sequential operations with same input | `t1 & t2` |
+| `&>` | Parallel | Group concurrent operations with same input | `t1 &> t2` |
 | `>>` | Sequence | Runs pipelines in order (ignoring first output) | `p1 >> p2` |
 
 
