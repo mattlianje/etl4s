@@ -51,7 +51,7 @@ val A = (getUser & getOrder) ~> process
 val B = saveDb & sendEmail
 val C = Pipeline[Unit, Unit](_ => println("Cleanup complete"))
 
-/* `~>` Connects data flows, `>>` Runs pipelines in sequence
+/* `~>` Connects data flows, `>>` Runs pipelines in sequence */
 val AB_C = A ~> B >> C
 AB_C.unsafeRun(())
 ```
