@@ -5,8 +5,8 @@
 # <img src="pix/etl4s-logo.png" width="50"> etl4s
 **Powerful, whiteboard-style ETL**
 
-A lightweight, zero-dependency, single-file library for writing type-safe, beautiful ✨🍰  data flows in functional Scala. Part of [d4s](https://github.com/mattlianje/d4s),
-battle-tested at [Instacart](https://www.instacart.com/)🥕
+A lightweight, zero-dependency, single-file library for writing type-safe, beautiful ✨🍰  data flows in functional Scala. 
+Battle-tested at [Instacart](https://www.instacart.com/) 🥕
 
 ## Features
 - White-board style ETL
