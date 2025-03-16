@@ -46,7 +46,7 @@ val process  = Transform[(String, String), String] { case (user, order) =>
 val saveDb    = Load[String, String](s => { println(s"DB: $s"); s })
 val sendEmail = Load[String, Unit](s => println(s"Email: $s"))
 
-/* Compose pipelines */
+/* Compose pipelines, Group tasks */
 val A = (getUser & getOrder) ~> process
 val B = saveDb & sendEmail
 val C = Pipeline[Unit, Unit](_ => println("Cleanup complete"))
