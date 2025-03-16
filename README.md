@@ -43,7 +43,7 @@ val getOrder = Extract("2 items")
 val process  = Transform[(String, String), String] { case (user, order) => 
   s"$user ordered $order" 
 }
-val saveDb   = Load[String, String](s => { println(s"DB: $s"); s })
+val saveDb    = Load[String, String](s => { println(s"DB: $s"); s })
 val sendEmail = Load[String, Unit](s => println(s"Email: $s"))
 
 /* Compose pipelines */
