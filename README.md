@@ -5,7 +5,8 @@
 # <img src="pix/etl4s-logo.png" width="50"> etl4s
 **Powerful, whiteboard-style ETL**
 
-A lightweight, zero-dependency, library for writing type-safe, beautiful ✨🍰  data flows in functional Scala. Part of [d4s](https://github.com/mattlianje/d4s) 
+A lightweight, zero-dependency, single-file library for writing type-safe, beautiful ✨🍰  data flows in functional Scala. Part of [d4s](https://github.com/mattlianje/d4s),
+battle-tested at [Instacart](https://www.instacart.com/)🥕
 
 ## Features
 - White-board style ETL
@@ -381,7 +382,8 @@ Carol: $600 - High Bonus
 
 
 ## Real-world examples
-See the [tutorial](tutorial.md) for examples of **etl4s** in combat. It works great with anything:
+See the [tutorial](tutorial.md) to learn how to build an invincible, comabat ready **etl4s** pipeline.
+It works great with anything:
 - Spark / Flink / Beam
 - ETL / Streaming
 - Distributed Systems
