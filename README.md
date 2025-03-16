@@ -34,6 +34,24 @@ All you need:
 import etl4s.*
 ```
 
+```scala
+import etl4s.*
+
+/* Define components */
+val getUser  = Extract("john_doe") ~> Transform(_.toUpperCase)
+val getOrder = Extract("2 items")
+val process  = Transform[(String, String), String] { case (user, order) => 
+  s"$user ordered $order" 
+}
+val saveDb   = Load[String, String](s => { println(s"DB: $s"); s })
+val notify   = Load[String, Unit](s => println(s"Email: $s"))
+val cleanup  = Extract(()) ~> Load[Unit, Unit](_ => println("Cleanup complete"))
+
+/* Compose and run */
+val pipeline = (getUser &> getOrder) ~> process ~> (saveDb & notify) >> cleanup  // ">>" sequences pipelines (ignores first result)
+val result = pipeline.unsafeRun(())
+```
+
 ## Core Concepts
 **etl4s** has 2 building blocks
 
