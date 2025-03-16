@@ -46,15 +46,14 @@ val process  = Transform[(String, String), String] { case (user, order) =>
 val saveDb   = Load[String, String](s => { println(s"DB: $s"); s })
 val notify   = Load[String, Unit](s => println(s"Email: $s"))
 
+/* Compose pipelines */
+val A = (getUser & getOrder) ~> process
+val B = saveDb & notify
+val C = Pipeline[Unit, Unit](_ => println("Cleanup complete"))
 
-/* Compose and run */
-val A =
-    (getUser & getOrder) ~> process ~> (saveDb & notify)
-val B  = Pipeline[Unit, Unit](_ => println("Cleanup complete"))
-
-/* >> runs pipelines in sequence, discarding result of first pipeline */
-val AThenB = A >> B
-val result = AThenB.unsafeRun(())
+/* `~>` connects data flows, `>>` runs pipelines in sequence ("and then do C")
+val AB_C = A ~> B >> C
+val result = AB_C.unsafeRun(())
 ```
 
 ## Core Concepts
