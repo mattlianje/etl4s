@@ -385,8 +385,10 @@ Carol: $600 - High Bonus
 
 
 ## Real-world examples
-See the [tutorial](tutorial.md) to learn how to build an invincible, comabat ready **etl4s** pipeline.
-It works great with anything:
+See the [tutorial](tutorial.md) to learn how to build an invincible, combat ready **etl4s** pipeline that use `Reader` based
+dependency injection.
+
+**etl4s** works great with anything:
 - Spark / Flink / Beam
 - ETL / Streaming
 - Distributed Systems
