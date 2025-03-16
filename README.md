@@ -214,7 +214,7 @@ val pipeline =
 You can use them directly or swap in your own favorites (like their better built homologues from [Cats](https://typelevel.org/cats/)).
 
 <details>
-<summary>#### `Reader[R, A]`: Config-driven pipelines </summary>
+<summary>`Reader[R, A]`: Config-driven pipelines </summary>
 Need database credentials? Start and end dates for your batch job? API keys? Environment settings?
 Let your pipeline know exactly what it needs to run, and switch configs effortlessly.
 ```scala
