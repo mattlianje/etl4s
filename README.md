@@ -26,7 +26,7 @@ Battle-tested at [Instacart](https://www.instacart.com/) 🥕
 
 Try it in your repl:
 ```bash
-scala-cli repl --scala 3 --dep xyz.matthieucourt:etl4s_3:1.0.0
+scala-cli repl --scala 3 --dep xyz.matthieucourt:etl4s_3:1.0.1
 ```
 
 All you need:
@@ -44,14 +44,14 @@ val process  = Transform[(String, String), String] { case (user, order) =>
   s"$user ordered $order" 
 }
 val saveDb   = Load[String, String](s => { println(s"DB: $s"); s })
-val notify   = Load[String, Unit](s => println(s"Email: $s"))
+val sendEmail = Load[String, Unit](s => println(s"Email: $s"))
 
 /* Compose pipelines */
 val A = (getUser & getOrder) ~> process
-val B = saveDb & notify
+val B = saveDb & sendEmail
 val C = Pipeline[Unit, Unit](_ => println("Cleanup complete"))
 
-/* `~>` connects data flows, `>>` runs pipelines in sequence ("and then do C")
+/* `~>` Connects data flows, `>>` Runs pipelines in sequence ("and then do C") */
 val AB_C = A ~> B >> C
 val result = AB_C.unsafeRun(())
 ```
