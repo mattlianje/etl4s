@@ -45,12 +45,15 @@ val process  = Transform[(String, String), String] { case (user, order) =>
 }
 val saveDb   = Load[String, String](s => { println(s"DB: $s"); s })
 val notify   = Load[String, Unit](s => println(s"Email: $s"))
-val cleanup  = Pipeline[Unit, Unit](_ => println("Cleanup complete"))
+
 
 /* Compose and run */
-val pipeline =
-    (getUser & getOrder) ~> process ~> (saveDb & notify) >> cleanup // '>>' runs pipeline B after A
-val result = pipeline.unsafeRun(())
+val A =
+    (getUser & getOrder) ~> process ~> (saveDb & notify)
+val B  = Pipeline[Unit, Unit](_ => println("Cleanup complete"))
+
+val AThenB = A >> B // >> runs pipelines in sequence, discarding result of first pipeline
+val result = AThenB.unsafeRun(())
 ```
 
 ## Core Concepts
