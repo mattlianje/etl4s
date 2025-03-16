@@ -53,7 +53,7 @@ val C = Pipeline[Unit, Unit](_ => println("Cleanup complete"))
 
 /* `~>` Connects data flows, `>>` Runs pipelines in sequence ("and then do C") */
 val AB_C = A ~> B >> C
-val result = AB_C.unsafeRun(())
+AB_C.unsafeRun(())
 ```
 
 ## Core Concepts
