@@ -52,7 +52,8 @@ val A =
     (getUser & getOrder) ~> process ~> (saveDb & notify)
 val B  = Pipeline[Unit, Unit](_ => println("Cleanup complete"))
 
-val AThenB = A >> B // >> runs pipelines in sequence, discarding result of first pipeline
+/* >> runs pipelines in sequence, discarding result of first pipeline */
+val AThenB = A >> B
 val result = AThenB.unsafeRun(())
 ```
 
