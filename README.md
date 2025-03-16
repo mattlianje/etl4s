@@ -33,7 +33,7 @@ All you need:
 ```scala
 import etl4s.*
 ```
-
+## Code Example
 ```scala
 import etl4s.*
 
