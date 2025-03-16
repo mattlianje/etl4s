@@ -48,7 +48,8 @@ val notify   = Load[String, Unit](s => println(s"Email: $s"))
 val cleanup  = Pipeline[Unit, Unit](_ => println("Cleanup complete"))
 
 /* Compose and run */
-val pipeline = (getUser &> getOrder) ~> process ~> (saveDb & notify) >> cleanup
+val pipeline =
+    (getUser & getOrder) ~> process ~> (saveDb & notify) >> cleanup // '>>' runs pipeline A after B
 val result = pipeline.unsafeRun(())
 ```
 
