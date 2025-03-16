@@ -21,7 +21,7 @@ Battle-tested at [Instacart](https://www.instacart.com/) 🥕
 
 **etl4s** is on MavenCentral and cross-built for Scala, 2.12, 2.13, 3.x:
 ```scala
-"xyz.matthieucourt" %% "etl4s" % "1.0.0"
+"xyz.matthieucourt" %% "etl4s" % "1.0.1"
 ```
 
 Try it in your repl:
@@ -51,7 +51,7 @@ val A = (getUser & getOrder) ~> process
 val B = saveDb & sendEmail
 val C = Pipeline[Unit, Unit](_ => println("Cleanup complete"))
 
-/* `~>` Connects data flows, `>>` Runs pipelines in sequence ("and then do C") */
+/* `~>` Connects data flows, `>>` Runs pipelines in sequence
 val AB_C = A ~> B >> C
 AB_C.unsafeRun(())
 ```
