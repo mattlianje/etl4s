@@ -47,7 +47,7 @@ val saveDb    = Load[String, String](s => { println(s"DB: $s"); s })
 val sendEmail = Load[String, Unit](s => println(s"Email: $s"))
 val cleanup   = Pipeline[Unit, Unit](_ => println("Cleanup complete"))
 
-/* Group tasks, Connect flows with ~>, Sequence with >> */
+/* Group tasks with &, Connect with ~>, Sequence with >> */
 val pipeline =
      (getUser & getOrder) ~> process ~> (saveDb & sendEmail) >> cleanup
 pipeline.unsafeRun(())
@@ -111,7 +111,7 @@ etl4s uses a few simple operators to build pipelines:
 | `~>` | Connect | Chains operations in sequence | `e1 ~> t1 ~> l1` |
 | `&` | Combine | Group sequential operations with same input | `t1 & t2` |
 | `&>` | Parallel | Group concurrent operations with same input | `t1 &> t2` |
-| `>>` | Sequence | Runs pipelines in order (ignoring first output) | `p1 >> p2` |
+| `>>` | Sequence | Runs pipelines in order (ignoring previous output) | `p1 >> p2` |
 
 
 ## Handling Failures
