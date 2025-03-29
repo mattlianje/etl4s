@@ -230,9 +230,7 @@ val loadUser = Reader[ApiConfig, Load[String, String]] { config =>
 val configuredPipeline = for {
                           userTransform <- fetchUser
                           userLoader    <- loadUser
-                        } yield {
-                          Extract("user123") ~> userTransform ~> userLoader
-                        } 
+                        } yield Extract("user123") ~> userTransform ~> userLoader
 
 /* Run with config */
 val result = configuredPipeline.run(config).unsafeRun(())
@@ -364,43 +362,6 @@ Prints:
 ```
 "LOADED: FETCHING ALICE | AGE: 25"
 ```
-
-#### Regular Scala Inside
-Use normal (more procedural-style) Scala collections and functions in your transforms
-```scala
-import etl4s.*
-
-val salesData = Extract[Unit, Map[String, List[Int]]](_ =>
- Map(
-  "Alice" -> List(100, 200, 150),
-  "Bob" -> List(50, 50, 75),
-  "Carol" -> List(300, 100, 200)
- )
-)
-
-val calculateBonus = Transform[Map[String, List[Int]], List[String]] { sales =>
-  sales.map { case (name, amounts) => 
-    val total = amounts.sum
-    val bonus = if (total > 500) "High" else "Standard"
-    s"$name: $$${total} - $bonus Bonus"
-  }.toList
-}
-
-val printResults = Load[List[String], Unit](_.foreach(println))
-
-val pipeline =
-   salesData ~> calculateBonus ~> printResults
-
-pipeline.unsafeRun(())
-```
-Prints:
-```
-Alice: $450 - Standard Bonus
-Bob: $175 - Standard Bonus
-Carol: $600 - High Bonus
-```
-
-
 
 ## Real-world examples
 See the [tutorial](tutorial.md) to learn how to build an invincible, combat ready **etl4s** pipeline that use `Reader` based
