@@ -390,6 +390,9 @@ case object Free extends AccountType
 sealed trait Role
 case object Admin extends Role
 case object Member extends Role
+
+val user = User("John", "john@example.com", 25, isAdmin = true, securityClearance = 4)
+val userRole = Admin
 ```
 
 ##### Creating Validators
