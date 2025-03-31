@@ -375,24 +375,27 @@ val pipeline = loadOrders ~>
 
 pipeline.unsafeRun(())
 ```
-Lets imagine we have:
+Let's consider the example
 ```scala
-case class User(name: String, email: String, age: Int, isAdmin: Boolean = false, 
-                hasSpecialPermission: Boolean = false, securityClearance: Int = 0,
-                accountType: AccountType = Free, hasAccess: Boolean = true,
-                paymentVerified: Boolean = false, trialDaysLeft: Int = 0)
+case class User(
+  name: String, 
+  email: String, 
+  age: Int, 
+  role: Role = Member,
+  accountType: AccountType = Free
+)
+
+// Simple enums
+sealed trait Role
+case object Admin extends Role
+case object Member extends Role
 
 sealed trait AccountType
 case object Premium extends AccountType
 case object Trial extends AccountType
 case object Free extends AccountType
 
-sealed trait Role
-case object Admin extends Role
-case object Member extends Role
-
-val user = User("John", "john@example.com", 25, isAdmin = true, securityClearance = 4)
-val userRole = Admin
+val user = User("John", "john@example.com", 25, Admin, Premium)
 ```
 
 ##### Creating Validators
@@ -420,21 +423,20 @@ require(user.name.nonEmpty, "Name required") &&
 require(user.email.contains("@"), "Invalid email")
 
 // Either validation must pass (OR)
-require(user.isAdmin, "Must be admin") || 
-require(user.hasSpecialPermission, "Special permission required")
+require(user.role == Admin, "Must be admin") || 
+require(user.accountType == Premium, "Must be premium user")
 ```
 
 ##### Conditional Validation
 ```scala
-if (user.role == Admin) {
-  require(user.securityClearance > 3, "Admins need high security clearance")
-} else {
+if (user.role == Admin)
+  require(user.age >= 25, "Admins must be 25 or older")
+else
   success
-}
 
 user.accountType match {
-  case Premium => require(user.paymentVerified, "Premium accounts need payment verification")
-  case Trial => require(user.trialDaysLeft > 0, "Trial period expired")
+  case Premium => require(user.email.contains("@"), "Premium requires valid email")
+  case Trial => require(user.age >= 18, "Trial requires 18+")
   case Free => success
 }
 ```
@@ -446,11 +448,11 @@ val validateBasics = Validate[User] { user =>
   require(user.email.nonEmpty, "Email required")
 }
 
-val validatePermissions = Validate[User] { user => 
-  require(user.hasAccess, "User needs access permission")
+val validateAge = Validate[User] { user => 
+  require(user.age >= 18, "Must be 18 or older")
 }
 
-val validateUser = validateBasics && validatePermissions
+val validateUser = validateBasics && validateAge
 ```
 
 
