@@ -301,8 +301,9 @@ Logs: ["Fetching user 123", "Processing User 123"]
 Result: "Processed: User 123"
 ```
 
-#### Validated[T]
+#### Validate[T]
 etl4s includes a lightweight validation system that helps you enforce business rules with clear error reporting.
+The `Validate` type quality lets you stack checks and automatically accumulates lists of errors.
 
 | Component | Description |
 |-----------|-------------|
@@ -315,7 +316,6 @@ etl4s includes a lightweight validation system that helps you enforce business r
 ```scala
 import etl4s._
 
-/* Create validators */
 val validateOrderBasics = Validate[Order] { order =>
   require(order.id.nonEmpty, "ID is required") &&
   require(order.amount > 0, "Amount must be positive")
@@ -339,9 +339,7 @@ val loadOrders = Extract(List(
   Order("ord-4", 2000.0, false)
 ))
 
-/* Validate and partition orders */
 val transformAndSplit = Transform { orders =>
-  // Split into valid and invalid orders
   orders.partition(o => validateOrder(o).isValid)
 }
 
@@ -357,22 +355,22 @@ pipeline.unsafeRun(())
 ```
 
 ##### Creating Validators
+Create a validator for a specific type
 ```scala
-// Create a validator for a specific type
 val validateUser = Validate[User] { user => 
   // validation logic here
 }
 ```
 
 ##### Basic Validation Functions
+Check a condition with an error message
 ```scala
-// Check a condition with an error message
 require(user.age >= 18, "Must be 18 or older")
 
-// Always succeeds
+/* Always succeeds */
 success
 
-// Always fails with a message
+/* Always fails with a message */
 failure("Invalid data")
 ```
 
@@ -389,7 +387,6 @@ require(user.hasSpecialPermission, "Special permission required")
 
 ##### Conditional Validation
 ```scala
-// Validation based on a condition
 if (user.role == Admin) {
   require(user.securityClearance > 3, "Admins need high security clearance")
 } else {
@@ -415,44 +412,6 @@ val validatePermissions = Validate[User] { user =>
 }
 
 val validateUser = validateBasics && validatePermissions
-```
-
-#### `Validated[E, A]`: Error accumulating pipelines
-No more failing on the first error! ... And fixing bugs ... one ... by ... one. Stack quality checks and accumulate lists of errors.
-This is perfect for validating data on the edges of your pipelines (Just use `Validated.` `valid`/`invalid`... then `zip` on a `Validated` to "stack"
-your validations).
-
-```scala
-import etl4s.*
-
-case class User(name: String, age: Int)
-
-def validateName(name: String): Validated[String, String] =
-  if (!name.matches("[A-Za-z ]+")) Validated.invalid("Name can only contain letters")
-  else Validated.valid(name)
-
-def validateAge(age: Int): Validated[String, Int] =
-  if (age < 0) Validated.invalid("Age must be positive")
-  else if (age > 150) Validated.invalid("Age not realistic")
-  else Validated.valid(age)
-
-val validateUser = Transform[(String, Int), Validated[String, User]] {
-  case (name, age) =>
-    validateName(name)
-      .zip(validateAge(age))
-      .map { case (name, age) => User(name, age) }
-}
-
-val pipeline = Extract(("Alice4", -1)) ~> validateUser 
-pipeline.unsafeRun(()).value.left.get
-```
-
-This returns:
-```
-List(
-  Name can only contain letters,
-  Age must be positive
-)
 ```
 
 
