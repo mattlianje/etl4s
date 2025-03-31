@@ -324,7 +324,7 @@ Result: "Processed: User 123"
 ```
 
 #### Validate[T]
-etl4s includes a lightweight validation system that helps you enforce business rules with clear error reporting.
+etl4s includes a powerful, lightweight validation system that helps you enforce business rules with clear error reporting.
 The `Validate` type lets you stack checks and automatically accumulates lists of errors.
 
 | Component | Description |
@@ -341,18 +341,30 @@ import scala.concurrent.ExecutionContext.Implicits.global
 
 case class Order(id: String, amount: Double, isVerified: Boolean = false)
 
-val validateOrder = Validate[Order] { order =>
+/* Basic validation */
+val validateOrderBasics = Validate[Order] { order =>
   require(order.id.nonEmpty, "ID is required") &&
-  require(order.amount > 0, "Amount must be positive") &&
-  (if (order.amount > 1000) require(order.isVerified, "Large orders must be verified") else success)
+  require(order.amount > 0, "Amount must be positive")
 }
 
+/* Another validation */
+val validateHighValueOrder = Validate[Order] { order =>
+  if (order.amount > 1000) 
+    require(order.isVerified, "Large orders must be verified")
+  else 
+    success
+}
+
+/* Combine them */
+val validateOrder = validateOrderBasics && validateHighValueOrder
+
 val SAMPLE_ORDERS = List(
-  Order("ord-1", 500.0, false),
-  Order("", 1200.0, true),
-  Order("ord-3", -50.0, false),
-  Order("ord-4", 2000.0, false)
+  Order("ord-1", 500.0, false),      // Valid
+  Order("", 1200.0, true),           // Invalid: empty ID
+  Order("ord-3", -50.0, false),      // Invalid: negative amount
+  Order("ord-4", 2000.0, false)      // Invalid: unverified large order
 )
+
 val extractOrders = Extract(_ => SAMPLE_ORDERS)
 
 val validateAndSplit = Transform[List[Order], (List[Order], List[Order])] { orders =>
@@ -375,7 +387,7 @@ val pipeline =
 pipeline.unsafeRun(())
 ```
 
-Let's consider the example
+Let's consider these synthetic data types to show the full power of etl4s' `Validate`
 ```scala
 case class User(
   name: String, 
