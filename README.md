@@ -46,6 +46,7 @@ import etl4s.*
 - [Handling Failures](#handling-failures)
   - [withRetry](#withretry)
   - [onFailure](#onfailure)
+- [Observation with `tap`](#observation-with-tap)
 - [Parallelizing Tasks](#parallelizing-tasks)
 - [Built-in Tools](#built-in-tools)
   - [Reader[R, A]](#readerr-a-config-driven-pipelines)
@@ -182,6 +183,28 @@ This prints:
 ```
 Failed with: Boom! ... firing missile
 ```
+
+## Observation with `tap`
+The `tap` method allows you to observe values flowing through your pipeline without modifying them. 
+This is useful for logging, debugging, or collecting metrics.
+
+```scala
+import etl4s._
+
+// Define the pipeline stages
+val sayHello   = Extract("hello world")
+val splitWords = Transform[String, Array[String]](_.split(" "))
+val toUpper    = Transform[Array[String], Array[String]](_.map(_.toUpperCase))
+
+val pipeline = sayHello ~> 
+               splitWords
+                .tap(words => println(s"Processing ${words.length} words")) ~> 
+               toUpper
+
+// Run the pipeline - prints "Processing 2 words" during execution
+val result = pipeline.unsafeRun(())  // Result: Array("HELLO", "WORLD")
+```
+
 
 ## Parallelizing Tasks
 **etl4s** has an elegant shorthand for grouping and parallelizing operations that share the same input type:
