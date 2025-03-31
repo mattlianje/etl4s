@@ -1,8 +1,8 @@
 #!/bin/bash
 GITHUB_USER="mattlianje"
 ARTIFACT_NAME="etl4s"
-SCALA_VERSION="2.13"
-VERSION="0.0.7"
+SCALA_VERSION="3"
+VERSION="1.0.1"
 BUNDLE_DIR="$HOME/maven-bundle"
 
 # Derived variables

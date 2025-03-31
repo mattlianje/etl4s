@@ -9,6 +9,9 @@ import java.time.temporal.ChronoUnit
 
 class Etl4sSpec extends munit.FunSuite {
 
+  case class Address(street: String, city: String, zipCode: String)
+  case class Person(name: String, age: Int, address: Address)
+
   test("sequential pipeline should combine extracts and loads correctly") {
     val e1 = Extract(42)
     val e2 = Extract("hello")
@@ -246,7 +249,8 @@ class Etl4sSpec extends munit.FunSuite {
     }
 
     val pipeline = Pipeline(Extract(42)) ~> failingTransform.withRetry(
-      RetryConfig(maxAttempts = 3, initialDelay = 10.millis)
+      maxAttempts = 3,
+      initialDelayMs = 10
     )
 
     val result = pipeline.safeRun(())
@@ -263,7 +267,7 @@ class Etl4sSpec extends munit.FunSuite {
     }
 
     val pipeline = Pipeline(Extract(42)) ~> alwaysFailingTransform.withRetry(
-      RetryConfig(maxAttempts = 2)
+      maxAttempts = 2
     )
 
     val result = pipeline.safeRun(())
@@ -280,7 +284,7 @@ class Etl4sSpec extends munit.FunSuite {
     }
 
     val pipeline = Pipeline(Extract(42)) ~> successfulTransform.withRetry(
-      RetryConfig(maxAttempts = 3)
+      maxAttempts = 3
     )
 
     val result = pipeline.safeRun(())
@@ -505,61 +509,6 @@ class Etl4sSpec extends munit.FunSuite {
 
     assertEquals(p1.unsafeRun(()), "Error occurred")
     assertEquals(p2.unsafeRun(()), "Error occurred")
-  }
-
-  test("transform should accumulate multiple validation errors") {
-    case class User(name: String, age: Int, email: String)
-
-    def validateName(name: String): Validated[String, String] =
-      if (name.isEmpty) Validated.invalid("Name cannot be empty")
-      else if (name.length < 2) Validated.invalid("Name too short")
-      else if (!name.matches("[A-Za-z ]+"))
-        Validated.invalid("Name can only contain letters")
-      else Validated.valid(name)
-
-    def validateAge(age: Int): Validated[String, Int] =
-      if (age < 0) Validated.invalid("Age must be positive")
-      else if (age > 150) Validated.invalid("Age not realistic")
-      else Validated.valid(age)
-
-    def validateEmail(email: String): Validated[String, String] =
-      Validated
-        .valid(email)
-        .zip(
-          if (!email.contains("@")) Validated.invalid("Email must contain @")
-          else Validated.valid(email)
-        )
-        .zip(
-          if (!email.contains(".")) Validated.invalid("Email must contain .")
-          else Validated.valid(email)
-        )
-        .map { case ((email, _), _) => email }
-
-    val validateUser =
-      Transform[(String, Int, String), Validated[String, User]] { case (name, age, email) =>
-        validateName(name)
-          .zip(validateAge(age))
-          .zip(validateEmail(email))
-          .map { case ((name, age), email) => User(name, age, email) }
-      }
-
-    val validInput   = ("Matthieu", 27, "matthieu.court@protonmail.com")
-    val invalidInput = ("", -1, "invalid")
-
-    val validResult   = validateUser.runSync(validInput)
-    val invalidResult = validateUser.runSync(invalidInput)
-
-    assert(validResult.value.isRight)
-    assert(invalidResult.value.isLeft)
-    assertEquals(
-      invalidResult.value.left.get,
-      List(
-        "Name cannot be empty",
-        "Age must be positive",
-        "Email must contain @",
-        "Email must contain ."
-      )
-    )
   }
 
   test("Extract and Load should support andThen composition") {
@@ -838,11 +787,9 @@ class Etl4sSpec extends munit.FunSuite {
   }
 
   test("Pretty pipeline 2") {
-    /* Re-use existing pipelines */
     val fetchUser: Pipeline[Unit, String] =
       Extract("john_doe") ~> Transform[String, String](_.toUpperCase)
 
-    /* ... or define new sources */
     val fetchOrder: Extract[Unit, String]   = Extract("order 42")
     val fetchPayment: Extract[Unit, String] = Extract("99.99")
 
@@ -855,7 +802,6 @@ class Etl4sSpec extends munit.FunSuite {
         s"REPORT: [$userOrder | $payment]"
       }
 
-    /* Define multiple sinks */
     val saveToDB: Load[String, String] = Load(report => {
       println(s"DB Save: $report"); report
     })
@@ -864,7 +810,6 @@ class Etl4sSpec extends munit.FunSuite {
     val logReport: Load[String, Unit] =
       Load(report => println(s"Log Entry: $report"))
 
-    /* So you can connect your pipeline to others */
     val R = Load[(String, Unit, Unit), String](_._1)
 
     val pipeline: Pipeline[Unit, String] =
@@ -874,9 +819,6 @@ class Etl4sSpec extends munit.FunSuite {
       ) ~> F ~>
         (saveToDB & sendEmail & logReport).zip ~> R
 
-    /* Run at end of World ...
-     * Performs side effects then returns: "[JOHN_DOE placed order 42 | Validated: 99.99]"
-     */
     val result: String = pipeline.unsafeRun(())
   }
 
@@ -906,6 +848,171 @@ class Etl4sSpec extends munit.FunSuite {
     assertEquals(result, true)
 
     assertEquals(executionOrder, List("p1", "p2", "p3"))
+  }
+
+  test("should chain any arrow functions together") {
+    val f1: Int => String       = _.toString
+    val f2: String => List[Int] = s => s.map(_.toInt - 48).toList
+
+    val extract   = Extract((x: Int) => x * 2)
+    val transform = Transform((s: String) => s.toUpperCase)
+    val load      = Load((list: List[Int]) => list.sum)
+
+    val pipeline1 = extract ~> f1 ~> transform ~> f2 ~> load
+    assertEquals(pipeline1.unsafeRun(5), 1)
+
+    val pipeline2 = f1 ~> transform
+    assertEquals(pipeline2.unsafeRun(42), "42")
+
+    val pipeline3 = f1 ~> f2
+    assertEquals(pipeline3.unsafeRun(42), List(4, 2))
+
+    val complexPipeline =
+      extract ~> ((x: Int) => x / 2) ~> f1 ~> transform ~> f2 ~> ((nums: List[Int]) =>
+        nums.mkString(",")
+      )
+    assertEquals(complexPipeline.unsafeRun(10), "1,0")
+  }
+
+  test("should work with existing Extract & Load in parallel") {
+    val extract1 = Extract((i: Int) => i * 10)
+    val extract2 = Extract((i: Int) => i.toString)
+
+    val transform: (Int, String) => String = (num, str) => s"$num-$str"
+
+    val load: String => List[String] = _.split("-").toList
+
+    val parallelExtracts = extract1 &> extract2
+
+    val pipeline = parallelExtracts ~>
+      ((t: (Int, String)) => transform(t._1, t._2)) ~>
+      load
+
+    assertEquals(pipeline.unsafeRun(5), List("50", "5"))
+  }
+
+  test("tap should observe values without modifying them") {
+    var observed = ""
+    val pipeline = Pipeline((s: String) => s.toUpperCase)
+      .tap(result => observed = result)
+
+    val result = pipeline.unsafeRun("hello")
+
+    assertEquals(result, "HELLO")
+    assertEquals(observed, "HELLO")
+  }
+
+  test("tap should work in multi-stage pipelines") {
+    var stage1 = 0
+    var stage2 = ""
+
+    val pipeline = Pipeline((s: String) => s.length)
+      .tap(len => stage1 = len)
+      .map(len => s"Length is $len")
+      .tap(str => stage2 = str)
+
+    val result = pipeline.unsafeRun("hello")
+
+    assertEquals(result, "Length is 5")
+    assertEquals(stage1, 5)
+    assertEquals(stage2, "Length is 5")
+  }
+
+  test("unsafeRunTimed should measure longer operations appropriately") {
+    val pipeline = Pipeline((n: Int) => {
+      Thread.sleep(50)
+      n * 2
+    })
+
+    val (result, time) = pipeline.unsafeRunTimed(21)
+
+    assertEquals(result, 42)
+    assert(time >= 50, s"Time should be at least 50ms for sleep operation, but was $time ms")
+  }
+
+  test("simple validation with require") {
+    val result1 = require(10 > 5, "10 should be greater than 5")
+    assert(result1.isValid)
+
+    val result2 = require(3 > 5, "3 should be greater than 5")
+    assert(!result2.isValid)
+    assert(result2.errors.head == "3 should be greater than 5")
+  }
+
+  test("validation with pattern matching") {
+    sealed trait UserRole
+    case object Admin  extends UserRole
+    case object Editor extends UserRole
+    case object Viewer extends UserRole
+
+    case class User(id: String, role: UserRole, active: Boolean)
+
+    val validateUser = Validate[User] { user =>
+      val basicChecks = require(user.id.nonEmpty, "User ID cannot be empty")
+
+      val roleChecks = user.role match {
+        case Admin =>
+          require(user.id.startsWith("A"), "Admin IDs must start with 'A'")
+        case Editor =>
+          require(user.id.startsWith("E"), "Editor IDs must start with 'E'")
+        case Viewer =>
+          success
+      }
+
+      // Status check
+      val statusCheck = if (!user.active) {
+        failure("User account is inactive")
+      } else {
+        success
+      }
+
+      // Combine all validations
+      basicChecks && roleChecks && statusCheck
+    }
+
+    // Test with different users
+    val validAdmin = User("A123", Admin, true)
+    assert(validateUser(validAdmin).isValid)
+
+    val invalidAdmin = User("E123", Admin, true)
+    assert(!validateUser(invalidAdmin).isValid)
+    assert(validateUser(invalidAdmin).errors.contains("Admin IDs must start with 'A'"))
+
+    val inactiveUser = User("V123", Viewer, false)
+    assert(!validateUser(inactiveUser).isValid)
+    assert(validateUser(inactiveUser).errors.contains("User account is inactive"))
+  }
+
+  test("composing validators") {
+    val validateName = Validate[Person] { person =>
+      require(person.name.nonEmpty, "Name cannot be empty") &&
+      require(person.name.length <= 100, "Name is too long")
+    }
+
+    val validateAge = Validate[Person] { person =>
+      require(person.age >= 0, "Age must be non-negative") &&
+      require(person.age <= 120, "Age seems unrealistic")
+    }
+
+    val validatePerson = validateName && validateAge
+
+    val validPerson = Person("Jane Smith", 35, Address("", "", ""))
+    assert(validatePerson(validPerson).isValid)
+
+    val invalidName = Person("", 35, Address("", "", ""))
+    assert(!validatePerson(invalidName).isValid)
+    assert(validatePerson(invalidName).errors.contains("Name cannot be empty"))
+
+    val invalidAge = Person("John Doe", -10, Address("", "", ""))
+    assert(!validatePerson(invalidAge).isValid)
+    assert(validatePerson(invalidAge).errors.contains("Age must be non-negative"))
+
+    val invalidBoth       = Person("", 150, Address("", "", ""))
+    val invalidBothResult = validatePerson(invalidBoth)
+    assert(!invalidBothResult.isValid)
+    assert(invalidBothResult.errors.size == 2)
+    assert(invalidBothResult.errors.contains("Name cannot be empty"))
+    assert(invalidBothResult.errors.contains("Age seems unrealistic"))
   }
 }
 

@@ -4,51 +4,228 @@ import scala.concurrent.Await
 import scala.util.{Try, Success, Failure}
 
 package object etl4s {
-  implicit class NodeOps[A, B](node: Node[A, B]) {
 
-    /** Base etl4s connection operator (for nodes and pipelines). This is the key
-      * operator (~>) that connects nodes together to form pipelines. It's
-      * similar to a Unix pipe (|) that connects commands
+  /** 
+   * Type class representing the Arrow abstraction for data processing components.
+   *
+   * Defines the capability for a binary type constructor F[_,_] to be treated as an 
+   * Arrow in the categorical sense, enabling composition through the ~> operator.
+   * 
+   * TL;DR This enables composition between different types of processing components
+   * (functions, ETL components, pipelines) using the same ~> operator.
+   */
+  trait AsArrow[F[_, _]] {
+    def toNode[A, B](f: F[A, B]): Node[A, B]
+  }
+
+  object AsArrow {
+
+    /** 
+     * Summoner method for obtaining type class arrow evidence.
+     */
+    def apply[F[_, _]](implicit ev: AsArrow[F]): AsArrow[F] = ev
+
+    /** 
+      * Enables standard Scala functions to be treated as arrows.
+      * Its a bit low-level but etl4s is for composing simple functions.
+      * Maps directly to Transform nodes as they share the same semantics.
       */
-    def ~>[C](next: Node[B, C]): Pipeline[A, C] =
+    implicit val function1AsArrow: AsArrow[Function1] = new AsArrow[Function1] {
+      def toNode[A, B](f: A => B): Node[A, B] = Transform(f)
+    }
+
+    /* Node is already an arrow */
+    implicit val nodeAsArrow: AsArrow[Node] = new AsArrow[Node] {
+      def toNode[A, B](n: Node[A, B]): Node[A, B] = n
+    }
+
+    /**
+      * ETL components can be modeled as arrows - provides typeclasses for them
+      */
+    implicit val extractAsArrow: AsArrow[Extract] = new AsArrow[Extract] {
+      def toNode[A, B](e: Extract[A, B]): Node[A, B] = e
+    }
+
+    implicit val transformAsArrow: AsArrow[Transform] = new AsArrow[Transform] {
+      def toNode[A, B](t: Transform[A, B]): Node[A, B] = t
+    }
+
+    implicit val loadAsArrow: AsArrow[Load] = new AsArrow[Load] {
+      def toNode[A, B](l: Load[A, B]): Node[A, B] = l
+    }
+
+    /**
+      * Provides type class evidence for pipeline
+      */
+    implicit val pipelineAsArrow: AsArrow[Pipeline] = new AsArrow[Pipeline] {
+      def toNode[A, B](p: Pipeline[A, B]): Node[A, B] = p.node
+    }
+  }
+
+  /**
+   * Extension methods for any type constructor F[_, _] that has an AsArrow instance.
+   * 
+   * If you are new here, this is higher-kinded type "voodoo" that lets us define operations on ANY binary 
+   * type constructor (F[_, _]), not just concrete types. This is what enables the 
+   * ~> abstraction to work across different types.
+   */
+  implicit class ArrowOps[F[_, _], A, B](val fa: F[A, B]) {
+    def ~>[G[_, _], C](gb: G[B, C])(implicit F: AsArrow[F], G: AsArrow[G]): Pipeline[A, C] = {
+      val nodeA = F.toNode(fa)
+      val nodeB = G.toNode(gb)
+
       Pipeline(new Node[A, C] {
-        /* Synchronous execution: Run the first node and pass its output to the second node */
-        def runSync: A => C = node.runSync andThen next.runSync
-        /* Asynchronous execution: Run the first node and when it completes, run the second node */
+        def runSync: A => C = nodeA.runSync andThen nodeB.runSync
         def runAsync(implicit ec: ExecutionContext): A => Future[C] = { a =>
-          node.runAsync(ec)(a).flatMap(next.runAsync(ec))
+          nodeA.runAsync(ec)(a).flatMap(nodeB.runAsync(ec))
         }
       })
+    }
+
+    /* Convert arrow to pipeline */
+    def toPipeline(implicit F: AsArrow[F]): Pipeline[A, B] = Pipeline(F.toNode(fa))
   }
 
   implicit class PipelineSequence[A, B](val pipeline: Pipeline[A, B]) {
 
-    /** Sequences two pipelines, running the second after the first completes.
-      * The '>>' operator runs pipelines in sequence, ignoring the output of the
-      * first. This is useful for side effects or when you want to run steps in
-      * order but don't need to pass data between them
-      */
+    /* Sequences two pipelines */
     def >>[C](next: Pipeline[Unit, C]): Pipeline[A, C] =
       Pipeline(new Node[A, C] {
         def runSync: A => C = a => {
-          pipeline.unsafeRun(a)
-          next.unsafeRun(())
+          pipeline(a)
+          next(())
         }
-
         def runAsync(implicit ec: ExecutionContext): A => Future[C] =
-          a => pipeline.runAsync(ec)(a).flatMap(_ => next.runAsync(ec)(()))(ec)
+          a => pipeline.node.runAsync(ec)(a).flatMap(_ => next.node.runAsync(ec)(()))
       })
   }
 
-  /* Implicit conversions for Scala 2.x compat
-     These conversions let you mix Extract, Transform, and Load nodes in a pipeline */
-  implicit def pipelineToNode[A, B](p: Pipeline[A, B]): Node[A, B] = p.node
+  implicit def pipelineToNode[A, B](p: Pipeline[A, B]): Node[A, B]           = p.node
+  implicit def extractToPipeline[A, B](e: Extract[A, B]): Pipeline[A, B]     = Pipeline(e)
+  implicit def transformToPipeline[A, B](t: Transform[A, B]): Pipeline[A, B] = Pipeline(t)
+  implicit def loadToPipeline[A, B](l: Load[A, B]): Pipeline[A, B]           = Pipeline(l)
+  implicit def functionToNode[A, B](f: A => B): Node[A, B]                   = Transform(f)
+  implicit def functionToPipeline[A, B](f: A => B): Pipeline[A, B] = Pipeline(Transform(f))
 
-  implicit def extractToPipeline[A, B](e: Extract[A, B]): Pipeline[A, B] =
-    Pipeline(e)
-  implicit def transformToPipeline[A, B](t: Transform[A, B]): Pipeline[A, B] =
-    Pipeline(t)
-  implicit def loadToPipeline[A, B](l: Load[A, B]): Pipeline[A, B] = Pipeline(l)
+  /**
+ * Represents the result of validation - either a validated value or a list of error messages.
+ */
+  sealed trait ValidationResult {
+
+    /**
+     * Returns true if the validation passed with no errors.
+     */
+    def isValid: Boolean
+
+    /**
+     * Returns the list of error messages from the validation.
+     * Empty list if validation is successful.
+     */
+    def errors: List[String]
+
+    /**
+     * Combines this validation result with another using logical AND semantics.
+     * Both validations must pass for the combined result to be valid.
+     * All errors from both validations are collected.
+     */
+    def &&(other: ValidationResult): ValidationResult = (this, other) match {
+      case (Valid, Valid)             => Valid
+      case (Valid, invalid: Invalid)  => invalid
+      case (invalid: Invalid, Valid)  => invalid
+      case (Invalid(e1), Invalid(e2)) => Invalid(e1 ++ e2)
+    }
+
+    /**
+     * Combines this validation result with another using logical OR semantics.
+     * At least one validation must pass for the combined result to be valid.
+     * If both fail, all errors are collected.
+     */
+    def ||(other: ValidationResult): ValidationResult = (this, other) match {
+      case (Valid, _)                 => Valid
+      case (_, Valid)                 => Valid
+      case (Invalid(e1), Invalid(e2)) => Invalid(e1 ++ e2)
+    }
+  }
+
+  /**
+   * Represents a successful validation with no errors.
+   */
+  case object Valid extends ValidationResult {
+    def isValid: Boolean     = true
+    def errors: List[String] = Nil
+  }
+
+  /**
+   * Represents a failed validation with a list of error messages.
+   */
+  case class Invalid(errors: List[String]) extends ValidationResult {
+    def isValid: Boolean = false
+  }
+
+  /**
+   * A type class for things that can be validated.
+   * 
+   * @tparam T The type of object being validated
+   */
+  trait Validate[T] {
+
+    /**
+     * Validate a value of type T, returning a ValidationResult.
+     */
+    def validate(value: T): ValidationResult
+
+    /**
+     * Combine this validator with another using logical AND.
+     */
+    def &&(other: Validate[T]): Validate[T] = (value: T) => {
+      this.validate(value) && other.validate(value)
+    }
+
+    /**
+     * Combine this validator with another using logical OR.
+     */
+    def ||(other: Validate[T]): Validate[T] = (value: T) => {
+      this.validate(value) || other.validate(value)
+    }
+
+    /**
+     * Apply the validator to a value.
+     */
+    def apply(value: T): ValidationResult = validate(value)
+  }
+
+  /**
+   * Companion object for creating validators.
+   */
+  object Validate {
+
+    /**
+     * Create a validator from a function.
+     */
+    def apply[T](f: T => ValidationResult): Validate[T] = new Validate[T] {
+      def validate(value: T): ValidationResult = f(value)
+    }
+  }
+
+  /**
+   * A simple requirement validation that fails with the given message if the condition is false.
+   * 
+   * @param condition The condition to check
+   * @param message The error message if the condition is false
+   * @return Valid if the condition is true, Invalid with the message otherwise
+   */
+  def require(condition: => Boolean, message: => String): ValidationResult =
+    if (condition) Valid else Invalid(List(message))
+
+  /**
+   * Default success validation result.
+   */
+  val success: ValidationResult = Valid
+
+  /**
+   * Default failure validation result with a custom message.
+   */
+  def failure(message: String): ValidationResult = Invalid(List(message))
 }
 
 package etl4s {
@@ -66,32 +243,6 @@ package etl4s {
   object Reader {
     def pure[R, A](a: A): Reader[R, A] = Reader(_ => a)
     def ask[R]: Reader[R, R]           = Reader(identity)
-  }
-
-  /** Validated: A way to accumulate errors instead of failing fast. This is
-    * useful for validating inputs where you want to return all errors at once
-    * rather than stopping at the first error
-    */
-  case class Validated[+E, +A](value: Either[List[E], A]) {
-    def map[B](f: A => B): Validated[E, B] =
-      Validated(value.map(f))
-
-    def flatMap[EE >: E, B](f: A => Validated[EE, B]): Validated[EE, B] =
-      Validated(value.flatMap(a => f(a).value))
-
-    /* Combine two validations, accumulating errors from both if they exist */
-    def zip[EE >: E, B](that: Validated[EE, B]): Validated[EE, (A, B)] =
-      (this.value, that.value) match {
-        case (Right(a), Right(b)) => Validated.valid((a, b))
-        case (Left(e1), Left(e2)) => Validated(Left(e1 ++ e2))
-        case (Left(e), _)         => Validated(Left(e))
-        case (_, Left(e))         => Validated(Left(e))
-      }
-  }
-
-  object Validated {
-    def valid[E, A](a: A): Validated[E, A]   = Validated(Right(a))
-    def invalid[E, A](e: E): Validated[E, A] = Validated(Left(List(e)))
   }
 
   /** Monoid: Used to define how to combine values (like concatenating lists)
@@ -147,19 +298,15 @@ package etl4s {
       Writer(() => (Monoid[L].empty, a))
   }
 
-  case class RetryConfig(
-    maxAttempts: Int = 3,
-    initialDelay: Duration = 100.millis,
-    backoffFactor: Double = 2.0
-  )
-
   /** Node: The core building block of the ETL pipeline. A Node processes data of
     * type A and produces data of type B. This can be done either synchronously
     * (runSync) or asynchronously (runAsync)
     */
-  sealed trait Node[-A, +B] { self =>
+  sealed trait Node[-A, +B] extends (A => B) { self =>
+    override def apply(a: A): B = runSync(a)
+    def runSync: A => B
+    def runAsync(implicit ec: ExecutionContext): A => Future[B]
 
-    /* The '&' operator: Runs two nodes in series with the same input and returns both results */
     def &[AA <: A, C](that: Node[AA, C]): Node[AA, (B, C)] =
       new Node[AA, (B, C)] {
         def runSync: AA => (B, C) = { a =>
@@ -173,7 +320,6 @@ package etl4s {
         }
       }
 
-    /* The '&>' operator: Runs two nodes in parallel with the same input and returns both results */
     def &>[AA <: A, C](
       that: Node[AA, C]
     )(implicit ec: ExecutionContext): Node[AA, (B, C)] = {
@@ -199,7 +345,6 @@ package etl4s {
       }
     }
 
-    /* Flattens nested tuples (e.g., ((A, B), C) becomes (A, B, C)) */
     def zip[BB >: B, Out](implicit
       flattener: Flatten.Aux[BB, Out]
     ): Node[A, Out] = new Node[A, Out] {
@@ -211,11 +356,6 @@ package etl4s {
       }
     }
 
-    def runSync: A => B
-    def runAsync(implicit ec: ExecutionContext): A => Future[B]
-    def run[C]: C => A => B = _ => runSync
-
-    /*  Transform the output of this node (like a functor's map) */
     def map[C](g: B => C): Node[A, C] = new Node[A, C] {
       def runSync: A => C = self.runSync andThen g
       def runAsync(implicit ec: ExecutionContext): A => Future[C] = { a =>
@@ -223,7 +363,6 @@ package etl4s {
       }
     }
 
-    /* Chain operations conditionally based on output (like a monad's flatMap) */
     def flatMap[AA <: A, C](g: B => Node[AA, C]): Node[AA, C] =
       new Node[AA, C] {
         def runSync: AA => C = { a =>
@@ -235,52 +374,55 @@ package etl4s {
         }
       }
 
-    /* Add retry capability to any node with exponential backoff */
-    def withRetry(config: RetryConfig): Node[A, B] = new Node[A, B] {
+    /**
+   * Creates a node that will retry the operation if it fails.
+   * 
+   * @param maxAttempts The maximum number of attempts (including the initial attempt)
+   * @param initialDelayMs The initial delay in milliseconds before retrying
+   * @param backoffFactor The multiplier applied to delay with each retry attempt
+   * @return A new Node with retry capability
+   */
+    def withRetry(
+      maxAttempts: Int = 3,
+      initialDelayMs: Long = 100,
+      backoffFactor: Double = 2.0
+    ): Node[A, B] = new Node[A, B] {
       def runSync: A => B = { input =>
-        def attempt(remaining: Int, delay: Duration): Try[B] = {
-          Try(Node.this.runSync(input)) match {
+        def attempt(remaining: Int, delay: Long): Try[B] = {
+          Try(self.runSync(input)) match {
             case Success(result) => Success(result)
             case Failure(e) if remaining > 1 =>
-              Thread.sleep(delay.toMillis)
+              Thread.sleep(delay)
               attempt(
                 remaining - 1,
-                Duration.fromNanos(
-                  (delay.toNanos * config.backoffFactor).toLong
-                )
+                (delay * backoffFactor).toLong
               )
             case Failure(e) => Failure(e)
           }
         }
-        attempt(
-          config.maxAttempts,
-          config.initialDelay
-        ).get
+        attempt(maxAttempts, initialDelayMs).get
       }
 
       def runAsync(implicit ec: ExecutionContext): A => Future[B] = { input =>
-        def attempt(remaining: Int, delay: Duration): Future[B] = {
-          Future(Try(Node.this.runSync(input))).flatMap {
+        def attempt(remaining: Int, delay: Long): Future[B] = {
+          Future(Try(self.runSync(input))).flatMap {
             case Success(result) => Future.successful(result)
             case Failure(e) if remaining > 1 =>
               Future {
-                Thread.sleep(delay.toMillis)
+                Thread.sleep(delay)
               }.flatMap { _ =>
                 attempt(
                   remaining - 1,
-                  Duration.fromNanos(
-                    (delay.toNanos * config.backoffFactor).toLong
-                  )
+                  (delay * backoffFactor).toLong
                 )
               }
             case Failure(e) => Future.failed(e)
           }
         }
-        attempt(config.maxAttempts, config.initialDelay)
+        attempt(maxAttempts, initialDelayMs)
       }
     }
 
-    /* Add error handling to any node */
     def onFailure[BB >: B](handler: Throwable => BB): Node[A, BB] =
       new Node[A, BB] {
         def runSync: A => BB = { input =>
@@ -294,6 +436,27 @@ package etl4s {
           self.runAsync(ec)(input).recover { case e => handler(e) }
         }
       }
+
+    /** 
+   * Allows observation of the data flowing through the Node without modifying it.
+   * Useful for logging, debugging, or other side effects.
+   */
+    def tap[BB >: B](f: BB => Any): Node[A, B] = new Node[A, B] {
+      def runSync: A => B = { a =>
+        val result = self.runSync(a)
+        f(result)
+        result
+      }
+
+      def runAsync(implicit ec: ExecutionContext): A => Future[B] = { a =>
+        self
+          .runAsync(ec)(a)
+          .map { result =>
+            f(result)
+            result
+          }(ec)
+      }
+    }
   }
 
   object Node {
@@ -304,88 +467,74 @@ package etl4s {
     }
   }
 
+  /** ETL Component trait - now as a trait instead of abstract class */
+  trait ETLComponent[A, B] extends Node[A, B] {
+    val f: A => B
+    def runSync: A => B                                         = f
+    def runAsync(implicit ec: ExecutionContext): A => Future[B] = a => Future(f(a))
+  }
+
   /** Extract: The "E" in ETL - Extracts data from a source. This is typically
     * the first stage in an ETL pipeline It gets data from somewhere (database,
     * file, API, etc.)
     */
-  case class Extract[A, B](f: A => B) extends Node[A, B] {
-    def runSync: A => B = f
-    def runAsync(implicit ec: ExecutionContext): A => Future[B] =
-      a => Future(f(a))
-
-    override def map[C](g: B => C): Extract[A, C] =
-      new Extract[A, C](f andThen g)
+  case class Extract[A, B](override val f: A => B) extends ETLComponent[A, B] {
+    override def map[C](g: B => C): Extract[A, C] = Extract(f andThen g)
 
     def flatMap[C](g: B => Extract[A, C]): Extract[A, C] =
-      new Extract[A, C](a => {
+      Extract(a => {
         val b = f(a)
         g(b).f(a)
       })
-    def andThen[C](that: Extract[B, C]): Extract[A, C] = Extract(
-      f andThen that.f
-    )
+
+    def andThen[C](that: Extract[B, C]): Extract[A, C] = Extract(f andThen that.f)
   }
 
   object Extract {
     def apply[A](value: A): Extract[Unit, A] = Extract(_ => value)
-    def pure[A]: Extract[A, A]               = Extract(a => a)
-    def async[A, B](f: A => Future[B])(implicit
-      ec: ExecutionContext
-    ): Extract[A, B] =
-      Extract(a => Await.result(f(a), Duration.Inf))
+    def pure[A]: Extract[A, A]               = Extract[A, A](a => a)
   }
 
   /** Transform: The "T" in ETL - Transforms data from one form to another. This
     * is typically the middle stage in an ETL pipeline It processes and changes
     * the data in some way
     */
-  case class Transform[A, B](f: A => B) extends Node[A, B] {
-    def runSync: A => B = f
-    def runAsync(implicit ec: ExecutionContext): A => Future[B] =
-      a => Future(f(a))
-
-    def andThen[C](that: Transform[B, C]): Transform[A, C] =
-      Transform(f andThen that.f)
+  case class Transform[A, B](override val f: A => B) extends ETLComponent[A, B] {
+    override def map[C](g: B => C): Transform[A, C] = Transform(f andThen g)
 
     def flatMap[C](g: B => Transform[A, C]): Transform[A, C] =
-      Transform { a =>
+      Transform(a => {
         val b = f(a)
         g(b).f(a)
-      }
+      })
 
-    override def map[C](g: B => C): Transform[A, C] = Transform(f andThen g)
+    def andThen[C](that: Transform[B, C]): Transform[A, C] = Transform(f andThen that.f)
   }
 
   object Transform {
-    def pure[A]: Transform[A, A] = Transform(a => a)
-
+    def apply[A](value: A): Transform[Unit, A] = Transform(_ => value)
+    def pure[A]: Transform[A, A]               = Transform[A, A](a => a)
   }
 
   /** Load: The "L" in ETL - Loads data into a destination. This is typically the
     * final stage in an ETL pipeline It writes data somewhere (database, file,
     * API, etc.)
     */
-  case class Load[A, B](f: A => B) extends Node[A, B] {
-    def runSync: A => B = f
-    def runAsync(implicit ec: ExecutionContext): A => Future[B] =
-      a => Future(f(a))
-
-    override def map[C](g: B => C): Load[A, C] = new Load[A, C](f andThen g)
+  case class Load[A, B](override val f: A => B) extends ETLComponent[A, B] {
+    override def map[C](g: B => C): Load[A, C] = Load(f andThen g)
 
     def flatMap[C](g: B => Load[A, C]): Load[A, C] =
-      new Load[A, C](a => {
+      Load(a => {
         val b = f(a)
         g(b).f(a)
       })
+
     def andThen[C](that: Load[B, C]): Load[A, C] = Load(f andThen that.f)
   }
 
   object Load {
-    def pure[A]: Load[A, A] = Load(a => a)
-    def async[A, B](f: A => Future[B])(implicit
-      ec: ExecutionContext
-    ): Load[A, B] =
-      Load(a => Await.result(f(a), Duration.Inf))
+    def apply[A](value: A): Load[Unit, A] = Load(_ => value)
+    def pure[A]: Load[A, A]               = Load[A, A](a => a)
   }
 
   /** Pipeline: A complete ETL flow from input to output. Pipelines combine
@@ -478,19 +627,79 @@ package etl4s {
     def map[C](f: B => C): Pipeline[A, C] = this ~> Transform(f)
 
     private def runSync(input: A): B = node.runSync(input)
-
     private def runAsync(input: A)(implicit ec: ExecutionContext): Future[B] =
       node.runAsync.apply(input)
 
-    def unsafeRun(input: A): B = runSync(input)
-
+    def unsafeRun(input: A): B    = runSync(input)
     def safeRun(input: A): Try[B] = Try(runSync(input))
 
-    def withRetry(config: RetryConfig = RetryConfig()): Pipeline[A, B] =
-      Pipeline(node.withRetry(config))
+    /**
+   * Runs the pipeline and returns both the result and the execution time in milliseconds.
+   * This is useful for performance monitoring and benchmarking.
+   *
+   * @param input The input value to the pipeline
+   * @return A tuple containing the result and the execution time in milliseconds
+   */
+    def unsafeRunTimed(input: A): (B, Long) = {
+      val startTime = System.currentTimeMillis()
+      val result    = node.runSync(input)
+      val endTime   = System.currentTimeMillis()
+      (result, endTime - startTime)
+    }
+
+    /**
+   * Runs the pipeline asynchronously and returns a Future containing both 
+   * the result and the execution time in milliseconds.
+   *
+   * @param input The input value to the pipeline
+   * @return A Future containing a tuple of the result and execution time in milliseconds
+   */
+    def unsafeRunTimedAsync(input: A)(implicit ec: ExecutionContext): Future[(B, Long)] = {
+      val startTime = System.currentTimeMillis()
+      node
+        .runAsync(ec)(input)
+        .map { result =>
+          val endTime = System.currentTimeMillis()
+          (result, endTime - startTime)
+        }(ec)
+    }
+
+    /**
+   * Runs the pipeline safely (catching exceptions) and returns both the result as Try[B]
+   * and the execution time in milliseconds.
+   *
+   * @param input The input value to the pipeline
+   * @return A tuple containing the Try[Result] and the execution time in milliseconds
+   */
+    def safeRunTimed(input: A): (Try[B], Long) = {
+      val startTime = System.currentTimeMillis()
+      val result    = Try(node.runSync(input))
+      val endTime   = System.currentTimeMillis()
+      (result, endTime - startTime)
+    }
+
+    /**
+   * Creates a pipeline that will retry the operation if it fails.
+   * 
+   * @param maxAttempts The maximum number of attempts (including the initial attempt)
+   * @param initialDelayMs The initial delay in milliseconds before retrying
+   * @param backoffFactor The multiplier applied to delay with each retry attempt
+   * @return A new Pipeline with retry capability
+   */
+    def withRetry(
+      maxAttempts: Int = 3,
+      initialDelayMs: Long = 100,
+      backoffFactor: Double = 2.0
+    ): Pipeline[A, B] = Pipeline(node.withRetry(maxAttempts, initialDelayMs, backoffFactor))
 
     def onFailure[BB >: B](handler: Throwable => BB): Pipeline[A, BB] =
       Pipeline(node.onFailure(handler))
+
+    /** 
+   * Allows observation of the data flowing through the Pipeline without modifying it.
+   * Useful for logging, debugging, or other side effects.
+   */
+    def tap(f: B => Any): Pipeline[A, B] = Pipeline(node.tap(f))
   }
 
   object Pipeline {
