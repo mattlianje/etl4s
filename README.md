@@ -276,6 +276,121 @@ Logs: ["Fetching user 123", "Processing User 123"]
 Result: "Processed: User 123"
 ```
 
+#### Validated[T]
+etl4s includes a lightweight validation system that helps you enforce business rules with clear error reporting.
+
+| Component | Description |
+|-----------|-------------|
+| `Validate[T]` | Type class for validating objects of type T |
+| `ValidationResult` | Result of validation (either `Valid` or `Invalid`) |
+| `require(condition, message)` | Basic validation function that checks a condition |
+| `success` | Predefined validation success (`Valid`) |
+| `failure(message)` | Creates a failed validation with a message |
+
+```scala
+import etl4s._
+
+/* Create validators */
+val validateOrderBasics = Validate[Order] { order =>
+  require(order.id.nonEmpty, "ID is required") &&
+  require(order.amount > 0, "Amount must be positive")
+}
+
+val validateHighValueOrder = Validate[Order] { order =>
+  if (order.amount > 1000) {
+    require(order.isVerified, "Large orders must be verified")
+  } else {
+    success
+  }
+}
+
+/* Combine validators with `&&` or `||`
+val validateOrder = validateOrderBasics && validateHighValueOrder
+
+val loadOrders = Extract(List(
+  Order("ord-1", 500.0, false),
+  Order("", 1200.0, true),
+  Order("ord-3", -50.0, false),
+  Order("ord-4", 2000.0, false)
+))
+
+/* Validate and partition orders */
+val transformAndSplit = Transform { orders =>
+  // Split into valid and invalid orders
+  orders.partition(o => validateOrder(o).isValid)
+}
+
+val saveValid = Load { case (validOrders, _) => println(s"Saving valid: $validOrders")}
+val logInvalid = Load { case (_, invalidOrders) => println(s"INVALID: $invalidOrders")}
+
+/* Fork processing for parallel valid/invalid execution */
+val pipeline = loadOrders ~>
+               transformAndSplit ~>
+               (saveValid &> logInvalid)
+
+pipeline.unsafeRun(())
+```
+
+##### Creating Validators
+```scala
+// Create a validator for a specific type
+val validateUser = Validate[User] { user => 
+  // validation logic here
+}
+```
+
+##### Basic Validation Functions
+```scala
+// Check a condition with an error message
+require(user.age >= 18, "Must be 18 or older")
+
+// Always succeeds
+success
+
+// Always fails with a message
+failure("Invalid data")
+```
+
+##### Combining Validations
+```scala
+// Both validations must pass (AND)
+require(user.name.nonEmpty, "Name required") && 
+require(user.email.contains("@"), "Invalid email")
+
+// Either validation must pass (OR)
+require(user.isAdmin, "Must be admin") || 
+require(user.hasSpecialPermission, "Special permission required")
+```
+
+##### Conditional Validation
+```scala
+// Validation based on a condition
+if (user.role == Admin) {
+  require(user.securityClearance > 3, "Admins need high security clearance")
+} else {
+  success
+}
+
+user.accountType match {
+  case Premium => require(user.paymentVerified, "Premium accounts need payment verification")
+  case Trial => require(user.trialDaysLeft > 0, "Trial period expired")
+  case Free => success
+}
+```
+
+##### Composing Validators
+```scala
+val validateBasics = Validate[User] { user => 
+  require(user.name.nonEmpty, "Name required") &&
+  require(user.email.nonEmpty, "Email required")
+}
+
+val validatePermissions = Validate[User] { user => 
+  require(user.hasAccess, "User needs access permission")
+}
+
+val validateUser = validateBasics && validatePermissions
+```
 
 #### `Validated[E, A]`: Error accumulating pipelines
 No more failing on the first error! ... And fixing bugs ... one ... by ... one. Stack quality checks and accumulate lists of errors.
