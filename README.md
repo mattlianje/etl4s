@@ -33,6 +33,31 @@ All you need:
 ```scala
 import etl4s.*
 ```
+## Table of Contents
+- [Features](#features)
+- [Get started](#get-started)
+- [Code Example](#code-example)
+- [Core Concepts](#core-concepts)
+  - [Pipeline](#pipeline-in-out)
+  - [Node](#node-in-out)
+- [Type safety](#type-safety)
+- [Of note...](#of-note)
+- [Operators](#operators)
+- [Handling Failures](#handling-failures)
+  - [withRetry](#withretry)
+  - [onFailure](#onfailure)
+- [Observation with `tap`](#observation-with-tap)
+- [Parallelizing Tasks](#parallelizing-tasks)
+- [Built-in Tools](#built-in-tools)
+  - [Reader[R, A]](#readerr-a-config-driven-pipelines)
+  - [Writer[W, A]](#writerw-a-log-accumulating-pipelines)
+  - [Validate[T]](#validatet)
+- [Examples](#examples)
+  - [Chain two pipelines](#chain-two-pipelines)
+  - [Complex chaining](#complex-chaining)
+- [Real-world examples](#real-world-examples)
+- [Inspiration](#inspiration)
+
 ## Code Example
 ```scala
 import etl4s.*
@@ -159,6 +184,28 @@ This prints:
 Failed with: Boom! ... firing missile
 ```
 
+## Observation with `tap`
+The `tap` method allows you to observe values flowing through your pipeline without modifying them. 
+This is useful for logging, debugging, or collecting metrics.
+
+```scala
+import etl4s._
+
+// Define the pipeline stages
+val sayHello   = Extract("hello world")
+val splitWords = Transform[String, Array[String]](_.split(" "))
+val toUpper    = Transform[Array[String], Array[String]](_.map(_.toUpperCase))
+
+val pipeline = sayHello ~> 
+               splitWords
+                .tap(words => println(s"Processing ${words.length} words")) ~> 
+               toUpper
+
+// Run the pipeline - prints "Processing 2 words" during execution
+val result = pipeline.unsafeRun(())  // Result: Array("HELLO", "WORLD")
+```
+
+
 ## Parallelizing Tasks
 **etl4s** has an elegant shorthand for grouping and parallelizing operations that share the same input type:
 ```scala
@@ -230,9 +277,7 @@ val loadUser = Reader[ApiConfig, Load[String, String]] { config =>
 val configuredPipeline = for {
                           userTransform <- fetchUser
                           userLoader    <- loadUser
-                        } yield {
-                          Extract("user123") ~> userTransform ~> userLoader
-                        } 
+                        } yield Extract("user123") ~> userTransform ~> userLoader
 
 /* Run with config */
 val result = configuredPipeline.run(config).unsafeRun(())
@@ -278,43 +323,149 @@ Logs: ["Fetching user 123", "Processing User 123"]
 Result: "Processed: User 123"
 ```
 
+#### Validate[T]
+etl4s includes a powerful, lightweight validation system that helps you enforce business rules with clear error reporting.
+The `Validate` type lets you stack checks and automatically accumulates lists of errors.
 
-#### `Validated[E, A]`: Error accumulating pipelines
-No more failing on the first error! ... And fixing bugs ... one ... by ... one. Stack quality checks and accumulate lists of errors.
-This is perfect for validating data on the edges of your pipelines (Just use `Validated.` `valid`/`invalid`... then `zip` on a `Validated` to "stack"
-your validations).
+| Component | Description |
+|-----------|-------------|
+| `Validate[T]` | Type class for validating objects of type T |
+| `ValidationResult` | Result of validation (either `Valid` or `Invalid`) |
+| `require(condition, message)` | Basic validation function that checks a condition |
+| `success` | Predefined validation success (`Valid`) |
+| `failure(message)` | Creates a failed validation with a message |
 
+Here is `Validated` in action. We stack some validations and use them to fork our pipeline:
 ```scala
-import etl4s.*
+import etl4s._
+import scala.concurrent.ExecutionContext.Implicits.global
 
-case class User(name: String, age: Int)
+case class Order(id: String, amount: Double, isVerified: Boolean = false)
 
-def validateName(name: String): Validated[String, String] =
-  if (!name.matches("[A-Za-z ]+")) Validated.invalid("Name can only contain letters")
-  else Validated.valid(name)
-
-def validateAge(age: Int): Validated[String, Int] =
-  if (age < 0) Validated.invalid("Age must be positive")
-  else if (age > 150) Validated.invalid("Age not realistic")
-  else Validated.valid(age)
-
-val validateUser = Transform[(String, Int), Validated[String, User]] {
-  case (name, age) =>
-    validateName(name)
-      .zip(validateAge(age))
-      .map { case (name, age) => User(name, age) }
+/* Basic validation */
+val validateOrderBasics = Validate[Order] { order =>
+  require(order.id.nonEmpty, "ID is required") &&
+  require(order.amount > 0, "Amount must be positive")
 }
 
-val pipeline = Extract(("Alice4", -1)) ~> validateUser 
-pipeline.unsafeRun(()).value.left.get
+/* Another validation */
+val validateHighValueOrder = Validate[Order] { order =>
+  if (order.amount > 1000) 
+    require(order.isVerified, "Large orders must be verified")
+  else 
+    success
+}
+
+/* Combine them */
+val validateOrder = validateOrderBasics && validateHighValueOrder
+
+val SAMPLE_ORDERS = List(
+  Order("ord-1", 500.0, false),      // Valid
+  Order("", 1200.0, true),           // Invalid: empty ID
+  Order("ord-3", -50.0, false),      // Invalid: negative amount
+  Order("ord-4", 2000.0, false)      // Invalid: unverified large order
+)
+
+val extractOrders = Extract(_ => SAMPLE_ORDERS)
+
+val validateAndSplit = Transform[List[Order], (List[Order], List[Order])] { orders =>
+  orders.partition(validateOrder(_).isValid)
+}
+
+val processValid = Load[(List[Order], List[Order]), Unit] { 
+  case (valid, _) => println(s"Processing valid orders: $valid") 
+}
+
+val reportInvalid = Load[(List[Order], List[Order]), Unit] { 
+  case (_, invalid) => println(s"Flagging invalid orders: $invalid") 
+}
+
+val pipeline =
+  extractOrders ~>
+  validateAndSplit ~>
+  (processValid &> reportInvalid)
+
+pipeline.unsafeRun(())
 ```
 
-This returns:
-```
-List(
-  Name can only contain letters,
-  Age must be positive
+To show the FULL power of `Validated`, let's consider these synthetic data types:
+```scala
+case class User(
+  name: String, 
+  email: String, 
+  age: Int, 
+  role: Role = Member,
+  accountType: AccountType = Free
 )
+
+// Simple enums
+sealed trait Role
+case object Admin extends Role
+case object Member extends Role
+
+sealed trait AccountType
+case object Premium extends AccountType
+case object Trial extends AccountType
+case object Free extends AccountType
+
+val user = User("John", "john@example.com", 25, Admin, Premium)
+```
+
+##### Creating Validators
+Create a validator for a specific type
+```scala
+val validateUser = Validate[User] { user => 
+  // validation logic here
+  success
+}
+```
+
+##### Basic Validation Functions
+Check a condition with an error message
+```scala
+require(user.age >= 18, "Must be 18 or older")
+
+val alwaysValid = success
+val alwaysFails = failure("Invalid data")
+```
+
+##### Combining Validations
+```scala
+// Both validations must pass (AND)
+require(user.name.nonEmpty, "Name required") && 
+require(user.email.contains("@"), "Invalid email")
+
+// Either validation must pass (OR)
+require(user.role == Admin, "Must be admin") || 
+require(user.accountType == Premium, "Must be premium user")
+```
+
+##### Conditional Validation
+```scala
+if (user.role == Admin)
+  require(user.age >= 25, "Admins must be 25 or older")
+else
+  success
+
+user.accountType match {
+  case Premium => require(user.email.contains("@"), "Premium requires valid email")
+  case Trial => require(user.age >= 18, "Trial requires 18+")
+  case Free => success
+}
+```
+
+##### Composing Validators
+```scala
+val validateBasics = Validate[User] { user => 
+  require(user.name.nonEmpty, "Name required") &&
+  require(user.email.nonEmpty, "Email required")
+}
+
+val validateAge = Validate[User] { user => 
+  require(user.age >= 18, "Must be 18 or older")
+}
+
+val validateUser = validateBasics && validateAge
 ```
 
 
@@ -364,43 +515,6 @@ Prints:
 ```
 "LOADED: FETCHING ALICE | AGE: 25"
 ```
-
-#### Regular Scala Inside
-Use normal (more procedural-style) Scala collections and functions in your transforms
-```scala
-import etl4s.*
-
-val salesData = Extract[Unit, Map[String, List[Int]]](_ =>
- Map(
-  "Alice" -> List(100, 200, 150),
-  "Bob" -> List(50, 50, 75),
-  "Carol" -> List(300, 100, 200)
- )
-)
-
-val calculateBonus = Transform[Map[String, List[Int]], List[String]] { sales =>
-  sales.map { case (name, amounts) => 
-    val total = amounts.sum
-    val bonus = if (total > 500) "High" else "Standard"
-    s"$name: $$${total} - $bonus Bonus"
-  }.toList
-}
-
-val printResults = Load[List[String], Unit](_.foreach(println))
-
-val pipeline =
-   salesData ~> calculateBonus ~> printResults
-
-pipeline.unsafeRun(())
-```
-Prints:
-```
-Alice: $450 - Standard Bonus
-Bob: $175 - Standard Bonus
-Carol: $600 - High Bonus
-```
-
-
 
 ## Real-world examples
 See the [tutorial](tutorial.md) to learn how to build an invincible, combat ready **etl4s** pipeline that use `Reader` based
