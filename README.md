@@ -50,7 +50,7 @@ import etl4s.*
 - [Built-in Tools](#built-in-tools)
   - [Reader[R, A]](#readerr-a-config-driven-pipelines)
   - [Writer[W, A]](#writerw-a-log-accumulating-pipelines)
-  - [Validate[T]](#validatedt)
+  - [Validate[T]](#validatet)
 - [Examples](#examples)
   - [Chain two pipelines](#chain-two-pipelines)
   - [Complex chaining](#complex-chaining)
