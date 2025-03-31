@@ -337,6 +337,9 @@ The `Validate` type lets you stack checks and automatically accumulates lists of
 
 ```scala
 import etl4s._
+import scala.concurrent.ExecutionContext.Implicits.global
+
+case class Order(id: String, amount: Double, isVerified: Boolean = false)
 
 val validateOrderBasics = Validate[Order] { order =>
   require(order.id.nonEmpty, "ID is required") &&
@@ -372,12 +375,29 @@ val pipeline = loadOrders ~>
 
 pipeline.unsafeRun(())
 ```
+Lets imagine we have:
+```scala
+case class User(name: String, email: String, age: Int, isAdmin: Boolean = false, 
+                hasSpecialPermission: Boolean = false, securityClearance: Int = 0,
+                accountType: AccountType = Free, hasAccess: Boolean = true,
+                paymentVerified: Boolean = false, trialDaysLeft: Int = 0)
+
+sealed trait AccountType
+case object Premium extends AccountType
+case object Trial extends AccountType
+case object Free extends AccountType
+
+sealed trait Role
+case object Admin extends Role
+case object Member extends Role
+```
 
 ##### Creating Validators
 Create a validator for a specific type
 ```scala
 val validateUser = Validate[User] { user => 
   // validation logic here
+  success
 }
 ```
 
@@ -387,10 +407,10 @@ Check a condition with an error message
 require(user.age >= 18, "Must be 18 or older")
 
 /* Always succeeds */
-success
+val alwaysValid = success
 
 /* Always fails with a message */
-failure("Invalid data")
+val alwaysFails = failure("Invalid data")
 ```
 
 ##### Combining Validations
