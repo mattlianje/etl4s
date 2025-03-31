@@ -33,6 +33,31 @@ All you need:
 ```scala
 import etl4s.*
 ```
+## Table of Contents
+- [Features](#features)
+- [Get started](#get-started)
+- [Code Example](#code-example)
+- [Core Concepts](#core-concepts)
+  - [Pipeline](#pipeline-in-out)
+  - [Node](#node-in-out)
+- [Type safety](#type-safety)
+- [Of note...](#of-note)
+- [Operators](#operators)
+- [Handling Failures](#handling-failures)
+  - [withRetry](#withretry)
+  - [onFailure](#onfailure)
+- [Parallelizing Tasks](#parallelizing-tasks)
+- [Built-in Tools](#built-in-tools)
+  - [Reader[R, A]](#readerr-a-config-driven-pipelines)
+  - [Writer[W, A]](#writerw-a-log-accumulating-pipelines)
+  - [Validated[T]](#validatedt)
+  - [Validated[E, A]](#validatede-a-error-accumulating-pipelines)
+- [Examples](#examples)
+  - [Chain two pipelines](#chain-two-pipelines)
+  - [Complex chaining](#complex-chaining)
+- [Real-world examples](#real-world-examples)
+- [Inspiration](#inspiration)
+
 ## Code Example
 ```scala
 import etl4s.*
