@@ -112,9 +112,7 @@ package object etl4s {
  */
   sealed trait ValidationResult {
 
-    /**
-     * Returns true if the validation passed with no errors.
-     */
+    /* Returns true if the validation passed with no errors. */
     def isValid: Boolean
 
     /**
@@ -147,17 +145,11 @@ package object etl4s {
     }
   }
 
-  /**
-   * Represents a successful validation with no errors.
-   */
   case object Valid extends ValidationResult {
     def isValid: Boolean     = true
     def errors: List[String] = Nil
   }
 
-  /**
-   * Represents a failed validation with a list of error messages.
-   */
   case class Invalid(errors: List[String]) extends ValidationResult {
     def isValid: Boolean = false
   }
@@ -169,39 +161,21 @@ package object etl4s {
    */
   trait Validate[T] {
 
-    /**
-     * Validate a value of type T, returning a ValidationResult.
-     */
     def validate(value: T): ValidationResult
 
-    /**
-     * Combine this validator with another using logical AND.
-     */
     def &&(other: Validate[T]): Validate[T] = (value: T) => {
       this.validate(value) && other.validate(value)
     }
 
-    /**
-     * Combine this validator with another using logical OR.
-     */
     def ||(other: Validate[T]): Validate[T] = (value: T) => {
       this.validate(value) || other.validate(value)
     }
 
-    /**
-     * Apply the validator to a value.
-     */
     def apply(value: T): ValidationResult = validate(value)
   }
 
-  /**
-   * Companion object for creating validators.
-   */
   object Validate {
 
-    /**
-     * Create a validator from a function.
-     */
     def apply[T](f: T => ValidationResult): Validate[T] = new Validate[T] {
       def validate(value: T): ValidationResult = f(value)
     }
@@ -217,14 +191,7 @@ package object etl4s {
   def require(condition: => Boolean, message: => String): ValidationResult =
     if (condition) Valid else Invalid(List(message))
 
-  /**
-   * Default success validation result.
-   */
-  val success: ValidationResult = Valid
-
-  /**
-   * Default failure validation result with a custom message.
-   */
+  val success: ValidationResult                  = Valid
   def failure(message: String): ValidationResult = Invalid(List(message))
 }
 
@@ -375,13 +342,13 @@ package etl4s {
       }
 
     /**
-   * Creates a node that will retry the operation if it fails.
-   * 
-   * @param maxAttempts The maximum number of attempts (including the initial attempt)
-   * @param initialDelayMs The initial delay in milliseconds before retrying
-   * @param backoffFactor The multiplier applied to delay with each retry attempt
-   * @return A new Node with retry capability
-   */
+      * Creates a node that will retry the operation if it fails.
+      * 
+      * @param maxAttempts The maximum number of attempts (including the initial attempt)
+      * @param initialDelayMs The initial delay in milliseconds before retrying
+      * @param backoffFactor The multiplier applied to delay with each retry attempt
+      * @return A new Node with retry capability
+      */
     def withRetry(
       maxAttempts: Int = 3,
       initialDelayMs: Long = 100,
@@ -438,9 +405,9 @@ package etl4s {
       }
 
     /** 
-   * Allows observation of the data flowing through the Node without modifying it.
-   * Useful for logging, debugging, or other side effects.
-   */
+     * Allows observation of the data flowing through the Node without modifying it.
+     * Useful for logging, debugging, or other side effects.
+     */
     def tap[BB >: B](f: BB => Any): Node[A, B] = new Node[A, B] {
       def runSync: A => B = { a =>
         val result = self.runSync(a)
@@ -467,7 +434,7 @@ package etl4s {
     }
   }
 
-  /** ETL Component trait - now as a trait instead of abstract class */
+  /* ETL Component trait - now as a trait instead of abstract class */
   trait ETLComponent[A, B] extends Node[A, B] {
     val f: A => B
     def runSync: A => B                                         = f
@@ -634,12 +601,12 @@ package etl4s {
     def safeRun(input: A): Try[B] = Try(runSync(input))
 
     /**
-   * Runs the pipeline and returns both the result and the execution time in milliseconds.
-   * This is useful for performance monitoring and benchmarking.
-   *
-   * @param input The input value to the pipeline
-   * @return A tuple containing the result and the execution time in milliseconds
-   */
+      * Runs the pipeline and returns both the result and the execution time in milliseconds.
+      * This is useful for performance monitoring and benchmarking.
+      *
+      * @param input The input value to the pipeline
+      * @return A tuple containing the result and the execution time in milliseconds
+      */
     def unsafeRunTimed(input: A): (B, Long) = {
       val startTime = System.currentTimeMillis()
       val result    = node.runSync(input)
@@ -648,12 +615,12 @@ package etl4s {
     }
 
     /**
-   * Runs the pipeline asynchronously and returns a Future containing both 
-   * the result and the execution time in milliseconds.
-   *
-   * @param input The input value to the pipeline
-   * @return A Future containing a tuple of the result and execution time in milliseconds
-   */
+      * Runs the pipeline asynchronously and returns a Future containing both 
+      * the result and the execution time in milliseconds.
+      *
+      * @param input The input value to the pipeline
+      * @return A Future containing a tuple of the result and execution time in milliseconds
+      */
     def unsafeRunTimedAsync(input: A)(implicit ec: ExecutionContext): Future[(B, Long)] = {
       val startTime = System.currentTimeMillis()
       node
@@ -665,12 +632,12 @@ package etl4s {
     }
 
     /**
-   * Runs the pipeline safely (catching exceptions) and returns both the result as Try[B]
-   * and the execution time in milliseconds.
-   *
-   * @param input The input value to the pipeline
-   * @return A tuple containing the Try[Result] and the execution time in milliseconds
-   */
+      * Runs the pipeline safely (catching exceptions) and returns both the result as Try[B]
+      * and the execution time in milliseconds.
+      *
+      * @param input The input value to the pipeline
+      * @return A tuple containing the Try[Result] and the execution time in milliseconds
+      */
     def safeRunTimed(input: A): (Try[B], Long) = {
       val startTime = System.currentTimeMillis()
       val result    = Try(node.runSync(input))
@@ -679,13 +646,13 @@ package etl4s {
     }
 
     /**
-   * Creates a pipeline that will retry the operation if it fails.
-   * 
-   * @param maxAttempts The maximum number of attempts (including the initial attempt)
-   * @param initialDelayMs The initial delay in milliseconds before retrying
-   * @param backoffFactor The multiplier applied to delay with each retry attempt
-   * @return A new Pipeline with retry capability
-   */
+      * Creates a pipeline that will retry the operation if it fails.
+      * 
+      * @param maxAttempts The maximum number of attempts (including the initial attempt)
+      * @param initialDelayMs The initial delay in milliseconds before retrying
+      * @param backoffFactor The multiplier applied to delay with each retry attempt
+      * @return A new Pipeline with retry capability
+      */
     def withRetry(
       maxAttempts: Int = 3,
       initialDelayMs: Long = 100,
@@ -696,9 +663,9 @@ package etl4s {
       Pipeline(node.onFailure(handler))
 
     /** 
-   * Allows observation of the data flowing through the Pipeline without modifying it.
-   * Useful for logging, debugging, or other side effects.
-   */
+      * Allows observation of the data flowing through the Pipeline without modifying it.
+      * Useful for logging, debugging, or other side effects.
+      */
     def tap(f: B => Any): Pipeline[A, B] = Pipeline(node.tap(f))
   }
 
