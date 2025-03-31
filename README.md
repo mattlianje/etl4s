@@ -341,40 +341,40 @@ import scala.concurrent.ExecutionContext.Implicits.global
 
 case class Order(id: String, amount: Double, isVerified: Boolean = false)
 
-val validateOrderBasics = Validate[Order] { order =>
+val validateOrder = Validate[Order] { order =>
   require(order.id.nonEmpty, "ID is required") &&
-  require(order.amount > 0, "Amount must be positive")
+  require(order.amount > 0, "Amount must be positive") &&
+  (if (order.amount > 1000) require(order.isVerified, "Large orders must be verified") else success)
 }
 
-val validateHighValueOrder = Validate[Order] { order =>
-  if (order.amount > 1000) require(order.isVerified, "Large orders must be verified")
-  else success
-}
-
-/* Combine validators with `&&` or `||` */
-val validateOrder = validateOrderBasics && validateHighValueOrder
-
-val loadOrders = Extract(List(
+val SAMPLE_ORDERS = List(
   Order("ord-1", 500.0, false),
   Order("", 1200.0, true),
   Order("ord-3", -50.0, false),
   Order("ord-4", 2000.0, false)
-))
+)
+val extractOrders = Extract(_ => SAMPLE_ORDERS)
 
-val transformAndSplit = Transform { orders =>
-  orders.partition(o => validateOrder(o).isValid)
+val validateAndSplit = Transform[List[Order], (List[Order], List[Order])] { orders =>
+  orders.partition(validateOrder(_).isValid)
 }
 
-val saveValid = Load { case (validOrders, _) => println(s"Saving valid: $validOrders")}
-val logInvalid = Load { case (_, invalidOrders) => println(s"INVALID: $invalidOrders")}
+val processValid = Load[(List[Order], List[Order]), Unit] { 
+  case (valid, _) => println(s"Processing valid orders: $valid") 
+}
 
-/* Fork processing for parallel valid/invalid execution */
-val pipeline = loadOrders ~>
-               transformAndSplit ~>
-               (saveValid &> logInvalid)
+val reportInvalid = Load[(List[Order], List[Order]), Unit] { 
+  case (_, invalid) => println(s"Flagging invalid orders: $invalid") 
+}
+
+val pipeline =
+  extractOrders ~>
+  validateAndSplit ~>
+  (processValid &> reportInvalid)
 
 pipeline.unsafeRun(())
 ```
+
 Let's consider the example
 ```scala
 case class User(
