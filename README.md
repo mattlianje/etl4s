@@ -302,7 +302,7 @@ Result: "Processed: User 123"
 
 #### Validate[T]
 etl4s includes a lightweight validation system that helps you enforce business rules with clear error reporting.
-The `Validate` type quality lets you stack checks and automatically accumulates lists of errors.
+The `Validate` type lets you stack checks and automatically accumulates lists of errors.
 
 | Component | Description |
 |-----------|-------------|
