@@ -304,7 +304,7 @@ val validateHighValueOrder = Validate[Order] { order =>
   }
 }
 
-/* Combine validators with `&&` or `||`
+/* Combine validators with `&&` or `||` */
 val validateOrder = validateOrderBasics && validateHighValueOrder
 
 val loadOrders = Extract(List(
