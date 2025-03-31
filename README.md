@@ -321,11 +321,8 @@ val validateOrderBasics = Validate[Order] { order =>
 }
 
 val validateHighValueOrder = Validate[Order] { order =>
-  if (order.amount > 1000) {
-    require(order.isVerified, "Large orders must be verified")
-  } else {
-    success
-  }
+  if (order.amount > 1000) require(order.isVerified, "Large orders must be verified")
+  else success
 }
 
 /* Combine validators with `&&` or `||` */
