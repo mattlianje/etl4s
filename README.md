@@ -335,6 +335,7 @@ The `Validate` type lets you stack checks and automatically accumulates lists of
 | `success` | Predefined validation success (`Valid`) |
 | `failure(message)` | Creates a failed validation with a message |
 
+Here is `Validated` in action. We stack some validations and use them to fork our pipeline:
 ```scala
 import etl4s._
 import scala.concurrent.ExecutionContext.Implicits.global
@@ -387,7 +388,7 @@ val pipeline =
 pipeline.unsafeRun(())
 ```
 
-Let's consider these synthetic data types to show the full power of etl4s' `Validate`
+To show the FULL power of `Validated`, let's consider these synthetic data types:
 ```scala
 case class User(
   name: String, 
