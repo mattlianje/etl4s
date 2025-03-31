@@ -406,10 +406,7 @@ Check a condition with an error message
 ```scala
 require(user.age >= 18, "Must be 18 or older")
 
-/* Always succeeds */
 val alwaysValid = success
-
-/* Always fails with a message */
 val alwaysFails = failure("Invalid data")
 ```
 
