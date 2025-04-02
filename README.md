@@ -335,60 +335,8 @@ The `Validate` type lets you stack checks and automatically accumulates lists of
 | `success` | Predefined validation success (`Valid`) |
 | `failure(message)` | Creates a failed validation with a message |
 
-Here is `Validated` in action. We stack some validations and use them to fork our pipeline:
-```scala
-import etl4s._
-import scala.concurrent.ExecutionContext.Implicits.global
 
-case class Order(id: String, amount: Double, isVerified: Boolean = false)
-
-/* Basic validation */
-val validateOrderBasics = Validate[Order] { order =>
-  require(order.id.nonEmpty, "ID is required") &&
-  require(order.amount > 0, "Amount must be positive")
-}
-
-/* Another validation */
-val validateHighValueOrder = Validate[Order] { order =>
-  if (order.amount > 1000) 
-    require(order.isVerified, "Large orders must be verified")
-  else 
-    success
-}
-
-/* Combine them */
-val validateOrder = validateOrderBasics && validateHighValueOrder
-
-val SAMPLE_ORDERS = List(
-  Order("ord-1", 500.0, false),      // Valid
-  Order("", 1200.0, true),           // Invalid: empty ID
-  Order("ord-3", -50.0, false),      // Invalid: negative amount
-  Order("ord-4", 2000.0, false)      // Invalid: unverified large order
-)
-
-val extractOrders = Extract(_ => SAMPLE_ORDERS)
-
-val validateAndSplit = Transform[List[Order], (List[Order], List[Order])] { orders =>
-  orders.partition(validateOrder(_).isValid)
-}
-
-val processValid = Load[(List[Order], List[Order]), Unit] { 
-  case (valid, _) => println(s"Processing valid orders: $valid") 
-}
-
-val reportInvalid = Load[(List[Order], List[Order]), Unit] { 
-  case (_, invalid) => println(s"Flagging invalid orders: $invalid") 
-}
-
-val pipeline =
-  extractOrders ~>
-  validateAndSplit ~>
-  (processValid &> reportInvalid)
-
-pipeline.unsafeRun(())
-```
-
-To show the FULL power of `Validated`, let's consider these synthetic data types:
+Validated example:
 ```scala
 case class User(
   name: String, 
@@ -398,7 +346,6 @@ case class User(
   accountType: AccountType = Free
 )
 
-// Simple enums
 sealed trait Role
 case object Admin extends Role
 case object Member extends Role
@@ -415,7 +362,7 @@ val user = User("John", "john@example.com", 25, Admin, Premium)
 Create a validator for a specific type
 ```scala
 val validateUser = Validate[User] { user => 
-  // validation logic here
+  /* validation logic here */
   success
 }
 ```
@@ -431,11 +378,11 @@ val alwaysFails = failure("Invalid data")
 
 ##### Combining Validations
 ```scala
-// Both validations must pass (AND)
+/* Both validations must pass (AND) */
 require(user.name.nonEmpty, "Name required") && 
 require(user.email.contains("@"), "Invalid email")
 
-// Either validation must pass (OR)
+/* Either validation must pass (OR) */
 require(user.role == Admin, "Must be admin") || 
 require(user.accountType == Premium, "Must be premium user")
 ```
@@ -476,16 +423,10 @@ Simple UNIX-pipe style chaining of two pipelines:
 ```scala
 import etl4s.*
 
-val plusFiveExclaim: Pipeline[Int, String] =
-    Transform((x: Int) => x + 5) ~> 
-    Transform((x: Int) => x.toString + "!")
+val p1: Pipeline[Int, String] = ???
+val p2: Pipeline[String, String] = ???
 
-val doubleString: Pipeline[String, String] =
-    Extract((s: String) => s) ~> 
-    Transform[String, String](x => x ++ x)
-
-val pipeline: Pipeline[Int, String] = plusFiveExclaim ~> doubleString
-println(pipeline.unsafeRun(2))
+val p3: Pipeline[Int, String] = p1 ~> p2
 ```
 Prints:
 ```
@@ -497,23 +438,14 @@ Connect the output of two pipelines to a third:
 ```scala
 import etl4s.*
 
-val fetchUser = Transform[String, String](id => s"Fetching $id")
-val loadUser = Load[String, String](msg => s"Loaded: $msg")
+val namePipeline: Pipeline[Unit, String] = ???
+val agePipeline: Pipeline[Unit, String] = ???
 
-val namePipeline = Extract("alice") ~> fetchUser ~> loadUser
-val agePipeline = Extract(25) ~> Transform(age => s"Age: $age")
-
-val combined: Pipeline[Unit, Unit] = for {
-  name <- namePipeline
-  age <- agePipeline
-  combined <- Extract(s"$name | $age") ~> Transform(_.toUpperCase) ~> Load(println)
-} yield combined
-
-combined.unsafeRun(())
-```
-Prints:
-```
-"LOADED: FETCHING ALICE | AGE: 25"
+val combined: Pipeline[Unit, Unit] =
+  for {
+    name <- namePipeline
+    age <- agePipeline
+  } yield Extract(s"$name | $age") ~> Transform(_.toUpperCase) ~> Load(println)
 ```
 
 ## Real-world examples
