@@ -257,7 +257,7 @@ val pipeline =
 **etl4s** comes with 3 extra abstractions to make your pipelines hard like iron, and flexible like bamboo.
 You can use them directly or swap in your own favorites (like their better built homologues from [Cats](https://typelevel.org/cats/)).
 
-#### `Reader[R, A]`: Config-driven pipelines
+### `Reader[R, A]`: Config-driven pipelines
 Need database credentials? Start and end dates for your batch job? API keys? Environment settings?
 Let your pipeline know exactly what it needs to run, and switch configs effortlessly.
 ```scala
@@ -288,7 +288,7 @@ Prints:
 "User loaded with key `secret`: Fetching user user123 from https://api.com"
 ```
 
-#### `Writer[W, A]`: Log accumulating pipelines
+### `Writer[W, A]`: Log accumulating pipelines
 Collect logs at every step of your pipeline and get them all at once with your results.
 No more scattered println's - just clean, organized logging, that shows exactly how your data flowed through the pipeline.
 ```scala
@@ -323,11 +323,11 @@ Logs: ["Fetching user 123", "Processing User 123"]
 Result: "Processed: User 123"
 ```
 
-#### Validated[T]
+### Validated[T]
 **etl4s** provides a lightweight validation system that lets you accumulate errors instead of failing at the first problem.
 You can then report on, and take action based on specific failure lists.
 
-##### Components
+#### Components
 
 | Component | Description | Example |
 |:----------|:------------|:--------|
@@ -363,7 +363,7 @@ val invalid = validateUser(User("", "not-an-email", 16))
 // Invalid(List("Name required", "Valid email required", "Must be 18+"))
 ```
 
-##### Composing Validators
+#### Composing Validators
 
 Create specialized validators:
 ```scala
@@ -385,7 +385,7 @@ val flexibleValidator = validateName || validateAge
 // At least one validation must pass (OR)
 ```
 
-##### Conditional Validation
+#### Conditional Validation
 
 Adapt validation rules contextually:
 ```scala
