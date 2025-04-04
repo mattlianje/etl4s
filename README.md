@@ -51,7 +51,7 @@ import etl4s.*
 - [Built-in Tools](#built-in-tools)
   - [Reader[R, A]](#readerr-a-config-driven-pipelines)
   - [Writer[W, A]](#writerw-a-log-accumulating-pipelines)
-  - [Validated[T]](#validatedt)
+  - [Validated[T]](#validatedt-easy-validation-stacking)
 - [Examples](#examples)
   - [Chain two pipelines](#chain-two-pipelines)
   - [Complex chaining](#complex-chaining)
@@ -323,7 +323,7 @@ Logs: ["Fetching user 123", "Processing User 123"]
 Result: "Processed: User 123"
 ```
 
-### Validated[T]
+### `Validated[T]`: Easy validation stacking
 **etl4s** provides a lightweight validation system that lets you accumulate errors instead of failing at the first problem.
 You can then report on, and take action based on specific failure lists.
 
