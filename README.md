@@ -143,18 +143,18 @@ etl4s uses a few simple operators to build pipelines:
 **etl4s** comes with 2 methods you can use (on a `Node` or `Pipeline`) to handle failures out of the box:
 
 #### `withRetry`
-Give retry capability using the built-in `RetryConfig`:
+Give retry capability using the built-in `withRetry`:
 ```scala
 import etl4s.*
-import scala.concurrent.duration.*
+
+var attempts = 0
 
 val riskyTransformWithRetry = Transform[Int, String] {
-    var attempts = 0; n => attempts += 1
-    if (attempts < 3) throw new RuntimeException(s"Attempt $attempts failed")
-    else s"Success after $attempts attempts"
-}.withRetry(
-    RetryConfig(maxAttempts = 3, initialDelay = 10.millis)
-)
+    n =>
+      attempts += 1
+      if (attempts < 3) throw new RuntimeException(s"Attempt $attempts failed")
+      else s"Success after $attempts attempts"
+}.withRetry(maxAttempts = 3, initialDelayMs = 10)
 
 val pipeline = Extract(42) ~> riskyTransformWithRetry
 pipeline.unsafeRun(())
@@ -411,10 +411,6 @@ val p1: Pipeline[Int, String] = ???
 val p2: Pipeline[String, String] = ???
 
 val p3: Pipeline[Int, String] = p1 ~> p2
-```
-Prints:
-```
-"7!7!"
 ```
 
 #### Complex chaining
