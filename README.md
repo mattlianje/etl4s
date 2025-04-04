@@ -51,7 +51,7 @@ import etl4s.*
 - [Built-in Tools](#built-in-tools)
   - [Reader[R, A]](#readerr-a-config-driven-pipelines)
   - [Writer[W, A]](#writerw-a-log-accumulating-pipelines)
-  - [Validate[T]](#validatet)
+  - [Validated[T]](#validatedt)
 - [Examples](#examples)
   - [Chain two pipelines](#chain-two-pipelines)
   - [Complex chaining](#complex-chaining)
@@ -327,17 +327,17 @@ Result: "Processed: User 123"
 **etl4s** provides a lightweight validation system that lets you accumulate errors instead of failing at the first problem.
 You can then report on, and take action based on specific failure lists.
 
-##### Core Components
+##### Components
 
 | Component | Description | Example |
-|-----------|-------------|---------|
-| `Validated[T]` | Type class for validating objects | `Validated[User](validateUser)` |
-| `ValidationResult` | Success (`Valid`) or failure (`Invalid`) | `Valid(user)` or `Invalid(List("Invalid email"))` |
-| `require(value, condition, message)` | Validate a condition | `require(user, user.age >= 18, "Must be 18+")` |
-| `success[A](value)` | Create successful validation | `success(user)` |
-| `failure[A](message)` | Create failed validation | `failure("Invalid data")` |
-| `&&` | Combine validators OR results with AND logic | `validateName && validateEmail` or `valid1 && valid2` |
-| `||` | Combine validators OR results with OR logic | `isPremium || isAdmin` or `valid1 || valid2` |
+|:----------|:------------|:--------|
+| Validated[T] | Type class for validating objects | Validated[User] validator |
+| ValidationResult | Success (Valid) or failure (Invalid) | Valid(user) or Invalid(errors) |
+| require | Validate a condition | require(user, user.age >= 18, "Must be 18+") |
+| success | Create successful validation | success(user) |
+| failure | Create failed validation | failure("Invalid data") |
+| && | Combine with AND logic | validateName && validateEmail |
+| OR operator | Combine with OR logic | isPremium OR isAdmin |
 
 
 Define your data model:
