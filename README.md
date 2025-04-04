@@ -323,96 +323,80 @@ Logs: ["Fetching user 123", "Processing User 123"]
 Result: "Processed: User 123"
 ```
 
-#### Validate[T]
-etl4s includes a powerful, lightweight validation system that helps you enforce business rules with clear error reporting.
-The `Validate` type lets you stack checks and automatically accumulates lists of errors.
+#### Validated[T]
+**etl4s** provides a lightweight validation system that lets you accumulate errors instead of failing at the first problem.
+You can then report on, and take action based on specific failure lists.
 
-| Component | Description |
-|-----------|-------------|
-| `Validate[T]` | Type class for validating objects of type T |
-| `ValidationResult` | Result of validation (either `Valid` or `Invalid`) |
-| `require(condition, message)` | Basic validation function that checks a condition |
-| `success` | Predefined validation success (`Valid`) |
-| `failure(message)` | Creates a failed validation with a message |
+##### Core Components
+
+| Component | Description | Example |
+|-----------|-------------|---------|
+| `Validated[T]` | Type class for validating objects | `Validated[User](validateUser)` |
+| `ValidationResult` | Success (`Valid`) or failure (`Invalid`) | `Valid(user)` or `Invalid(List("Invalid email"))` |
+| `require(value, condition, message)` | Validate a condition | `require(user, user.age >= 18, "Must be 18+")` |
+| `success[A](value)` | Create successful validation | `success(user)` |
+| `failure[A](message)` | Create failed validation | `failure("Invalid data")` |
+| `&&` | Combine validators OR results with AND logic | `validateName && validateEmail` or `valid1 && valid2` |
+| `||` | Combine validators OR results with OR logic | `isPremium || isAdmin` or `valid1 || valid2` |
 
 
-Validated example:
+Define your data model:
 ```scala
-case class User(
-  name: String, 
-  email: String, 
-  age: Int, 
-  role: Role = Member,
-  accountType: AccountType = Free
-)
-
-sealed trait Role
-case object Admin extends Role
-case object Member extends Role
-
-sealed trait AccountType
-case object Premium extends AccountType
-case object Trial extends AccountType
-case object Free extends AccountType
-
-val user = User("John", "john@example.com", 25, Admin, Premium)
+case class User(name: String, email: String, age: Int)
 ```
 
-##### Creating Validators
-Create a validator for a specific type
+Create a simple validator:
 ```scala
-val validateUser = Validate[User] { user => 
-  /* validation logic here */
-  success
+val validateUser = Validated[User] { user =>
+  require(user, user.name.nonEmpty, "Name required") &&
+  require(user, user.email.contains("@"), "Valid email required") &&
+  require(user, user.age >= 18, "Must be 18+")
 }
 ```
 
-##### Basic Validation Functions
-Check a condition with an error message
+Run validation:
 ```scala
-require(user.age >= 18, "Must be 18 or older")
+val result = validateUser(User("Alice", "alice@mail.com", 25))
+// Valid(User(Alice,alice@mail.com,25))
 
-val alwaysValid = success
-val alwaysFails = failure("Invalid data")
-```
-
-##### Combining Validations
-```scala
-/* Both validations must pass (AND) */
-require(user.name.nonEmpty, "Name required") && 
-require(user.email.contains("@"), "Invalid email")
-
-/* Either validation must pass (OR) */
-require(user.role == Admin, "Must be admin") || 
-require(user.accountType == Premium, "Must be premium user")
-```
-
-##### Conditional Validation
-```scala
-if (user.role == Admin)
-  require(user.age >= 25, "Admins must be 25 or older")
-else
-  success
-
-user.accountType match {
-  case Premium => require(user.email.contains("@"), "Premium requires valid email")
-  case Trial => require(user.age >= 18, "Trial requires 18+")
-  case Free => success
-}
+val invalid = validateUser(User("", "not-an-email", 16))
+// Invalid(List("Name required", "Valid email required", "Must be 18+"))
 ```
 
 ##### Composing Validators
+
+Create specialized validators:
 ```scala
-val validateBasics = Validate[User] { user => 
-  require(user.name.nonEmpty, "Name required") &&
-  require(user.email.nonEmpty, "Email required")
+val validateName = Validated[User] { user => 
+  require(user, user.name.nonEmpty, "Name required") 
 }
 
-val validateAge = Validate[User] { user => 
-  require(user.age >= 18, "Must be 18 or older")
+val validateAge = Validated[User] { user => 
+  require(user, user.age >= 18, "Must be 18+")
 }
+```
 
-val validateUser = validateBasics && validateAge
+Combine with logical operators:
+```scala
+val completeValidator = validateName && validateAge
+// All validations must pass (AND)
+
+val flexibleValidator = validateName || validateAge 
+// At least one validation must pass (OR)
+```
+
+##### Conditional Validation
+
+Adapt validation rules contextually:
+```scala
+val conditionalValidator = Validated[User] { user =>
+  val baseCheck = require(user, user.name.nonEmpty, "Name required")
+  
+  if (user.name == "Admin") 
+    baseCheck && require(user, user.age >= 21, "Admins must be 21+")
+  else 
+    baseCheck && require(user, user.age >= 18, "Must be 18+")
+}
 ```
 
 
