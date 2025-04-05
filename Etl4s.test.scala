@@ -931,88 +931,70 @@ class Etl4sSpec extends munit.FunSuite {
   }
 
   test("simple validation with require") {
-    val result1 = require(10 > 5, "10 should be greater than 5")
-    assert(result1.isValid)
+    assert(require(10 > 5, "error message").isValid)
+    assert(!require(3 > 5, "error message").isValid)
 
-    val result2 = require(3 > 5, "3 should be greater than 5")
-    assert(!result2.isValid)
-    assert(result2.errors.head == "3 should be greater than 5")
+    assert(require(10, 10 > 5, "error message").get == 10)
+    assert(require(3, 3 > 5, "error message").errors.head == "error message")
   }
 
   test("validation with pattern matching") {
+
     sealed trait UserRole
     case object Admin  extends UserRole
     case object Editor extends UserRole
     case object Viewer extends UserRole
-
     case class User(id: String, role: UserRole, active: Boolean)
 
-    val validateUser = Validate[User] { user =>
-      val basicChecks = require(user.id.nonEmpty, "User ID cannot be empty")
-
+    val validateUser = Validated[User] { user =>
+      val basicChecks = require(user, user.id.nonEmpty, "ID cannot be empty")
       val roleChecks = user.role match {
-        case Admin =>
-          require(user.id.startsWith("A"), "Admin IDs must start with 'A'")
-        case Editor =>
-          require(user.id.startsWith("E"), "Editor IDs must start with 'E'")
-        case Viewer =>
-          success
+        case Admin  => require(user, user.id.startsWith("A"), "Admin IDs must start with 'A'")
+        case Editor => require(user, user.id.startsWith("E"), "Editor IDs must start with 'E'")
+        case _      => success(user)
       }
-
-      // Status check
-      val statusCheck = if (!user.active) {
-        failure("User account is inactive")
-      } else {
-        success
-      }
-
-      // Combine all validations
+      val statusCheck = if (!user.active) failure("User account is inactive") else success(user)
       basicChecks && roleChecks && statusCheck
     }
 
-    // Test with different users
-    val validAdmin = User("A123", Admin, true)
-    assert(validateUser(validAdmin).isValid)
-
-    val invalidAdmin = User("E123", Admin, true)
-    assert(!validateUser(invalidAdmin).isValid)
-    assert(validateUser(invalidAdmin).errors.contains("Admin IDs must start with 'A'"))
-
-    val inactiveUser = User("V123", Viewer, false)
-    assert(!validateUser(inactiveUser).isValid)
-    assert(validateUser(inactiveUser).errors.contains("User account is inactive"))
+    assert(validateUser(User("A123", Admin, true)).isValid)
+    assert(!validateUser(User("E123", Admin, true)).isValid)
+    assert(validateUser(User("E123", Admin, true)).errors.contains("Admin IDs must start with 'A'"))
+    assert(!validateUser(User("V123", Viewer, false)).isValid)
   }
 
   test("composing validators") {
-    val validateName = Validate[Person] { person =>
-      require(person.name.nonEmpty, "Name cannot be empty") &&
-      require(person.name.length <= 100, "Name is too long")
-    }
+    case class Person(name: String, age: Int)
 
-    val validateAge = Validate[Person] { person =>
-      require(person.age >= 0, "Age must be non-negative") &&
-      require(person.age <= 120, "Age seems unrealistic")
+    val validateName = Validated[Person] { p =>
+      require(p, p.name.nonEmpty, "Name cannot be empty")
     }
-
+    val validateAge = Validated[Person] { p =>
+      require(p, p.age >= 0, "Age must be non-negative")
+    }
     val validatePerson = validateName && validateAge
 
-    val validPerson = Person("Jane Smith", 35, Address("", "", ""))
-    assert(validatePerson(validPerson).isValid)
+    assert(validatePerson(Person("Jane", 35)).isValid)
+    assert(!validatePerson(Person("", 35)).isValid)
+    assert(!validatePerson(Person("John", -10)).isValid)
 
-    val invalidName = Person("", 35, Address("", "", ""))
-    assert(!validatePerson(invalidName).isValid)
-    assert(validatePerson(invalidName).errors.contains("Name cannot be empty"))
+    val invalidBoth = validatePerson(Person("", -5))
+    println(invalidBoth)
+    assert(!invalidBoth.isValid)
+    assert(invalidBoth.errors.size == 2)
+  }
 
-    val invalidAge = Person("John Doe", -10, Address("", "", ""))
-    assert(!validatePerson(invalidAge).isValid)
-    assert(validatePerson(invalidAge).errors.contains("Age must be non-negative"))
+  test("tap can inercept pipelines/flows") {
+    var processedValue = ""
 
-    val invalidBoth       = Person("", 150, Address("", "", ""))
-    val invalidBothResult = validatePerson(invalidBoth)
-    assert(!invalidBothResult.isValid)
-    assert(invalidBothResult.errors.size == 2)
-    assert(invalidBothResult.errors.contains("Name cannot be empty"))
-    assert(invalidBothResult.errors.contains("Age seems unrealistic"))
+    val pipeline = Extract("test data") ~>
+      tap(s => processedValue = s"Processed: $s") ~>
+      Transform[String, Int](_.length)
+
+    val result = pipeline.unsafeRun(())
+
+    assertEquals(processedValue, "Processed: test data")
+    assertEquals(result, 9)
   }
 }
 

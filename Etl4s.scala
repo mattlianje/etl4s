@@ -6,14 +6,14 @@ import scala.util.{Try, Success, Failure}
 package object etl4s {
 
   /** 
-   * Type class representing the Arrow abstraction for data processing components.
-   *
-   * Defines the capability for a binary type constructor F[_,_] to be treated as an 
-   * Arrow in the categorical sense, enabling composition through the ~> operator.
-   * 
-   * TL;DR This enables composition between different types of processing components
-   * (functions, ETL components, pipelines) using the same ~> operator.
-   */
+    * Type class representing the Arrow abstraction for data processing components.
+    *
+    * Defines the capability for a binary type constructor F[_,_] to be treated as an 
+    * Arrow in the categorical sense, enabling composition through the ~> operator.
+    * 
+    * TL;DR This enables composition between different types of processing components
+    * (functions, ETL components, pipelines) using the same ~> operator.
+    */
   trait AsArrow[F[_, _]] {
     def toNode[A, B](f: F[A, B]): Node[A, B]
   }
@@ -21,20 +21,18 @@ package object etl4s {
   object AsArrow {
 
     /** 
-     * Summoner method for obtaining type class arrow evidence.
-     */
+      * Summoner method for obtaining type class arrow evidence.
+      */
     def apply[F[_, _]](implicit ev: AsArrow[F]): AsArrow[F] = ev
 
     /** 
       * Enables standard Scala functions to be treated as arrows.
-      * Its a bit low-level but etl4s is for composing simple functions.
-      * Maps directly to Transform nodes as they share the same semantics.
+      * Maps them directly to Transform nodes as they share the same semantics.
       */
     implicit val function1AsArrow: AsArrow[Function1] = new AsArrow[Function1] {
       def toNode[A, B](f: A => B): Node[A, B] = Transform(f)
     }
 
-    /* Node is already an arrow */
     implicit val nodeAsArrow: AsArrow[Node] = new AsArrow[Node] {
       def toNode[A, B](n: Node[A, B]): Node[A, B] = n
     }
@@ -63,12 +61,12 @@ package object etl4s {
   }
 
   /**
-   * Extension methods for any type constructor F[_, _] that has an AsArrow instance.
-   * 
-   * If you are new here, this is higher-kinded type "voodoo" that lets us define operations on ANY binary 
-   * type constructor (F[_, _]), not just concrete types. This is what enables the 
-   * ~> abstraction to work across different types.
-   */
+    * Extension methods for any type constructor F[_, _] that has an AsArrow instance.
+    * 
+    * If you are new here, this is higher-kinded type "voodoo" that lets us define operations on ANY binary 
+    * type constructor (F[_, _]), not just concrete types. This is what enables the 
+    * ~> abstraction to work across different types.
+    */
   implicit class ArrowOps[F[_, _], A, B](val fa: F[A, B]) {
     def ~>[G[_, _], C](gb: G[B, C])(implicit F: AsArrow[F], G: AsArrow[G]): Pipeline[A, C] = {
       val nodeA = F.toNode(fa)
@@ -108,91 +106,136 @@ package object etl4s {
   implicit def functionToPipeline[A, B](f: A => B): Pipeline[A, B] = Pipeline(Transform(f))
 
   /**
- * Represents the result of validation - either a validated value or a list of error messages.
- */
-  sealed trait ValidationResult {
-
-    /* Returns true if the validation passed with no errors. */
+    * Represents the result of validation - either a validated value or a list of error messages.
+    */
+  sealed trait ValidationResult[+A] {
     def isValid: Boolean
 
     /**
-     * Returns the list of error messages from the validation.
-     * Empty list if validation is successful.
-     */
+      * Returns the list of error messages from the validation.
+      * Empty list if validation is successful.
+      */
     def errors: List[String]
+    def get: A /* Returns validated value if successful */
 
     /**
-     * Combines this validation result with another using logical AND semantics.
-     * Both validations must pass for the combined result to be valid.
-     * All errors from both validations are collected.
-     */
-    def &&(other: ValidationResult): ValidationResult = (this, other) match {
-      case (Valid, Valid)             => Valid
-      case (Valid, invalid: Invalid)  => invalid
-      case (invalid: Invalid, Valid)  => invalid
-      case (Invalid(e1), Invalid(e2)) => Invalid(e1 ++ e2)
+      * Combines this validation result with another using logical AND semantics.
+      * Both validations must pass for the combined result to be valid.
+      * All errors from both validations are collected.
+      */
+    def &&[B >: A](other: ValidationResult[B]): ValidationResult[B] = (this, other) match {
+      case (Valid(a), Valid(_))         => Valid(a)
+      case (Valid(_), invalid: Invalid) => invalid
+      case (invalid: Invalid, Valid(_)) => invalid
+      case (Invalid(e1), Invalid(e2))   => Invalid(e1 ++ e2)
     }
 
     /**
-     * Combines this validation result with another using logical OR semantics.
-     * At least one validation must pass for the combined result to be valid.
-     * If both fail, all errors are collected.
-     */
-    def ||(other: ValidationResult): ValidationResult = (this, other) match {
-      case (Valid, _)                 => Valid
-      case (_, Valid)                 => Valid
+      * Combines this validation result with another using logical OR semantics.
+      * At least one validation must pass for the combined result to be valid.
+      * If both fail, all errors are collected.
+      */
+    def ||[B >: A](other: ValidationResult[B]): ValidationResult[B] = (this, other) match {
+      case (Valid(a), _)              => Valid(a)
+      case (_, Valid(b))              => Valid(b)
       case (Invalid(e1), Invalid(e2)) => Invalid(e1 ++ e2)
+    }
+
+    def map[B](f: A => B): ValidationResult[B] = this match {
+      case Valid(a)   => Valid(f(a))
+      case i: Invalid => i.asInstanceOf[ValidationResult[B]]
+    }
+
+    def flatMap[B](f: A => ValidationResult[B]): ValidationResult[B] = this match {
+      case Valid(a)   => f(a)
+      case i: Invalid => i.asInstanceOf[ValidationResult[B]]
     }
   }
 
-  case object Valid extends ValidationResult {
+  case class Valid[+A](value: A) extends ValidationResult[A] {
     def isValid: Boolean     = true
     def errors: List[String] = Nil
+    def get: A               = value
   }
 
-  case class Invalid(errors: List[String]) extends ValidationResult {
+  case class Invalid(errors: List[String]) extends ValidationResult[Nothing] {
     def isValid: Boolean = false
+    def get: Nothing     = throw new NoSuchElementException("Invalid.get")
   }
 
   /**
-   * A type class for things that can be validated.
-   * 
-   * @tparam T The type of object being validated
-   */
-  trait Validate[T] {
+    * A type class for things that can be validated.
+    * 
+    * @tparam T The type of object being validated
+    */
+  trait Validated[T] {
+    def validate(value: T): ValidationResult[T]
 
-    def validate(value: T): ValidationResult
+    def &&(other: Validated[T]): Validated[T] = (value: T) => {
+      val result1 = this.validate(value)
+      val result2 = other.validate(value)
 
-    def &&(other: Validate[T]): Validate[T] = (value: T) => {
-      this.validate(value) && other.validate(value)
+      (result1, result2) match {
+        case (Valid(_), Valid(_))         => result2
+        case (Valid(_), invalid: Invalid) => invalid
+        case (invalid: Invalid, Valid(_)) => invalid
+        case (Invalid(e1), Invalid(e2))   => Invalid(e1 ++ e2)
+      }
     }
 
-    def ||(other: Validate[T]): Validate[T] = (value: T) => {
-      this.validate(value) || other.validate(value)
+    def ||(other: Validated[T]): Validated[T] = (value: T) => {
+      this.validate(value) match {
+        case v @ Valid(_) => v
+        case Invalid(errors1) =>
+          other.validate(value) match {
+            case v @ Valid(_)     => v
+            case Invalid(errors2) => Invalid(errors1 ++ errors2)
+          }
+      }
     }
 
-    def apply(value: T): ValidationResult = validate(value)
+    def apply(value: T): ValidationResult[T] = validate(value)
   }
 
-  object Validate {
-
-    def apply[T](f: T => ValidationResult): Validate[T] = new Validate[T] {
-      def validate(value: T): ValidationResult = f(value)
+  object Validated {
+    def apply[T](f: T => ValidationResult[T]): Validated[T] = new Validated[T] {
+      def validate(value: T): ValidationResult[T] = f(value)
     }
   }
 
   /**
-   * A simple requirement validation that fails with the given message if the condition is false.
-   * 
-   * @param condition The condition to check
-   * @param message The error message if the condition is false
-   * @return Valid if the condition is true, Invalid with the message otherwise
-   */
-  def require(condition: => Boolean, message: => String): ValidationResult =
-    if (condition) Valid else Invalid(List(message))
+    * A simple requirement validation that fails with the given message if the condition is false.
+    * 
+    * @param value The object being validated
+    * @param condition The condition to check
+    * @param message The error message if the condition is false
+    * @return Valid(value) if the condition is true, Invalid with the message otherwise
+    */
+  def require[T](value: T, condition: => Boolean, message: => String): ValidationResult[T] =
+    if (condition) Valid(value) else Invalid(List(message))
 
-  val success: ValidationResult                  = Valid
-  def failure(message: String): ValidationResult = Invalid(List(message))
+  def require(condition: => Boolean, message: => String): ValidationResult[Unit] =
+    if (condition) Valid(()) else Invalid(List(message))
+
+  def success[A](value: A): ValidationResult[A]        = Valid(value)
+  def failure[A](message: String): ValidationResult[A] = Invalid(List(message))
+
+  /**
+   * Creates a Transform that performs a side effect on the data without modifying it.
+   * This allows for logging, debugging, or monitoring within a pipeline chain.
+   *
+   * Example usage:
+   * {{{
+   * val pipeline = extract ~> tap(x => println(s"Processed: $x")) ~> transform ~> load
+   * }}}
+   *
+   * @param f The function to execute as a side effect
+   * @return A Transform that performs the side effect and returns the original value
+   */
+  def tap[A](f: A => Any): Transform[A, A] = Transform[A, A] { a =>
+    f(a)
+    a
+  }
 }
 
 package etl4s {
