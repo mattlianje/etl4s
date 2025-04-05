@@ -6,7 +6,7 @@
 **Powerful, whiteboard-style ETL**
 
 A lightweight, zero-dependency library for writing type-safe, beautiful ✨🍰  data flows in functional Scala. 
-Battle-tested at [Instacart](https://www.instacart.com/) 🥕
+Battle-tested at [Instacart](https://www.instacart.com/)
 
 ## Features
 - White-board style ETL
