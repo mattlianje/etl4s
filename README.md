@@ -331,13 +331,13 @@ You can then report on, and take action based on specific failure lists.
 
 | Component | Description | Example |
 |:----------|:------------|:--------|
-| Validated[T] | Type class for validating objects | Validated[User] validator |
-| ValidationResult | Success (Valid) or failure (Invalid) | Valid(user) or Invalid(errors) |
-| require | Validate a condition | require(user, user.age >= 18, "Must be 18+") |
-| success | Create successful validation | success(user) |
-| failure | Create failed validation | failure("Invalid data") |
-| && | Combine with AND logic | validateName && validateEmail |
-| OR operator | Combine with OR logic | isPremium OR isAdmin |
+| `Validated[T]` | Type class for validating objects | `Validated[User] validator` (validator = {require / success / failure}) |
+| `ValidationResult` | Success (Valid) or failure (Invalid) | `Valid(user)` or `Invalid(errors)` (errors always `List[String]`|
+| `require` | Validate a condition | `require(user, user.age >= 18, "Must be 18+")` |
+| `success` | Create successful validation | `success(user)` |
+| `failure` | Create failed validation | `failure("Invalid data")` |
+| `&&` | Combine with AND logic | `validateName && validateEmail` |
+| `OR` operator | Combine with OR logic | `isPremium OR isAdmin` |
 
 
 Define your data model:
