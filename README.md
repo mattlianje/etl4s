@@ -21,12 +21,12 @@ Battle-tested at [Instacart](https://www.instacart.com/)
 
 **etl4s** is on MavenCentral and cross-built for Scala, 2.12, 2.13, 3.x:
 ```scala
-"xyz.matthieucourt" %% "etl4s" % "1.0.1"
+"xyz.matthieucourt" %% "etl4s" % "1.2.0"
 ```
 
 Try it in your repl:
 ```bash
-scala-cli repl --scala 3 --dep xyz.matthieucourt:etl4s_3:1.0.1
+scala-cli repl --scala 3 --dep xyz.matthieucourt:etl4s_3:1.2.0
 ```
 
 All you need:
@@ -191,18 +191,18 @@ This is useful for logging, debugging, or collecting metrics.
 ```scala
 import etl4s._
 
-// Define the pipeline stages
 val sayHello   = Extract("hello world")
 val splitWords = Transform[String, Array[String]](_.split(" "))
 val toUpper    = Transform[Array[String], Array[String]](_.map(_.toUpperCase))
 
 val pipeline = sayHello ~> 
-               splitWords
-                .tap(words => println(s"Processing ${words.length} words")) ~> 
+               splitWords ~>
+               tap(words => println(s"Processing ${words.length} words")) ~> 
                toUpper
 
-// Run the pipeline - prints "Processing 2 words" during execution
-val result = pipeline.unsafeRun(())  // Result: Array("HELLO", "WORLD")
+val result = pipeline.unsafeRun(())
+// Result: Array("HELLO", "WORLD")
+//    but also prints: "Processing 2 words"
 ```
 
 
@@ -407,8 +407,8 @@ Simple UNIX-pipe style chaining of two pipelines:
 ```scala
 import etl4s.*
 
-val p1: Pipeline[Int, String] = ???
-val p2: Pipeline[String, String] = ???
+val p1 = Pipeline((i: Int) => i.toString)
+val p2 = Pipeline((s: String) => s + "!")
 
 val p3: Pipeline[Int, String] = p1 ~> p2
 ```
@@ -418,14 +418,15 @@ Connect the output of two pipelines to a third:
 ```scala
 import etl4s.*
 
-val namePipeline: Pipeline[Unit, String] = ???
-val agePipeline: Pipeline[Unit, String] = ???
+val namePipeline = Pipeline((_: Unit) => "John Doe")
+val agePipeline = Pipeline((_: Unit) => 30)
 
 val combined: Pipeline[Unit, Unit] =
   for {
     name <- namePipeline
     age <- agePipeline
-  } yield Extract(s"$name | $age") ~> Transform(_.toUpperCase) ~> Load(println)
+    _ <- Extract(s"$name | $age") ~> Transform(_.toUpperCase) ~> Load(println)
+  } yield ()
 ```
 
 ## Real-world examples
