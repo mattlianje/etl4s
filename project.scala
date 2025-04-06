@@ -1,9 +1,9 @@
 //> using dep "org.scalameta::munit:1.0.4"
-//> using scala "2.13"
+//> using scala "3"
 
 //> using publish.name "etl4s"
 //> using publish.organization "xyz.matthieucourt"
-//> using publish.version "1.0.1"
+//> using publish.version "1.2.0"
 //> using publish.url "https://github.com/mattlianje/etl4s"
 //> using publish.vcs "github:mattlianje/etl4s"
 //> using publish.license "GPL-3.0"
