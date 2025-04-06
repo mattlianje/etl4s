@@ -425,7 +425,7 @@ val combined: Pipeline[Unit, Unit] =
   for {
     name <- namePipeline
     age <- agePipeline
-    _ <- Extract(s"$name | $age") ~> Transform(_.toUpperCase) ~> Load(println)
+    _ <- Extract(s"$name | $age") ~> Transform(_.toUpperCase) ~> Load(println(_))
   } yield ()
 ```
 
