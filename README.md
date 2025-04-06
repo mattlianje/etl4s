@@ -6,7 +6,7 @@
 **Powerful, whiteboard-style ETL**
 
 A lightweight, zero-dependency library for writing type-safe, beautiful ✨🍰  data flows in functional Scala. 
-Battle-tested at [Instacart](https://www.instacart.com/) 🥕
+Battle-tested at [Instacart](https://www.instacart.com/)
 
 ## Features
 - White-board style ETL
@@ -51,7 +51,7 @@ import etl4s.*
 - [Built-in Tools](#built-in-tools)
   - [Reader[R, A]](#readerr-a-config-driven-pipelines)
   - [Writer[W, A]](#writerw-a-log-accumulating-pipelines)
-  - [Validate[T]](#validatet)
+  - [Validated[T]](#validatedt-easy-validation-stacking)
 - [Examples](#examples)
   - [Chain two pipelines](#chain-two-pipelines)
   - [Complex chaining](#complex-chaining)
@@ -143,18 +143,18 @@ etl4s uses a few simple operators to build pipelines:
 **etl4s** comes with 2 methods you can use (on a `Node` or `Pipeline`) to handle failures out of the box:
 
 #### `withRetry`
-Give retry capability using the built-in `RetryConfig`:
+Give retry capability using the built-in `withRetry`:
 ```scala
 import etl4s.*
-import scala.concurrent.duration.*
+
+var attempts = 0
 
 val riskyTransformWithRetry = Transform[Int, String] {
-    var attempts = 0; n => attempts += 1
-    if (attempts < 3) throw new RuntimeException(s"Attempt $attempts failed")
-    else s"Success after $attempts attempts"
-}.withRetry(
-    RetryConfig(maxAttempts = 3, initialDelay = 10.millis)
-)
+    n =>
+      attempts += 1
+      if (attempts < 3) throw new RuntimeException(s"Attempt $attempts failed")
+      else s"Success after $attempts attempts"
+}.withRetry(maxAttempts = 3, initialDelayMs = 10)
 
 val pipeline = Extract(42) ~> riskyTransformWithRetry
 pipeline.unsafeRun(())
@@ -257,7 +257,7 @@ val pipeline =
 **etl4s** comes with 3 extra abstractions to make your pipelines hard like iron, and flexible like bamboo.
 You can use them directly or swap in your own favorites (like their better built homologues from [Cats](https://typelevel.org/cats/)).
 
-#### `Reader[R, A]`: Config-driven pipelines
+### `Reader[R, A]`: Config-driven pipelines
 Need database credentials? Start and end dates for your batch job? API keys? Environment settings?
 Let your pipeline know exactly what it needs to run, and switch configs effortlessly.
 ```scala
@@ -288,7 +288,7 @@ Prints:
 "User loaded with key `secret`: Fetching user user123 from https://api.com"
 ```
 
-#### `Writer[W, A]`: Log accumulating pipelines
+### `Writer[W, A]`: Log accumulating pipelines
 Collect logs at every step of your pipeline and get them all at once with your results.
 No more scattered println's - just clean, organized logging, that shows exactly how your data flowed through the pipeline.
 ```scala
@@ -323,96 +323,80 @@ Logs: ["Fetching user 123", "Processing User 123"]
 Result: "Processed: User 123"
 ```
 
-#### Validate[T]
-etl4s includes a powerful, lightweight validation system that helps you enforce business rules with clear error reporting.
-The `Validate` type lets you stack checks and automatically accumulates lists of errors.
+### `Validated[T]`: Easy validation stacking
+**etl4s** provides a lightweight validation system that lets you accumulate errors instead of failing at the first problem.
+You can then report on, and take action based on specific failure lists.
 
-| Component | Description |
-|-----------|-------------|
-| `Validate[T]` | Type class for validating objects of type T |
-| `ValidationResult` | Result of validation (either `Valid` or `Invalid`) |
-| `require(condition, message)` | Basic validation function that checks a condition |
-| `success` | Predefined validation success (`Valid`) |
-| `failure(message)` | Creates a failed validation with a message |
+#### Components
+
+| Component | Description | Example |
+|:----------|:------------|:--------|
+| `Validated[T]` | Type class for validating objects | `Validated[User] validator` (validator = {require / success / failure}) |
+| `ValidationResult` | Success (Valid) or failure (Invalid) | `Valid(user)` or `Invalid(errors)` (errors always `List[String]`|
+| `require` | Validate a condition | `require(user, user.age >= 18, "Must be 18+")` |
+| `success` | Create successful validation | `success(user)` |
+| `failure` | Create failed validation | `failure("Invalid data")` |
+| `&&` | Combine with AND logic | `validateName && validateEmail` |
+| `OR` operator | Combine with OR logic | `isPremium OR isAdmin` |
 
 
-Validated example:
+Define your data model:
 ```scala
-case class User(
-  name: String, 
-  email: String, 
-  age: Int, 
-  role: Role = Member,
-  accountType: AccountType = Free
-)
-
-sealed trait Role
-case object Admin extends Role
-case object Member extends Role
-
-sealed trait AccountType
-case object Premium extends AccountType
-case object Trial extends AccountType
-case object Free extends AccountType
-
-val user = User("John", "john@example.com", 25, Admin, Premium)
+case class User(name: String, email: String, age: Int)
 ```
 
-##### Creating Validators
-Create a validator for a specific type
+Create a simple validator:
 ```scala
-val validateUser = Validate[User] { user => 
-  /* validation logic here */
-  success
+val validateUser = Validated[User] { user =>
+  require(user, user.name.nonEmpty, "Name required") &&
+  require(user, user.email.contains("@"), "Valid email required") &&
+  require(user, user.age >= 18, "Must be 18+")
 }
 ```
 
-##### Basic Validation Functions
-Check a condition with an error message
+Run validation:
 ```scala
-require(user.age >= 18, "Must be 18 or older")
+val result = validateUser(User("Alice", "alice@mail.com", 25))
+// Valid(User(Alice,alice@mail.com,25))
 
-val alwaysValid = success
-val alwaysFails = failure("Invalid data")
+val invalid = validateUser(User("", "not-an-email", 16))
+// Invalid(List("Name required", "Valid email required", "Must be 18+"))
 ```
 
-##### Combining Validations
+#### Composing Validators
+
+Create specialized validators:
 ```scala
-/* Both validations must pass (AND) */
-require(user.name.nonEmpty, "Name required") && 
-require(user.email.contains("@"), "Invalid email")
+val validateName = Validated[User] { user => 
+  require(user, user.name.nonEmpty, "Name required") 
+}
 
-/* Either validation must pass (OR) */
-require(user.role == Admin, "Must be admin") || 
-require(user.accountType == Premium, "Must be premium user")
-```
-
-##### Conditional Validation
-```scala
-if (user.role == Admin)
-  require(user.age >= 25, "Admins must be 25 or older")
-else
-  success
-
-user.accountType match {
-  case Premium => require(user.email.contains("@"), "Premium requires valid email")
-  case Trial => require(user.age >= 18, "Trial requires 18+")
-  case Free => success
+val validateAge = Validated[User] { user => 
+  require(user, user.age >= 18, "Must be 18+")
 }
 ```
 
-##### Composing Validators
+Combine with logical operators:
 ```scala
-val validateBasics = Validate[User] { user => 
-  require(user.name.nonEmpty, "Name required") &&
-  require(user.email.nonEmpty, "Email required")
-}
+val completeValidator = validateName && validateAge
+// All validations must pass (AND)
 
-val validateAge = Validate[User] { user => 
-  require(user.age >= 18, "Must be 18 or older")
-}
+val flexibleValidator = validateName || validateAge 
+// At least one validation must pass (OR)
+```
 
-val validateUser = validateBasics && validateAge
+#### Conditional Validation
+
+Adapt validation rules contextually:
+```scala
+val conditionalValidator = Validated[User] { user =>
+  val baseCheck = require(user, user.name.nonEmpty, "Name required")
+  
+  if (user.name == "Admin") 
+    baseCheck && require(user, user.age >= 21, "Admins must be 21+")
+  else 
+    baseCheck && require(user, user.age >= 18, "Must be 18+")
+}
 ```
 
 
@@ -427,10 +411,6 @@ val p1: Pipeline[Int, String] = ???
 val p2: Pipeline[String, String] = ???
 
 val p3: Pipeline[Int, String] = p1 ~> p2
-```
-Prints:
-```
-"7!7!"
 ```
 
 #### Complex chaining
