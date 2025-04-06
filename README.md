@@ -197,8 +197,8 @@ val splitWords = Transform[String, Array[String]](_.split(" "))
 val toUpper    = Transform[Array[String], Array[String]](_.map(_.toUpperCase))
 
 val pipeline = sayHello ~> 
-               splitWords
-                .tap(words => println(s"Processing ${words.length} words")) ~> 
+               splitWords ~>
+               tap(words => println(s"Processing ${words.length} words")) ~> 
                toUpper
 
 // Run the pipeline - prints "Processing 2 words" during execution
