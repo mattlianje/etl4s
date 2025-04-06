@@ -191,7 +191,6 @@ This is useful for logging, debugging, or collecting metrics.
 ```scala
 import etl4s._
 
-// Define the pipeline stages
 val sayHello   = Extract("hello world")
 val splitWords = Transform[String, Array[String]](_.split(" "))
 val toUpper    = Transform[Array[String], Array[String]](_.map(_.toUpperCase))
@@ -201,8 +200,9 @@ val pipeline = sayHello ~>
                tap(words => println(s"Processing ${words.length} words")) ~> 
                toUpper
 
-// Run the pipeline - prints "Processing 2 words" during execution
-val result = pipeline.unsafeRun(())  // Result: Array("HELLO", "WORLD")
+val result = pipeline.unsafeRun(())
+// Result: Array("HELLO", "WORLD")
+//    but also prints: "Processing 2 words"
 ```
 
 
