@@ -21,12 +21,12 @@ Battle-tested at [Instacart](https://www.instacart.com/)
 
 **etl4s** is on MavenCentral and cross-built for Scala, 2.12, 2.13, 3.x:
 ```scala
-"xyz.matthieucourt" %% "etl4s" % "1.0.1"
+"xyz.matthieucourt" %% "etl4s" % "1.2.0"
 ```
 
 Try it in your repl:
 ```bash
-scala-cli repl --scala 3 --dep xyz.matthieucourt:etl4s_3:1.0.1
+scala-cli repl --scala 3 --dep xyz.matthieucourt:etl4s_3:1.2.0
 ```
 
 All you need:
