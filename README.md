@@ -14,8 +14,8 @@ Battle-tested at [Instacart](https://www.instacart.com/)
 - Type-safe, compile-time checked pipelines
 - Effortless concurrent execution of parallelizable tasks with `&>`
 - Easy monadic composition of pipelines
-- Chain pipelines with `~>`, sequence them with `>>`
-- Built in retry/on-failure mechanism for nodes + pipelines
+- Chain pipelines with `~>`
+- Built in retry/on-failure mechanism
 
 ## Get started
 
