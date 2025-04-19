@@ -998,6 +998,91 @@ class Etl4sSpec extends munit.FunSuite {
   }
 }
 
+class Etl4sEnvSpec extends munit.FunSuite {
+  case class DBConfig(url: String, username: String)
+
+  object DataService extends Etl4sEnv[DBConfig] {
+    def getData: ExtractWithEnv[String, String] = Env { env =>
+      Extract(query => s"Data from ${env.url} using ${env.username}: $query")
+    }
+
+    def processData: TransformWithEnv[String, String] = Env { env =>
+      Transform(data => s"Processed with ${env.username}'s permissions: $data")
+    }
+
+    def saveData: LoadWithEnv[String, String] = Env { env =>
+      Load(data => s"Saved to ${env.url} by ${env.username}: $data")
+    }
+
+    val uppercase    = Transform[String, String](_.toUpperCase)
+    val addTimestamp = Transform[String, String](data => s"[${java.time.LocalDateTime.now}] $data")
+    val logToConsole = Load[String, String](data => { println(s"LOG: $data"); data })
+  }
+
+  val config = DBConfig("jdbc:postgresql://localhost:5432/mydb", "admin")
+  val query  = "SELECT * FROM users"
+  val expectedBase =
+    "Data from jdbc:postgresql://localhost:5432/mydb using admin: SELECT * FROM users"
+  val expectedProcessed = s"Processed with admin's permissions: $expectedBase"
+
+  test("context should be accessible in pipeline components") {
+    val pipeline = for {
+      extract <- DataService.getData
+      process <- DataService.processData
+    } yield extract ~> process
+
+    assertEquals(pipeline.provideEnv(config).unsafeRun(query), expectedProcessed)
+  }
+
+  test("can use ~> operator directly on context-aware components") {
+    import DataService._
+    val pipeline = getData ~> processData
+
+    assertEquals(pipeline.provideEnv(config).unsafeRun(query), expectedProcessed)
+  }
+
+  test("can chain multiple context-aware components with ~>") {
+    import DataService._
+    val pipeline = getData ~> processData ~> saveData
+
+    val result = pipeline.provideEnv(config).unsafeRun(query)
+    assert(result.contains("Saved to"))
+    assert(result.contains(expectedProcessed))
+  }
+
+  test("can mix context-aware and regular components") {
+    import DataService._
+
+    val contextualPart = getData ~> processData
+    val fullPipeline   = contextualPart.provideEnv(config) ~> uppercase ~> addTimestamp
+
+    val result = fullPipeline.unsafeRun(query)
+    assert(result.contains("PROCESSED WITH ADMIN'S PERMISSIONS"))
+    assert(result.contains("["))
+  }
+
+  test("can create a complex mixed pipeline with functions and ETL components") {
+    import DataService._
+
+    val wrapWithBrackets = (s: String) => s"[[ $s ]]"
+    val countChars       = (s: String) => s"$s (length: ${s.length})"
+
+    val addMetadata = Transform[String, String] { s =>
+      s"$s | metadata: processed at ${java.time.LocalDateTime.now}"
+    }
+
+    val testNode: Reader[String, Transform[String, String]] = Reader { env =>
+      Transform { x => x }
+    }
+
+    val complexPipeline = getData ~> processData ~> wrapWithBrackets ~> addMetadata ~> countChars
+
+    val result = complexPipeline.provideEnv(config).unsafeRun(query)
+
+    assert(result.contains("length:"))
+  }
+}
+
 /*
  digraph ETL {
   //rankdir=LR;
