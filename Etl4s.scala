@@ -1,3 +1,4 @@
+import scala.language.{higherKinds, implicitConversions}
 import scala.concurrent.{Future, ExecutionContext}
 import scala.concurrent.duration._
 import scala.concurrent.Await
@@ -82,6 +83,88 @@ package object etl4s {
 
     /* Convert arrow to pipeline */
     def toPipeline(implicit F: AsArrow[F]): Pipeline[A, B] = Pipeline(F.toNode(fa))
+  }
+
+  /**
+   * Extension methods for context-aware ETL components
+   */
+  implicit class EnvArrowOps[T, F[_, _], A, B](val fa: Env[T, F[A, B]])(implicit
+    F: AsArrow[F]
+  ) {
+    /* For context to context */
+    def ~>[G[_, _], C](
+      gb: Env[T, G[B, C]]
+    )(implicit G: AsArrow[G]): Env[T, Pipeline[A, C]] = {
+      for {
+        a <- fa
+        b <- gb
+        nodeA = F.toNode(a)
+        nodeB = G.toNode(b)
+      } yield Pipeline(new Node[A, C] {
+        def runSync: A => C = nodeA.runSync andThen nodeB.runSync
+        def runAsync(implicit ec: ExecutionContext): A => Future[C] = { a =>
+          nodeA.runAsync(ec)(a).flatMap(nodeB.runAsync(ec))
+        }
+      })
+    }
+
+    /* For context to function */
+    def ~>[C](gb: Function1[B, C]): Env[T, Pipeline[A, C]] = {
+      fa.map(a => {
+        val nodeA = F.toNode(a)
+        val nodeB = Transform(gb)
+        Pipeline(new Node[A, C] {
+          def runSync: A => C = nodeA.runSync andThen nodeB.runSync
+          def runAsync(implicit ec: ExecutionContext): A => Future[C] = { a =>
+            nodeA.runAsync(ec)(a).flatMap(nodeB.runAsync(ec))
+          }
+        })
+      })
+    }
+
+    /* For context to E, T, L or Pipeline */
+    def ~>[C](gb: ETLComponent[B, C]): Env[T, Pipeline[A, C]] = {
+      fa.map(a => {
+        val nodeA = F.toNode(a)
+        Pipeline(new Node[A, C] {
+          def runSync: A => C = nodeA.runSync andThen gb.runSync
+          def runAsync(implicit ec: ExecutionContext): A => Future[C] = { a =>
+            nodeA.runAsync(ec)(a).flatMap(gb.runAsync(ec))
+          }
+        })
+      })
+    }
+
+    def toPipeline: Env[T, Pipeline[A, B]] = {
+      fa.map(f => Pipeline(F.toNode(f)))
+    }
+  }
+
+  /**
+ * Extension methods for regular ETL components to connect with context-aware components
+ */
+  implicit class RegularComponentWithEnvOps[F[_, _], A, B, T](val fa: F[A, B])(implicit
+    F: AsArrow[F]
+  ) {
+
+    /**
+   * Connect a regular (non-context) component with a context-aware component
+   */
+    def ~>[G[_, _], C](
+      gb: Env[T, G[B, C]]
+    )(implicit G: AsArrow[G]): Env[T, Pipeline[A, C]] = {
+      gb.map(b => {
+        val nodeA = F.toNode(fa)
+        val nodeB = G.toNode(b)
+
+        Pipeline(new Node[A, C] {
+          def runSync: A => C = nodeA.runSync andThen nodeB.runSync
+          def runAsync(implicit ec: ExecutionContext): A => Future[C] = { a =>
+            nodeA.runAsync(ec)(a).flatMap(nodeB.runAsync(ec))
+          }
+        })
+      })
+    }
   }
 
   implicit class PipelineSequence[A, B](val pipeline: Pipeline[A, B]) {
@@ -236,6 +319,21 @@ package object etl4s {
     f(a)
     a
   }
+
+  type Env[T, A] = Reader[T, A]
+
+  object Env {
+    def apply[T, A](f: T => A): Env[T, A] = Reader(f)
+    def pure[T, A](a: A): Env[T, A]       = Reader.pure(a)
+    def ask[T]: Env[T, T]                 = Reader.ask
+  }
+
+  trait Etl4sEnv[T] {
+    type ExtractWithEnv[A, B]   = Env[T, Extract[A, B]]
+    type TransformWithEnv[A, B] = Env[T, Transform[A, B]]
+    type LoadWithEnv[A, B]      = Env[T, Load[A, B]]
+    type PipelineWithEnv[A, B]  = Env[T, Pipeline[A, B]]
+  }
 }
 
 package etl4s {
@@ -248,6 +346,8 @@ package etl4s {
     def map[B](f: A => B): Reader[R, B] = Reader(r => f(run(r)))
     def flatMap[B](f: A => Reader[R, B]): Reader[R, B] =
       Reader(r => f(run(r)).run(r))
+
+    def provideEnv(ctx: R): A = run(ctx)
   }
 
   object Reader {
