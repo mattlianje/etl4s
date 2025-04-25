@@ -23,23 +23,6 @@ Build pipelines by:
 
 They all behave identically under the hood.
 
-## Type safety
-**etl4s** won't let you chain together "blocks" that don't fit together:
-```scala
- val fiveExtract: Extract[Unit, Int]        = Extract(5)
- val exclaim:     Transform[String, String] = Transform(_ + "!")
-
- fiveExtract ~> exclaim
-```
-The above will not compile with:
-```shell
--- [E007] Type Mismatch Error: -------------------------------------------------
-4 | fiveExtract ~> exclaim
-  |                ^^^^^^^
-  |                Found:    (exclaim : Transform[String, String])
-  |                Required: Node[Int, Any]
-```
-
 ## Of note...
 - Ultimately - these nodes and pipelines are just reifications of functions and values (with a few niceties like built in retries, failure handling, concurrency-shorthand, and Future based parallelism).
 - Chaotic, framework/infra-coupled ETL codebases that grow without an imposed discipline drive dev-teams and data-orgs to their knees.

@@ -29,6 +29,11 @@ nav:
   - Installation: installation.md
   - Core Concepts: core-concepts.md
   - Your First Pipeline: first-pipeline.md
+  - Handling failures: failures.md
+  - Logging: logs.md
+  - Grouping: tasks.md
+  - Testing: testing.md
+  - Examples: examples.md
 markdown_extensions:
   - pymdownx.highlight:
       anchor_linenums: true
@@ -37,6 +42,9 @@ markdown_extensions:
   - pymdownx.superfences
   - attr_list
   - md_in_html
+  - toc:
+      permalink: true
+      toc_depth: 3
 repo_name: mattlianje/etl4s
 repo_url: https://github.com/mattlianje/etl4s
 extra:
