@@ -31,17 +31,16 @@ val normalizeEmails = Transform[List[User], List[User]] { users =>
   users.map(u => u.copy(email = u.email.toLowerCase))
 }
 
-// Extract domain from email
-val extractDomains = Transform[List[User], List[(User, String)]] { users =>
-  users.map(u => (u, u.email.split("@").last))
+val extractDomains = Transform[List[User], List[User]] { users =>
+  users.map(u => u.copy(domain = u.email.split("@").last))
 }
 ```
 
-Fianlly, a `Load` node to "save" our results:
+Finally, a `Load` node to "save" our results:
 ```scala
-val saveUsers = Load[List[(User, String)], Unit] { results =>
-  results.foreach { case (user, domain) =>
-    println(s"${user.name}: ${user.email} (${domain})")
+val saveUsers = Load[List[User], Unit] { users =>
+  users.foreach { user =>
+    println(s"${user.name}: ${user.email} (domain: ${user.domain})")
   }
 }
 ```
@@ -162,9 +161,9 @@ These aliases create shorthand forms for environment-wrapped ETL components.
 
 This lets you mix environment-aware components with regular ones.
 
-When you write `getUsers ~> normalizeEmails ~> saveData`, etl4s handles the complexity of connecting config-dependent components (getUsers, saveData) with regular ones (normalizeEmails) without making you write flatMap code.
+When you write `getUsers ~> normalizeEmails ~> saveData`, etl4s handles the complexity of connecting config-dependent components (`getUsers`, `saveData`) with regular ones (`normalizeEmails`) without making you write flatMap code.
 
-Here's how to use the Etl4sEnv trait for your config-aware components:
+Here's how to use the `Etl4sEnv` trait for your config-aware components:
 
 ```scala
 object UserService extends Etl4sEnv[PipelineConfig] {
@@ -223,7 +222,8 @@ val myConfig = PipelineConfig(
   endDate = java.time.LocalDate.of(2025, 1, 3)
 )
 
-val configuredPipeline: Pipeline[Unit, Unit] = configPipeline.provideEnv(myConfig)
+val configuredPipeline: Pipeline[Unit, Unit] = 
+     configPipeline.provideEnv(myConfig)
 ```
 
 You can now run your pipeline:
@@ -250,9 +250,8 @@ val pipeline = sayHello ~>
 
 val result = pipeline.unsafeRun(())
 // Result: Array("HELLO", "WORLD")
-//    but also prints: "Processing 2 words"
+// ...but also prints: "Processing 2 words"
 ```
-
 
 ## Chaining multiple pipelines
 Chain pipelines with `~>` like UNIX pipes:
@@ -285,6 +284,7 @@ val combined: Pipeline[Unit, Unit] =
 You can test your nodes and pipelines with any framework, they are just functions under the hood
 
 ### Single node
+Just call individual nodes like testing functions:
 ```scala
 test("normalizeEmails should convert emails to lowercase") {
   val normalizeEmails = Transform[List[User], List[User]] { users =>
@@ -304,15 +304,16 @@ test("normalizeEmails should convert emails to lowercase") {
 ```
 
 ### Complete pipeline
+Here is how you would test a pipeline:
 ```scala
 test("user processing pipeline should work end-to-end") {
   // Mock the save operation to verify results
-  val mockSave = Load[List[(User, String)], List[(User, String)]] { results => 
+  val mockSave = Load[List[User], List[User]] { results => 
     // Return the same data so we can assert on it
     results 
   }
   
-  // Build test pipeline
+  // Build your test pipeline
   val pipeline = getUsers ~> normalizeEmails ~> extractDomains ~> mockSave
   
   val result = pipeline.unsafeRun(())
