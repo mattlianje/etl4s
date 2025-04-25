@@ -38,6 +38,7 @@ repo_name: mattlianje/etl4s
 repo_url: https://github.com/mattlianje/etl4s
 
 extra:
+  generator: false
   social:
     - icon: fontawesome/brands/github
       link: https://github.com/mattlianje/etl4s
