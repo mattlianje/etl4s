@@ -1,11 +1,10 @@
 # etl4s
 
-A lightweight, zero-dependency library for writing type-safe, whiteboard-style ✨🍰 pipelines in functional Scala
+**_What?_ ... A lightweight, zero-dependency library for writing type-safe, whiteboard-style ✨🍰 pipelines in functional Scala**
 
-_**Why?**_
+_**Why?**_ ... Chaotic, framework/infra-coupled ETL codebases that grow without an imposed discipline drive data-orgs to their knees
 
-- Chaotic, framework/infra-coupled ETL codebases that grow without an imposed discipline drive data-orgs to their knees
-- **etl4s** was made for engineers who value simple, composable and config-driven dataflows
+_**For who?**_ ... Engineers who value simple, composable and config-driven dataflows
 
 ## Quickstart
 ```scala
