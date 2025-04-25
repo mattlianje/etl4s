@@ -6,7 +6,11 @@ Before we get started just import **etl4s** and create a synthetic domain model:
 ```scala
 import etl4s.*
 
-case class User(id: String, name: String, email: String)
+case class User(id: String,
+                name: String, 
+                email: String, 
+                domain: String = "", 
+                userType: String = "")
 ```
 
 ## Creating etl4s blocks
@@ -135,8 +139,8 @@ val configuredExtract: Env[PipelineConfig, Extract[Unit, List[User]]] =
  Env { env =>
   Extract { (_: Unit) =>
     List(
-      User("u1", "Alice", s"alice@${config.emailDomain}"),
-      User("u2", "Bob", s"bob@${config.emailDomain}")
+      User("u1", "Alice", s"alice@${env.emailDomain}"),
+      User("u2", "Bob", s"bob@${env.emailDomain}")
     )
   }
 }
@@ -167,32 +171,34 @@ object UserService extends Etl4sEnv[PipelineConfig] {
   def getUsers: ExtractWithEnv[Unit, List[User]] = Env { env =>
     Extract { (_: Unit) =>
       List(
-        User("u1", "User 1", s"user1@${config.emailDomain}"),
-        User("u2", "User 2", s"user2@${config.emailDomain}")
+        User("u1", "User 1", s"user1@${env.emailDomain}"),
+        User("u2", "User 2", s"user2@${env.emailDomain}")
       )
     }
   }
-  
+
   val normalizeEmails = Transform[List[User], List[User]] { users =>
     users.map(u => u.copy(email = u.email.toLowerCase))
   }
-  
-  val extractDomains = Transform[List[User], List[(User, String)]] { users =>
-    users.map(u => (u, u.email.split("@").last))
+
+  val extractDomains = Transform[List[User], List[User]] { users =>
+    users.map(u => u.copy(domain = u.email.split("@").last))
   }
-  
-  def enrichUsers: TransformWithEnv[List[(User, String)], List[(User, String, String)]] = Env { env =>
-    Transform { userDomains =>
-      userDomains.map { case (user, domain) =>
-        val userType = if (domain == config.emailDomain) "Internal" else "External"
-        (user, domain, userType)
+
+  def enrichUsers: TransformWithEnv[List[User], List[User]] = 
+   Env { env =>
+    Transform { users =>
+      users.map { user =>
+        val userType = if (user.domain == env.emailDomain) "Internal"
+                       else "External"
+        user.copy(userType = userType)
       }
-    }.withRetry(maxAttempts = config.retryAttempts)
+    }.withRetry(maxAttempts = env.retryAttempts)
   }
-  
-  def saveUsers: LoadWithEnv[List[(User, String, String)], Unit] = Env { env =>
-    Load { enrichedUsers =>
-      println(s"Saving ${enrichedUsers.size} users with domain ${config.emailDomain}")
+
+  def saveUsers: LoadWithEnv[List[User], Unit] = Env { env =>
+    Load { users =>
+      println(s"Saving ${users.size} users with domain ${env.emailDomain}")
     }
   }
 }
@@ -225,7 +231,7 @@ You can now run your pipeline:
 configuredPipeline.unsafeRun(())
 ```
 
-## Adding observation/logging (`tap`)
+## Adding logging (`tap`)
 
 The `tap` method allows you to observe values flowing through your pipeline without modifying them. 
 This is useful for logging, debugging, or collecting metrics.

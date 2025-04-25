@@ -24,8 +24,8 @@ theme:
 
 nav:
   - Home: index.md
-  - Your First Pipeline: first-pipeline.md
   - Core Concepts: core-concepts.md
+  - Your First Pipeline: first-pipeline.md
 
 markdown_extensions:
   - pymdownx.highlight:
