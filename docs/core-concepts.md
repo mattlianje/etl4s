@@ -1,5 +1,36 @@
 **etl4s** has 2 building blocks
 
+## `Node[-In, +Out]`
+`Node`'s are the pipeline building blocks. A Node is just a wrapper around a function `In => Out` that we chain together with `~>` to form pipelines.
+
+**etl4s** offers three nodes aliases purely to make your pipelines more readable and express intent clearly
+
+`Extract`, `Transform` and `Load`. They all behave identically under the hood.
+
+```scala
+/*
+ * Option 1: Create nodes "purely", will have -In type "Unit"
+ */
+val extract = Extract("hello")
+
+/*
+ * Option 2: Just wrap any lambda
+ */
+val extract2     = Extract[Int, String](n => n.toString)
+val getStringLen = Transform[String, Int](_.length)
+
+/*
+ * To run nodes
+ */
+println(extract(()))
+println(getStringLen("test"))
+```
+This will print out:
+```
+hello
+4
+```
+
 ## `Pipeline[-In, +Out]`
 `Pipeline`'s are the core abstraction of **etl4s**. They're lazily evaluated data transformations take input `In`
 and produce output type `Out`. 
@@ -7,21 +38,36 @@ and produce output type `Out`.
 A pipeline won't execute until you call `unsafeRun()` or `safeRun()` on it and provide
 the `In`.
 
-Build pipelines by:
-- Chaining nodes with `~>`
-- Wrap functions directly with `Pipeline(x => x + 1)`
-- Connect existing pipelines with the same `~>` operator
+```scala
+val extract = Extract("hello")
+val transform = Transform[String, Int](_.length)
+val load = Load[Int, String](n => s"Length: $n")
 
-## `Node[-In, +Out]`
-`Node`'s are the pipeline building blocks. A Node is just a wrapper around a function `In => Out` that we chain together with `~>` to form pipelines.
+/*
+ * Build pipelines by chaining nodes 
+ */
+val pipeline = extract ~> transform ~> load
 
-**etl4s** offers three nodes aliases purely to make your pipelines more readable and express intent clearly:
+/*
+ * Alternative: create directly from function
+ */
+val simplePipeline = Pipeline((s: String) => s.toUpperCase)
 
-- `Extract[-In, +Out]` - Gets your data. You can create data from "purely" with `Extract(2)` (which is shorthand for `Extract(_ => 2)`)
-- `Transform[-In, +Out]` - Changes data shape or content
-- `Load[-In, +Out]` - Finalizes the pipeline, often with a side-effect like writing to storage
+/* 
+ * Execute pipelines with unsafeRun
+ */
+println(pipeline.unsafeRun(()))         /* "Length: 5" */
+println(simplePipeline.unsafeRun("hi")) /* "HI" */
 
-They all behave identically under the hood.
+/*
+ * Using safeRun to handle exceptions safely 
+ */
+val riskyPipeline = Pipeline[String, Int](s => s.toInt)
+val safeResult = riskyPipeline.safeRun("not a number")
+
+println(safeResult)  /* Failure(java.lang.NumberFormatException: ..) */
+```
+
 
 ## Of note...
 - Ultimately - these nodes and pipelines are just reifications of functions and values (with a few niceties like built in retries, failure handling, concurrency-shorthand, and Future based parallelism).
