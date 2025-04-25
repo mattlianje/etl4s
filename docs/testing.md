@@ -37,6 +37,6 @@ p.safeRun(2)
 ```
 You will get a response wrapped in a `scala.util.Try`
 ```
-Success(2)
+Success(20)
 ```
 
