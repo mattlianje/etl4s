@@ -21,22 +21,24 @@ theme:
         name: Switch to light mode
   features:
     - content.code.copy
-
+    - navigation.instant
+    - navigation.tracking
+    - navigation.top
 nav:
   - Home: index.md
+  - Installation: installation.md
   - Core Concepts: core-concepts.md
   - Your First Pipeline: first-pipeline.md
-
 markdown_extensions:
   - pymdownx.highlight:
       anchor_linenums: true
       use_pygments: true
       pygments_lang_class: true
   - pymdownx.superfences
-
+  - attr_list
+  - md_in_html
 repo_name: mattlianje/etl4s
 repo_url: https://github.com/mattlianje/etl4s
-
 extra:
   generator: false
   social:
