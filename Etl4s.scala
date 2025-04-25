@@ -86,15 +86,66 @@ package object etl4s {
   }
 
   /**
-   * Extension methods for context-aware ETL components
-   */
-  implicit class EnvArrowOps[T, F[_, _], A, B](val fa: Env[T, F[A, B]])(implicit
+    * Type class for environment compatibility between different component requirements.
+    * Determines the environment type needed when connecting components with different requirements.
+    */
+  trait EnvCompat[T1, T2, R] {
+    def toT1(r: R): T1
+    def toT2(r: R): T2
+  }
+
+  trait LowPriorityImplicits {
+    /* Fallback case - cast from more to less specific */
+    implicit def superToSub[T1, T2]: EnvCompat[T1, T2, T1] =
+      new EnvCompat[T1, T2, T1] {
+        def toT1(r: T1): T1 = r
+        def toT2(r: T1): T2 = r.asInstanceOf[T2]
+      }
+  }
+
+  object EnvCompat extends LowPriorityImplicits {
+
+    /**
+      * Case 1: T2 is a subtype of T1 (e.g., HasDbConfig extends HasBaseConfig)
+      * Result types is more specific one (T2)
+      */
+    implicit def t2SubT1[T1, T2 <: T1]: EnvCompat[T1, T2, T2] =
+      new EnvCompat[T1, T2, T2] {
+        def toT1(r: T2): T1 = r
+        def toT2(r: T2): T2 = r
+      }
+
+    /**
+      * Case 2: T1 is a subtype of T2 (e.g., HasFullConfig extends HasDateRange)
+      * Result type is the more general one (T2)
+      */
+    implicit def t1SubT2[T1 <: T2, T2]: EnvCompat[T1, T2, T2] =
+      new EnvCompat[T1, T2, T2] {
+        def toT1(r: T2): T1 = r.asInstanceOf[T1]
+        def toT2(r: T2): T2 = r
+      }
+
+    /**
+      * Case 3: Both T1 and T2 are subtypes of common supertype R
+      * Result type is the common supertype
+      */
+    implicit def bothSubR[T1, T2, R](implicit
+      ev1: T1 <:< R,
+      ev2: T2 <:< R
+    ): EnvCompat[T1, T2, R] =
+      new EnvCompat[T1, T2, R] {
+        def toT1(r: R): T1 = r.asInstanceOf[T1]
+        def toT2(r: R): T2 = r.asInstanceOf[T2]
+      }
+  }
+
+  implicit class EnvArrowOps[T1, F[_, _], A, B](val fa: Env[T1, F[A, B]])(implicit
     F: AsArrow[F]
   ) {
-    /* For context to context */
+    /* For context to context with same type */
     def ~>[G[_, _], C](
-      gb: Env[T, G[B, C]]
-    )(implicit G: AsArrow[G]): Env[T, Pipeline[A, C]] = {
+      gb: Env[T1, G[B, C]]
+    )(implicit G: AsArrow[G]): Env[T1, Pipeline[A, C]] = {
       for {
         a <- fa
         b <- gb
@@ -108,8 +159,30 @@ package object etl4s {
       })
     }
 
+    /* For context to context with different but compatible types */
+    def ~>[T2, G[_, _], C, R](
+      gb: Env[T2, G[B, C]]
+    )(implicit
+      G: AsArrow[G],
+      compat: EnvCompat[T1, T2, R]
+    ): Env[R, Pipeline[A, C]] = {
+      Reader { (env: R) =>
+        val fa1   = fa.run(compat.toT1(env))
+        val gb1   = gb.run(compat.toT2(env))
+        val nodeA = F.toNode(fa1)
+        val nodeB = G.toNode(gb1)
+
+        Pipeline(new Node[A, C] {
+          def runSync: A => C = nodeA.runSync andThen nodeB.runSync
+          def runAsync(implicit ec: ExecutionContext): A => Future[C] = { a =>
+            nodeA.runAsync(ec)(a).flatMap(nodeB.runAsync(ec))
+          }
+        })
+      }
+    }
+
     /* For context to function */
-    def ~>[C](gb: Function1[B, C]): Env[T, Pipeline[A, C]] = {
+    def ~>[C](gb: Function1[B, C]): Env[T1, Pipeline[A, C]] = {
       fa.map(a => {
         val nodeA = F.toNode(a)
         val nodeB = Transform(gb)
@@ -123,7 +196,7 @@ package object etl4s {
     }
 
     /* For context to E, T, L or Pipeline */
-    def ~>[C](gb: ETLComponent[B, C]): Env[T, Pipeline[A, C]] = {
+    def ~>[C](gb: ETLComponent[B, C]): Env[T1, Pipeline[A, C]] = {
       fa.map(a => {
         val nodeA = F.toNode(a)
         Pipeline(new Node[A, C] {
@@ -135,21 +208,21 @@ package object etl4s {
       })
     }
 
-    def toPipeline: Env[T, Pipeline[A, B]] = {
+    def toPipeline: Env[T1, Pipeline[A, B]] = {
       fa.map(f => Pipeline(F.toNode(f)))
     }
   }
 
   /**
- * Extension methods for regular ETL components to connect with context-aware components
- */
+    * Extension methods for regular ETL components to connect with context-aware components
+    */
   implicit class RegularComponentWithEnvOps[F[_, _], A, B, T](val fa: F[A, B])(implicit
     F: AsArrow[F]
   ) {
 
     /**
-   * Connect a regular (non-context) component with a context-aware component
-   */
+      * Connect a regular (non-context) component with a context-aware component
+      */
     def ~>[G[_, _], C](
       gb: Env[T, G[B, C]]
     )(implicit G: AsArrow[G]): Env[T, Pipeline[A, C]] = {

@@ -1081,42 +1081,97 @@ class Etl4sEnvSpec extends munit.FunSuite {
 
     assert(result.contains("length:"))
   }
+
+  test("chaining components with proper environment subset/superset relationships") {
+    trait HasBaseConfig {
+      def appName: String
+    }
+
+    trait HasDateRange extends HasBaseConfig {
+      def startDate: String
+      def endDate: String
+    }
+
+    trait HasDbConfig extends HasBaseConfig {
+      def dbUrl: String
+      def username: String
+    }
+
+    trait HasFullConfig extends HasDateRange with HasDbConfig
+
+    case class FullConfig(
+      appName: String,
+      startDate: String,
+      endDate: String,
+      dbUrl: String,
+      username: String
+    ) extends HasFullConfig
+
+    case class Data(values: List[String])
+
+    val initApp = Env[HasBaseConfig, Extract[Unit, Data]] { ctx =>
+      Extract { _ =>
+        Data(List(s"App ${ctx.appName} initialized"))
+      }
+    }
+
+    val dateProcess = Env[HasDateRange, Transform[Data, Data]] { ctx =>
+      Transform { data =>
+        Data(data.values.map(v => s"$v with date range ${ctx.startDate} to ${ctx.endDate}"))
+      }
+    }
+
+    val dbProcess = Env[HasDbConfig, Transform[Data, Data]] { ctx =>
+      Transform { data =>
+        Data(data.values.map(v => s"$v using DB ${ctx.username}@${ctx.dbUrl}"))
+      }
+    }
+
+    val finalProcess = Env[HasFullConfig, Transform[Data, Data]] { ctx =>
+      Transform { data =>
+        Data(
+          data.values.map(v =>
+            s"$v - final processing for app ${ctx.appName} with dates ${ctx.startDate}-${ctx.endDate} on ${ctx.dbUrl}"
+          )
+        )
+      }
+    }
+
+    val config = FullConfig(
+      appName = "TestApp",
+      startDate = "2023-01-01",
+      endDate = "2023-01-31",
+      dbUrl = "jdbc:pg://localhost/test",
+      username = "testuser"
+    )
+
+    val pipeline1: Env[HasDateRange, Pipeline[Unit, Data]] = initApp ~> dateProcess
+    val result1 = pipeline1.provideEnv(config).unsafeRun(())
+
+    assert(result1.values.head.contains("App TestApp initialized"))
+    assert(result1.values.head.contains("with date range 2023-01-01 to 2023-01-31"))
+
+    val pipeline2: Env[HasDbConfig, Pipeline[Unit, Data]] = initApp ~> dbProcess
+    val result2 = pipeline2.provideEnv(config).unsafeRun(())
+
+    assert(result2.values.head.contains("App TestApp initialized"))
+    assert(result2.values.head.contains("using DB testuser@jdbc:pg://localhost/test"))
+
+    val pipeline3: Env[HasFullConfig, Pipeline[Data, Data]] = finalProcess ~> dbProcess
+    val result3 = pipeline3.provideEnv(config).unsafeRun(Data(List("Starting")))
+
+    println(result3)
+    assert(result3.values.head.contains("Starting"))
+    assert(result3.values.head.contains("final processing for app TestApp"))
+
+    /* Invalid example: can't chain dateProcess ~> dbProcess because neither Env is a subset
+       of the other */
+
+    val pipeline4: Env[HasFullConfig, Pipeline[Unit, Data]] = initApp ~> dateProcess ~> finalProcess
+    val result4 = pipeline4.provideEnv(config).unsafeRun(())
+
+    assert(result4.values.head.contains("App TestApp initialized"))
+    assert(result4.values.head.contains("with date range"))
+    assert(result4.values.head.contains("final processing"))
+  }
 }
-
-/*
- digraph ETL {
-  //rankdir=LR;
-  node [shape=box, style=rounded, fontname="Helvetica", fontsize=12];
-  edge [fontname="Helvetica", fontsize=10];
-
-  {
-    node [fillcolor="#e1f5fe", style="filled,rounded"]
-    s1; s2; s3;
-  }
-
-  {
-    node [fillcolor="#fff3e0", style="filled,rounded"]
-    D; E; F;
-  }
-
-  {
-    node [fillcolor="#f9fbe7", style="filled,rounded"]
-    w1; w2; w3;
-  }
-
-  R [fillcolor="#dcedc8", style="filled,rounded"];
-
-  s1 -> D;
-  s2 -> D;
-  s3 -> E;
-  D -> F;
-  E -> F;
-  F -> w1;
-  F -> w2;
-  F -> w3;
-  w1 -> R;
-
-  {rank=same; s1; s2; s3}
-  {rank=same; w1; w2; w3}
- }
- */
