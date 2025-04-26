@@ -7,21 +7,19 @@
 
 `Extract`, `Transform` and `Load`. They all behave identically under the hood.
 
+Option 1: Create nodes "purely", will have -In type "Unit"
 ```scala
-/*
- * Option 1: Create nodes "purely", will have -In type "Unit"
- */
 val extract = Extract("hello")
+```
 
-/*
- * Option 2: Just wrap any lambda
- */
+Option 2: Just wrap any lambda to create a node
+```scala
 val extract2     = Extract[Int, String](n => n.toString)
 val getStringLen = Transform[String, Int](_.length)
+```
 
-/*
- * To run nodes
- */
+Run nodes like calling functions
+```scala
 println(extract(()))
 println(getStringLen("test"))
 ```
@@ -38,30 +36,39 @@ and produce output type `Out`.
 A pipeline won't execute until you call `unsafeRun()` or `safeRun()` on it and provide
 the `In`.
 
+Let's start with some nodes:
 ```scala
-val extract = Extract("hello")
-val transform = Transform[String, Int](_.length)
-val load = Load[Int, String](n => s"Length: $n")
+import etl4s._
 
-/*
- * Build pipelines by chaining nodes 
- */
-val pipeline = extract ~> transform ~> load
+val E = Extract("hello")
+val T = Transform[String, Int](_.length)
+val L = Load[Int, String](n => s"Length: $n")
+```
 
-/*
- * Alternative: create directly from function
- */
+Build pipelines by chaining nodes 
+```scala
+val pipeline = E ~> T ~> L
+```
+
+Alternatively, create a `Pipeline` directly from a function
+
+```scala
 val simplePipeline = Pipeline((s: String) => s.toUpperCase)
+```
+Execute pipelines with unsafeRun
+```scala
+println(pipeline.unsafeRun(()))      
+println(simplePipeline.unsafeRun("hi"))
+```
 
-/* 
- * Execute pipelines with unsafeRun
- */
-println(pipeline.unsafeRun(()))         /* "Length: 5" */
-println(simplePipeline.unsafeRun("hi")) /* "HI" */
+This will print to stdout:
+```
+Length: 5
+HI
+```
 
-/*
- * Using safeRun to handle exceptions safely 
- */
+Use `safeRun` to handle exceptions safely 
+```scala
 val riskyPipeline = Pipeline[String, Int](s => s.toInt)
 val safeResult = riskyPipeline.safeRun("not a number")
 

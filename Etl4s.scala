@@ -393,6 +393,9 @@ package object etl4s {
     a
   }
 
+  /**
+    * Aliases and shorthands
+    */
   type Env[T, A] = Reader[T, A]
 
   object Env {
