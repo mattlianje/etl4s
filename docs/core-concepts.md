@@ -1,4 +1,4 @@
-**etl4s** has 2 building blocks
+**etl4s** has 2 building blocks. `Node` and `Pipeline`
 
 ## `Node[-In, +Out]`
 `Node`'s are the pipeline building blocks. A Node is just a wrapper around a function `In => Out` that we chain together with `~>` to form pipelines.
@@ -7,12 +7,12 @@
 
 `Extract`, `Transform` and `Load`. They all behave identically under the hood.
 
-Option 1: Create nodes "purely", will have -In type "Unit"
+You can create nodes "purely". They will have `-In` type "Unit"
 ```scala
 val extract = Extract("hello")
 ```
 
-Option 2: Just wrap any lambda to create a node
+Or just wrap any lambda or `Function1`
 ```scala
 val extract2     = Extract[Int, String](n => n.toString)
 val getStringLen = Transform[String, Int](_.length)
@@ -55,7 +55,8 @@ Alternatively, create a `Pipeline` directly from a function
 ```scala
 val simplePipeline = Pipeline((s: String) => s.toUpperCase)
 ```
-Execute pipelines with unsafeRun
+
+Execute pipelines with `unsafeRun(<PIPELINE_INPUT>)`
 ```scala
 println(pipeline.unsafeRun(()))      
 println(simplePipeline.unsafeRun("hi"))
