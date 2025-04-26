@@ -1,18 +1,17 @@
-**etl4s** has 2 building blocks. `Node` and `Pipeline`
+
+**etl4s** has 2 building blocks. `Node[-In, +Out]` and `Pipeline[-In, +Out]`. They are just wrappers around a function
+`In => Out` that we chain together with `~>`
 
 ## `Node[-In, +Out]`
-`Node`'s are the pipeline building blocks. A Node is just a wrapper around a function `In => Out` that we chain together with `~>` to form pipelines.
 
-**etl4s** offers three nodes aliases purely to make your pipelines more readable and express intent clearly
+**etl4s** offers three nodes aliases purely to make your pipelines more readable and express intent clearly: `Extract`, `Transform` and `Load`. They all behave identically under the hood.
 
-`Extract`, `Transform` and `Load`. They all behave identically under the hood.
-
-You can create nodes "purely". They will have `-In` type "Unit"
+You have a shorthand to create nodes "purely"
 ```scala
-val extract = Extract("hello")
+val extract: Extract[Unit, String] = Extract("hello")
 ```
 
-Or just wrap any lambda or `Function1`
+Or you can just wrap any lambda or `Function1`
 ```scala
 val extract2     = Extract[Int, String](n => n.toString)
 val getStringLen = Transform[String, Int](_.length)
@@ -30,8 +29,7 @@ hello
 ```
 
 ## `Pipeline[-In, +Out]`
-`Pipeline`'s are the core abstraction of **etl4s**. They're lazily evaluated data transformations take input `In`
-and produce output type `Out`. 
+`Pipeline`'s are the core abstraction of **etl4s**.
 
 A pipeline won't execute until you call `unsafeRun()` or `safeRun()` on it and provide
 the `In`.

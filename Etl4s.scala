@@ -94,48 +94,51 @@ package object etl4s {
     def toT2(r: R): T2
   }
 
-  trait LowPriorityImplicits {
-    /* Fallback case - cast from more to less specific */
-    implicit def superToSub[T1, T2]: EnvCompat[T1, T2, T1] =
-      new EnvCompat[T1, T2, T1] {
-        def toT1(r: T1): T1 = r
-        def toT2(r: T1): T2 = r.asInstanceOf[T2]
+  object EnvCompat extends LowPriorityEnvCompat2 {
+    /* Highest priority: Case 1 - same types */
+    implicit def identityCompat[T]: EnvCompat[T, T, T] =
+      new EnvCompat[T, T, T] {
+        def toT1(r: T): T = r
+        def toT2(r: T): T = r
       }
   }
 
-  object EnvCompat extends LowPriorityImplicits {
+  trait LowPriorityEnvCompat2 extends LowPriorityEnvCompat1 {
 
     /**
-      * Case 1: T2 is a subtype of T1 (e.g., HasDbConfig extends HasBaseConfig)
-      * Result types is more specific one (T2)
-      */
+   * Case 2: T1 is a subtype of T2 (e.g., HasFullConfig extends HasDateRange)
+   * Result type is the more specific one (T1)
+   */
+    implicit def t1SubT2[T1 <: T2, T2]: EnvCompat[T1, T2, T1] =
+      new EnvCompat[T1, T2, T1] {
+        def toT1(r: T1): T1 = r
+        def toT2(r: T1): T2 = r // This works because T1 <: T2
+      }
+  }
+
+  trait LowPriorityEnvCompat1 {
+
+    /**
+   * Case 3: T2 is a subtype of T1 (e.g., HasDateRange extends HasBaseConfig)
+   * Result type is the more specific one (T2)
+   */
     implicit def t2SubT1[T1, T2 <: T1]: EnvCompat[T1, T2, T2] =
       new EnvCompat[T1, T2, T2] {
-        def toT1(r: T2): T1 = r
+        def toT1(r: T2): T1 = r /* This works because T2 <: T1 */
         def toT2(r: T2): T2 = r
       }
 
     /**
-      * Case 2: T1 is a subtype of T2 (e.g., HasFullConfig extends HasDateRange)
-      * Result type is the more general one (T2)
-      */
-    implicit def t1SubT2[T1 <: T2, T2]: EnvCompat[T1, T2, T2] =
-      new EnvCompat[T1, T2, T2] {
-        def toT1(r: T2): T1 = r.asInstanceOf[T1]
-        def toT2(r: T2): T2 = r
-      }
-
-    /**
-      * Case 3: Both T1 and T2 are subtypes of common supertype R
-      * Result type is the common supertype
-      */
-    implicit def bothSubR[T1, T2, R](implicit
-      ev1: T1 <:< R,
-      ev2: T2 <:< R
-    ): EnvCompat[T1, T2, R] =
-      new EnvCompat[T1, T2, R] {
-        def toT1(r: R): T1 = r.asInstanceOf[T1]
-        def toT2(r: R): T2 = r.asInstanceOf[T2]
+   * Fallback case - for unrelated types with a common supertype
+   * (TODO: think about this more lol)... Not used often but provided for completeness
+   */
+    implicit def commonSuper[T1, T2, S](implicit
+      ev1: T1 <:< S,
+      ev2: T2 <:< S
+    ): EnvCompat[T1, T2, S] =
+      new EnvCompat[T1, T2, S] {
+        def toT1(r: S): T1 = r.asInstanceOf[T1]
+        def toT2(r: S): T2 = r.asInstanceOf[T2]
       }
   }
 
