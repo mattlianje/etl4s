@@ -34,15 +34,22 @@ val usersDF = usersData.toDF("id", "name", "email", "age", "register_date", "act
 ```
 
 ## Creating etl4s blocks
-Next, create some **etl4s** nodes:
+Next, we create some **etl4s** nodes.
 
+An `Extract` node to "purely" load some data:
 ```scala
 val getUsers: Extract[Unit, DataFrame] = Extract(_ => usersDF)
+```
 
+Then a `Transform` node to process our data:
+```scala
 val filterUsers = Transform[DataFrame, DataFrame](
   _.filter("register_date >= '2023-01-01' AND active = true")
 )
+```
 
+Finally, create a `Load` node to "save" our results:
+```scala
 val saveReport = Load[DataFrame, Unit] { df =>
   println("*** User Report ***")
   df.show()
