@@ -16,5 +16,5 @@ val pipeline = sayHello ~>
 
 val result = pipeline.unsafeRun(())
 // Result: Array("HELLO", "WORLD")
-//    but also prints: "Processing 2 words"
+// ...but also prints: "Processing 2 words"
 ```
