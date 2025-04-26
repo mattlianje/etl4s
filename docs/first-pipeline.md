@@ -34,22 +34,15 @@ val usersDF = usersData.toDF("id", "name", "email", "age", "register_date", "act
 ```
 
 ## Creating etl4s blocks
-Under the hood, `Extract`, `Transform`, and `Load` are just type aliases for the same `Node` type, but this helps express intent clearly in your code.
+Next, create some **etl4s** nodes:
 
-Let's create an `Extract` node:
 ```scala
 val getUsers: Extract[Unit, DataFrame] = Extract(_ => usersDF)
-```
 
-Next, let's create some `Transform` nodes to process our data:
-```scala
 val filterUsers = Transform[DataFrame, DataFrame](
   _.filter("register_date >= '2023-01-01' AND active = true")
 )
-```
 
-Finally, create a `Load` node to "save" our results:
-```scala
 val saveReport = Load[DataFrame, Unit] { df =>
   println("*** User Report ***")
   df.show()
@@ -57,7 +50,7 @@ val saveReport = Load[DataFrame, Unit] { df =>
 ```
 
 ## Stitching a pipeline
-The `~>` operator connects nodes to form pipelines:
+Stitch our nodes together to make a pipeline:
 ```scala
 val simplePipeline = getUsers ~> filterUsers ~> saveReport
 ```
