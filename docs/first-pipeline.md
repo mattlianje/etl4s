@@ -67,6 +67,18 @@ val simplePipeline = getUsers ~> filterUsers ~> saveReport
 simplePipeline.unsafeRun(())
 ```
 
+You will see:
+```
+*** User Report ***
++---+-----------+--------------------+---+-------------+------+
+| id|       name|               email|age|register_date|active|
++---+-----------+--------------------+---+-------------+------+
+|  1|   Évariste| egalois@polytech.fr| 19|   2023-01-15|  true|
+|  2|Jean Lannes| jlannes@example.com| 32|   2023-03-22|  true|
+|  4|   Matthieu|matthieu@nargothr...| 28|   2023-06-30|  true|
++---+-----------+--------------------+---+-------------+------+
+```
+
 If your pipeline were:
 ```scala
 val pipelineWithInput: Pipeline[DataFrame, Unit] = 
@@ -137,5 +149,16 @@ val configuredPipeline: Pipeline[Unit, Unit] =
  * Run the pipeline
  */
 configuredPipeline.unsafeRun(())
+```
+You will see:
+```
+Would save results to data/users_report
++---+-----------+--------------------+---+-------------+------+
+| id|       name|               email|age|register_date|active|
++---+-----------+--------------------+---+-------------+------+
+|  2|Jean Lannes| jlannes@example.com| 32|   2023-03-22|  true|
+|  4|   Matthieu|matthieu@nargothr...| 28|   2023-06-30|  true|
+|  6|     Amélie|apoulain@wanadoo.com| 26|   2023-05-19| false|
++---+-----------+--------------------+---+-------------+------+
 ```
 
