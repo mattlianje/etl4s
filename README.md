@@ -34,9 +34,9 @@ All you need:
 import etl4s.*
 ```
 ## Documentation
-[Microsite](https://mattlianje.github.io/etl4s/)
+[Full Documentation](https://mattlianje.github.io/etl4s/) - Detailed guides, API references, and examples
 
-## Code Example
+## Quick Example
 ```scala
 import etl4s.*
 
