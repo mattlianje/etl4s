@@ -21,42 +21,20 @@ Battle-tested at [Instacart](https://www.instacart.com/)
 
 **etl4s** is on MavenCentral and cross-built for Scala, 2.12, 2.13, 3.x:
 ```scala
-"xyz.matthieucourt" %% "etl4s" % "1.2.0"
+"xyz.matthieucourt" %% "etl4s" % "1.3.0"
 ```
 
 Try it in your repl:
 ```bash
-scala-cli repl --scala 3 --dep xyz.matthieucourt:etl4s_3:1.2.0
+scala-cli repl --scala 3 --dep xyz.matthieucourt:etl4s_3:1.3.0
 ```
 
 All you need:
 ```scala
 import etl4s.*
 ```
-## Table of Contents
-- [Features](#features)
-- [Get started](#get-started)
-- [Code Example](#code-example)
-- [Core Concepts](#core-concepts)
-  - [Pipeline](#pipeline-in-out)
-  - [Node](#node-in-out)
-- [Type safety](#type-safety)
-- [Of note...](#of-note)
-- [Operators](#operators)
-- [Handling Failures](#handling-failures)
-  - [withRetry](#withretry)
-  - [onFailure](#onfailure)
-- [Observation with `tap`](#observation-with-tap)
-- [Parallelizing Tasks](#parallelizing-tasks)
-- [Built-in Tools](#built-in-tools)
-  - [Reader[R, A]](#readerr-a-config-driven-pipelines)
-  - [Writer[W, A]](#writerw-a-log-accumulating-pipelines)
-  - [Validated[T]](#validatedt-easy-validation-stacking)
-- [Examples](#examples)
-  - [Chain two pipelines](#chain-two-pipelines)
-  - [Complex chaining](#complex-chaining)
-- [Real-world examples](#real-world-examples)
-- [Inspiration](#inspiration)
+## Documentation
+[Microsite](https://mattlianje.github.io/etl4s/)
 
 ## Code Example
 ```scala
@@ -79,30 +57,15 @@ pipeline.unsafeRun(())
 ```
 
 ## Core Concepts
-**etl4s** has 2 building blocks
+**etl4s** has 2 building blocks. `Node[-In, +Out]` and `Pipeline[-In, +Out]`. 
+They are just wrappers around a function `In => Out` that we chain together with `~>`
 
-#### `Pipeline[-In, +Out]`
-`Pipeline`'s are the core abstraction of **etl4s**. They're lazily evaluated data transformations take input `In`
-and produce output type `Out`. 
+They're lazily evaluated data transformations take input `In`
+and produce output type `Out`.
 
-A pipeline won't execute until you call `unsafeRun()` or `safeRun()` on it and provide
-the `In`.
-
-Build pipelines by:
-- Chaining nodes with `~>`
-- Wrap functions directly with `Pipeline(x => x + 1)`
-- Connect existing pipelines with the same `~>` operator
-
-#### `Node[-In, +Out]`
-`Node`'s are the pipeline building blocks. A Node is just a wrapper around a function `In => Out` that we chain together with `~>` to form pipelines.
-
-**etl4s** offers three nodes aliases purely to make your pipelines more readable and express intent clearly:
-
-- `Extract[-In, +Out]` - Gets your data. You can create data from "purely" with `Extract(2)` (which is shorthand for `Extract(_ => 2)`)
-- `Transform[-In, +Out]` - Changes data shape or content
-- `Load[-In, +Out]` - Finalizes the pipeline, often with a side-effect like writing to storage
-
+**etl4s** offers three `Node` aliases purely to make your pipelines more readable and express intent clearly. `Extract`, `Transform` and `Load`.
 They all behave identically under the hood.
+
 
 ## Type safety
 **etl4s** won't let you chain together "blocks" that don't fit together:
@@ -202,7 +165,7 @@ val pipeline = sayHello ~>
 
 val result = pipeline.unsafeRun(())
 // Result: Array("HELLO", "WORLD")
-//    but also prints: "Processing 2 words"
+// but also prints: "Processing 2 words"
 ```
 
 
@@ -257,148 +220,12 @@ val pipeline =
 **etl4s** comes with 3 extra abstractions to make your pipelines hard like iron, and flexible like bamboo.
 You can use them directly or swap in your own favorites (like their better built homologues from [Cats](https://typelevel.org/cats/)).
 
-### `Reader[R, A]`: Config-driven pipelines
-Need database credentials? Start and end dates for your batch job? API keys? Environment settings?
-Let your pipeline know exactly what it needs to run, and switch configs effortlessly.
-```scala
-import etl4s.*
+- `Reader[R, A]` Config-driven pipelines
+- `Writer[W, A]`: Log accumulating pipelines
+- `Validated[T]` A lightweight, powerful validation stacking subsystem
 
-case class ApiConfig(url: String, key: String)
-val config = ApiConfig("https://api.com", "secret")
-
-val fetchUser = Reader[ApiConfig, Transform[String, String]] { config =>
-  Transform(id => s"Fetching user $id from ${config.url}")
-}
-
-val loadUser = Reader[ApiConfig, Load[String, String]] { config =>
-  Load(msg => s"User loaded with key `${config.key}`: $msg")
-}
-
-val configuredPipeline = for {
-                          userTransform <- fetchUser
-                          userLoader    <- loadUser
-                        } yield Extract("user123") ~> userTransform ~> userLoader
-
-/* Run with config */
-val result = configuredPipeline.run(config).unsafeRun(())
-println(result)
-```
-Prints:
-```
-"User loaded with key `secret`: Fetching user user123 from https://api.com"
-```
-
-### `Writer[W, A]`: Log accumulating pipelines
-Collect logs at every step of your pipeline and get them all at once with your results.
-No more scattered println's - just clean, organized logging, that shows exactly how your data flowed through the pipeline.
-```scala
-import etl4s.*
-
-type Log = List[String]
-type DataWriter[A] = Writer[Log, A]
-
-val fetchUser = Transform[String, DataWriter[String]] { id =>
-  Writer(
-    List(s"Fetching user $id"),
-    s"User $id"
-  )
-}
-
-val processUser = Transform[DataWriter[String], DataWriter[String]] { writerInput =>
-  for {
-    value <- writerInput
-    result <- Writer(
-      List(s"Processing $value"),
-      s"Processed: $value"
-    )
-  } yield result
-}
-
-val pipeline = Extract("123") ~> fetchUser ~> processUser
-val (logs, result) = pipeline.unsafeRun(()).run()
-```
-Yields:
-```
-Logs: ["Fetching user 123", "Processing User 123"]
-Result: "Processed: User 123"
-```
-
-### `Validated[T]`: Easy validation stacking
-**etl4s** provides a lightweight validation system that lets you accumulate errors instead of failing at the first problem.
-You can then report on, and take action based on specific failure lists.
-
-#### Components
-
-| Component | Description | Example |
-|:----------|:------------|:--------|
-| `Validated[T]` | Type class for validating objects | `Validated[User] validator` (validator = {require / success / failure}) |
-| `ValidationResult` | Success (Valid) or failure (Invalid) | `Valid(user)` or `Invalid(errors)` (errors always `List[String]`|
-| `require` | Validate a condition | `require(user, user.age >= 18, "Must be 18+")` |
-| `success` | Create successful validation | `success(user)` |
-| `failure` | Create failed validation | `failure("Invalid data")` |
-| `&&` | Combine with AND logic | `validateName && validateEmail` |
-| `OR` operator | Combine with OR logic | `isPremium OR isAdmin` |
-
-
-Define your data model:
-```scala
-case class User(name: String, email: String, age: Int)
-```
-
-Create a simple validator:
-```scala
-val validateUser = Validated[User] { user =>
-  require(user, user.name.nonEmpty, "Name required") &&
-  require(user, user.email.contains("@"), "Valid email required") &&
-  require(user, user.age >= 18, "Must be 18+")
-}
-```
-
-Run validation:
-```scala
-val result = validateUser(User("Alice", "alice@mail.com", 25))
-// Valid(User(Alice,alice@mail.com,25))
-
-val invalid = validateUser(User("", "not-an-email", 16))
-// Invalid(List("Name required", "Valid email required", "Must be 18+"))
-```
-
-#### Composing Validators
-
-Create specialized validators:
-```scala
-val validateName = Validated[User] { user => 
-  require(user, user.name.nonEmpty, "Name required") 
-}
-
-val validateAge = Validated[User] { user => 
-  require(user, user.age >= 18, "Must be 18+")
-}
-```
-
-Combine with logical operators:
-```scala
-val completeValidator = validateName && validateAge
-// All validations must pass (AND)
-
-val flexibleValidator = validateName || validateAge 
-// At least one validation must pass (OR)
-```
-
-#### Conditional Validation
-
-Adapt validation rules contextually:
-```scala
-val conditionalValidator = Validated[User] { user =>
-  val baseCheck = require(user, user.name.nonEmpty, "Name required")
-  
-  if (user.name == "Admin") 
-    baseCheck && require(user, user.age >= 21, "Admins must be 21+")
-  else 
-    baseCheck && require(user, user.age >= 18, "Must be 18+")
-}
-```
-
+The **etl4s** `Reader` monad is extra-powrful. You can use the same `~>` operator to chain
+`Node`s wrapped in compatible environments. Learn more here.
 
 ## Examples
 
@@ -430,9 +257,6 @@ val combined: Pipeline[Unit, Unit] =
 ```
 
 ## Real-world examples
-See the [tutorial](tutorial.md) to learn how to build an invincible, combat ready **etl4s** pipeline that use `Reader` based
-dependency injection.
-
 **etl4s** works great with anything:
 - Spark / Flink / Beam
 - ETL / Streaming
