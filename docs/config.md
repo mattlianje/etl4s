@@ -64,12 +64,12 @@ trait BaseConfig { def appName: String }
 trait SpecificConfig extends BaseConfig { def apiKey: String }
 
 /* Components with different requirements */
-val comp1 = Context[BaseConfig, Extract[Unit, String]] { cfg =>
-  Extract(_ => cfg.appName)
+val comp1 = Context[BaseConfig, Extract[Unit, String]] { ctx =>
+  Extract(_ => ctx.appName)
 }
 
-val comp2 = Context[SpecificConfig, Transform[String, String]] { cfg =>
-  Transform(s => s"$s: ${cfg.apiKey}")
+val comp2 = Context[SpecificConfig, Transform[String, String]] { ctx =>
+  Transform(s => s"$s: ${ctx.apiKey}")
 }
 
 /* Magic happens here - type resolved to SpecificConfig */
