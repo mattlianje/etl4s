@@ -33,7 +33,7 @@ All you need:
 ```scala
 import etl4s.*
 ```
-## Documentation
+## 📚 Documentation
 [Full Documentation](https://mattlianje.github.io/etl4s/) - Detailed guides, API references, and examples
 
 ## Quick Example
