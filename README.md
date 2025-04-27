@@ -225,7 +225,7 @@ You can use them directly or swap in your own favorites (like their better built
 - `Validated[T]` A lightweight, powerful validation stacking subsystem
 
 The **etl4s** `Reader` monad is extra-powrful. You can use the same `~>` operator to chain
-`Node`s wrapped in compatible environments. Learn more here.
+`Node`s wrapped in compatible environments. Learn more [here](https://mattlianje.github.io/etl4s/config/).
 
 ## Examples
 
