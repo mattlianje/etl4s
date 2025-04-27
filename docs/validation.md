@@ -11,6 +11,8 @@
 | `&&` | Combine with AND logic | `validateName && validateEmail` |
 | `||` operator | Combine with OR logic | `isPremium || isAdmin` |
 
+### Creating validators
+
 Define your data model:
 ```scala
 case class User(name: String, email: String, age: Int)
