@@ -218,14 +218,13 @@ val pipeline =
 
 ## Built-in Tools
 **etl4s** comes with 3 extra abstractions to make your pipelines hard like iron, and flexible like bamboo.
-You can use them directly or swap in your own favorites (like their better built homologues from [Cats](https://typelevel.org/cats/)).
 
 - `Reader[R, A]` Config-driven pipelines
 - `Writer[W, A]`: Log accumulating pipelines
 - `Validated[T]` A lightweight, powerful validation stacking subsystem
 
-The **etl4s** `Reader` monad is extra-powrful. You can use the same `~>` operator to chain
-`Node`s wrapped in compatible environments. Learn more [here](https://mattlianje.github.io/etl4s/config/).
+The **etl4s** `Reader` monad is extra-powerful. You can use the same `~>` operator to chain
+`Node`s wrapped in compatible** environments. Learn more [here](https://mattlianje.github.io/etl4s/config/).
 
 ## Examples
 
