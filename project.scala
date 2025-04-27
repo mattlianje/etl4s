@@ -1,5 +1,5 @@
 //> using dep "org.scalameta::munit:1.1.0"
-//> using scala "2.13"
+//> using scala "2.12"
 
 //> using publish.name "etl4s"
 //> using publish.organization "xyz.matthieucourt"

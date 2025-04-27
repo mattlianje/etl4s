@@ -95,20 +95,20 @@ case class PipelineConfig(
 )
 ```
 
-Then create nodes wrapped in the `Env` they need:
+Then create nodes wrapped in the `Context` they need:
 ```scala
-object DummyPipeline extends Etl4sEnv[PipelineConfig] {
-  def getFilteredUsers: ExtractWithEnv[Unit, DataFrame] = Env { env =>
+object DummyPipeline extends Etl4sContext[PipelineConfig] {
+  def getFilteredUsers: ExtractWithContext[Unit, DataFrame] = Context { ctx =>
     Extract { (_: Unit) =>
       usersDF
-        .filter(col("age") >= env.minAge)
-        .filter(col("register_date").between(env.startDate, env.endDate))
+        .filter(col("age") >= ctx.minAge)
+        .filter(col("register_date").between(ctx.startDate, ctx.endDate))
     }
   }
   
-  def saveResults: LoadWithEnv[DataFrame, Unit] = Env { env =>
+  def saveResults: LoadWithContext[DataFrame, Unit] = Context { ctx =>
     Load { df =>
-      println(s"Would save results to ${env.outputPath}")
+      println(s"Would save results to ${ctx.outputPath}")
       df.show()
     }
   }
@@ -119,7 +119,7 @@ Now, we can create a `Pipeline` that depends on configuration:
 ```scala
 import DummyPipeline._
 
-val configPipeline: Env[PipelineConfig, Pipeline[Unit, Unit]] = 
+val configPipeline: Context[PipelineConfig, Pipeline[Unit, Unit]] = 
   getFilteredUsers ~> saveResults
 ```
 
@@ -133,10 +133,10 @@ val myConfig = PipelineConfig(
 )
 
 /*
- * Provide and Env, get back a configured pipeline
+ * Provide a `Context`, get back a configured pipeline
  */
 val configuredPipeline: Pipeline[Unit, Unit] = 
-    configPipeline.provideEnv(myConfig)
+    configPipeline.provideContext(myConfig)
 
 /*
  * Run the pipeline

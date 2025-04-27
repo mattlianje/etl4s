@@ -7,14 +7,11 @@ import etl4s._
 
 val sayHello   = Extract("hello world")
 val splitWords = Transform[String, Array[String]](_.split(" "))
-val toUpper    = Transform[Array[String], Array[String]](_.map(_.toUpperCase))
 
 val pipeline = sayHello ~> 
-               splitWords ~>
-               tap(words => println(s"Processing ${words.length} words")) ~> 
-               toUpper
+               tap(x => println(s"Processing: $x")) ~>
+               splitWords
 
 val result = pipeline.unsafeRun(())
-// Result: Array("HELLO", "WORLD")
-// ...but also prints: "Processing 2 words"
 ```
+This will return `Array("hello", "world")` and also prints to stdout `Processing: hello world`

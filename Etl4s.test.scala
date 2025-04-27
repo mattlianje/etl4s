@@ -850,6 +850,26 @@ class Etl4sSpec extends munit.FunSuite {
     assertEquals(executionOrder, List("p1", "p2", "p3"))
   }
 
+  test("should allow sequencing nodes with Unit input") {
+    var executionOrder = List[String]()
+
+    val n1 = Transform[Unit, Int] { _ =>
+      executionOrder = executionOrder :+ "n1"
+      42
+    }
+
+    val n2 = Transform[Unit, String] { _ =>
+      executionOrder = executionOrder :+ "n2"
+      "hello"
+    }
+
+    val sequentialNode = n1 >> n2
+    val result         = sequentialNode.runSync(())
+
+    assertEquals(result, "hello")
+    assertEquals(executionOrder, List("n1", "n2"))
+  }
+
   test("should chain any arrow functions together") {
     val f1: Int => String       = _.toString
     val f2: String => List[Int] = s => s.map(_.toInt - 48).toList
@@ -998,20 +1018,20 @@ class Etl4sSpec extends munit.FunSuite {
   }
 }
 
-class Etl4sEnvSpec extends munit.FunSuite {
+class Etl4sContextSpec extends munit.FunSuite {
   case class DBConfig(url: String, username: String)
 
-  object DataService extends Etl4sEnv[DBConfig] {
-    def getData: ExtractWithEnv[String, String] = Env { env =>
-      Extract(query => s"Data from ${env.url} using ${env.username}: $query")
+  object DataService extends Etl4sContext[DBConfig] {
+    def getData: ExtractWithContext[String, String] = Context { ctx =>
+      Extract(query => s"Data from ${ctx.url} using ${ctx.username}: $query")
     }
 
-    def processData: TransformWithEnv[String, String] = Env { env =>
-      Transform(data => s"Processed with ${env.username}'s permissions: $data")
+    def processData: TransformWithContext[String, String] = Context { ctx =>
+      Transform(data => s"Processed with ${ctx.username}'s permissions: $data")
     }
 
-    def saveData: LoadWithEnv[String, String] = Env { env =>
-      Load(data => s"Saved to ${env.url} by ${env.username}: $data")
+    def saveData: LoadWithContext[String, String] = Context { ctx =>
+      Load(data => s"Saved to ${ctx.url} by ${ctx.username}: $data")
     }
 
     val uppercase    = Transform[String, String](_.toUpperCase)
@@ -1031,21 +1051,21 @@ class Etl4sEnvSpec extends munit.FunSuite {
       process <- DataService.processData
     } yield extract ~> process
 
-    assertEquals(pipeline.provideEnv(config).unsafeRun(query), expectedProcessed)
+    assertEquals(pipeline.provideContext(config).unsafeRun(query), expectedProcessed)
   }
 
   test("can use ~> operator directly on context-aware components") {
     import DataService._
     val pipeline = getData ~> processData
 
-    assertEquals(pipeline.provideEnv(config).unsafeRun(query), expectedProcessed)
+    assertEquals(pipeline.provideContext(config).unsafeRun(query), expectedProcessed)
   }
 
   test("can chain multiple context-aware components with ~>") {
     import DataService._
     val pipeline = getData ~> processData ~> saveData
 
-    val result = pipeline.provideEnv(config).unsafeRun(query)
+    val result = pipeline.provideContext(config).unsafeRun(query)
     assert(result.contains("Saved to"))
     assert(result.contains(expectedProcessed))
   }
@@ -1054,7 +1074,7 @@ class Etl4sEnvSpec extends munit.FunSuite {
     import DataService._
 
     val contextualPart = getData ~> processData
-    val fullPipeline   = contextualPart.provideEnv(config) ~> uppercase ~> addTimestamp
+    val fullPipeline   = contextualPart.provideContext(config) ~> uppercase ~> addTimestamp
 
     val result = fullPipeline.unsafeRun(query)
     assert(result.contains("PROCESSED WITH ADMIN'S PERMISSIONS"))
@@ -1071,107 +1091,64 @@ class Etl4sEnvSpec extends munit.FunSuite {
       s"$s | metadata: processed at ${java.time.LocalDateTime.now}"
     }
 
-    val testNode: Reader[String, Transform[String, String]] = Reader { env =>
+    val testNode: Reader[String, Transform[String, String]] = Reader { ctx =>
       Transform { x => x }
     }
 
     val complexPipeline = getData ~> processData ~> wrapWithBrackets ~> addMetadata ~> countChars
 
-    val result = complexPipeline.provideEnv(config).unsafeRun(query)
+    val result = complexPipeline.provideContext(config).unsafeRun(query)
 
     assert(result.contains("length:"))
   }
 
   test("chaining components with proper environment subset/superset relationships") {
-    trait HasBaseConfig {
-      def appName: String
-    }
-
-    trait HasDateRange extends HasBaseConfig {
-      def startDate: String
-      def endDate: String
-    }
-
-    trait HasDbConfig extends HasBaseConfig {
-      def dbUrl: String
-      def username: String
-    }
-
+    trait HasBaseConfig { def appName: String }
+    trait HasDateRange  extends HasBaseConfig { def startDate: String }
+    trait HasDbConfig   extends HasBaseConfig { def dbUrl: String     }
     trait HasFullConfig extends HasDateRange with HasDbConfig
 
-    case class FullConfig(
-      appName: String,
-      startDate: String,
-      endDate: String,
-      dbUrl: String,
-      username: String
-    ) extends HasFullConfig
+    /* Config implementation and simple data type */
+    case class FullConfig(appName: String, startDate: String, dbUrl: String) extends HasFullConfig
+    case class Data(value: String)
 
-    case class Data(values: List[String])
-
-    val initApp = Env[HasBaseConfig, Extract[Unit, Data]] { ctx =>
-      Extract { _ =>
-        Data(List(s"App ${ctx.appName} initialized"))
-      }
+    val baseComp = Context[HasBaseConfig, Extract[Unit, Data]] { ctx =>
+      Extract(_ => Data(s"base:${ctx.appName}"))
+    }
+    val dateComp = Context[HasDateRange, Transform[Data, Data]] { ctx =>
+      Transform(d => Data(s"${d.value},date:${ctx.startDate}"))
+    }
+    val dbComp = Context[HasDbConfig, Transform[Data, Data]] { ctx =>
+      Transform(d => Data(s"${d.value},db:${ctx.dbUrl}"))
+    }
+    val fullComp = Context[HasFullConfig, Transform[Data, Data]] { ctx =>
+      Transform(d => Data(s"${d.value},full:${ctx.appName}+${ctx.startDate}+${ctx.dbUrl}"))
     }
 
-    val dateProcess = Env[HasDateRange, Transform[Data, Data]] { ctx =>
-      Transform { data =>
-        Data(data.values.map(v => s"$v with date range ${ctx.startDate} to ${ctx.endDate}"))
-      }
-    }
+    val config = FullConfig("app", "2023-01-01", "localhost:5432")
 
-    val dbProcess = Env[HasDbConfig, Transform[Data, Data]] { ctx =>
-      Transform { data =>
-        Data(data.values.map(v => s"$v using DB ${ctx.username}@${ctx.dbUrl}"))
-      }
-    }
+    /* Test 1: Base to Date (Base -> Date = Date) */
+    val p1 = baseComp ~> dateComp
+    val r1 = p1.provideContext(config).unsafeRun(())
+    assert(r1.value.contains("base:app") && r1.value.contains("date:2023-01-01"))
 
-    val finalProcess = Env[HasFullConfig, Transform[Data, Data]] { ctx =>
-      Transform { data =>
-        Data(
-          data.values.map(v =>
-            s"$v - final processing for app ${ctx.appName} with dates ${ctx.startDate}-${ctx.endDate} on ${ctx.dbUrl}"
-          )
-        )
-      }
-    }
+    /* Test 2: Base to DB (Base -> DB = DB) */
+    val p2 = baseComp ~> dbComp
+    val r2 = p2.provideContext(config).unsafeRun(())
+    assert(r2.value.contains("base:app") && r2.value.contains("db:localhost:5432"))
 
-    val config = FullConfig(
-      appName = "TestApp",
-      startDate = "2023-01-01",
-      endDate = "2023-01-31",
-      dbUrl = "jdbc:pg://localhost/test",
-      username = "testuser"
+    /* Test 3: Full to DB (Full -> DB = Full) - more specific preserved */
+    val p3 = fullComp ~> dbComp
+    val r3 = p3.provideContext(config).unsafeRun(Data("start"))
+    assert(r3.value.contains("full:") && r3.value.contains("db:localhost:5432"))
+
+    /* Triple chain (Base -> Date -> Full = Full) */
+    val p4 = baseComp ~> dateComp ~> fullComp
+    val r4 = p4.provideContext(config).unsafeRun(())
+    assert(
+      r4.value.contains("base:app") && r4.value.contains("date:") && r4.value.contains("full:")
     )
 
-    val pipeline1: Env[HasDateRange, Pipeline[Unit, Data]] = initApp ~> dateProcess
-    val result1 = pipeline1.provideEnv(config).unsafeRun(())
-
-    assert(result1.values.head.contains("App TestApp initialized"))
-    assert(result1.values.head.contains("with date range 2023-01-01 to 2023-01-31"))
-
-    val pipeline2: Env[HasDbConfig, Pipeline[Unit, Data]] = initApp ~> dbProcess
-    val result2 = pipeline2.provideEnv(config).unsafeRun(())
-
-    assert(result2.values.head.contains("App TestApp initialized"))
-    assert(result2.values.head.contains("using DB testuser@jdbc:pg://localhost/test"))
-
-    val pipeline3: Env[HasFullConfig, Pipeline[Data, Data]] = finalProcess ~> dbProcess
-    val result3 = pipeline3.provideEnv(config).unsafeRun(Data(List("Starting")))
-
-    println(result3)
-    assert(result3.values.head.contains("Starting"))
-    assert(result3.values.head.contains("final processing for app TestApp"))
-
-    /* Invalid example: can't chain dateProcess ~> dbProcess because neither Env is a subset
-       of the other */
-
-    val pipeline4: Env[HasFullConfig, Pipeline[Unit, Data]] = initApp ~> dateProcess ~> finalProcess
-    val result4 = pipeline4.provideEnv(config).unsafeRun(())
-
-    assert(result4.values.head.contains("App TestApp initialized"))
-    assert(result4.values.head.contains("with date range"))
-    assert(result4.values.head.contains("final processing"))
+    // The central idea is dateComp ~> dbComp would not compile (incompatible environments)
   }
 }

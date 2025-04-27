@@ -2,6 +2,7 @@ import scala.language.{higherKinds, implicitConversions}
 import scala.concurrent.{Future, ExecutionContext}
 import scala.concurrent.duration._
 import scala.concurrent.Await
+import scala.reflect.ClassTag
 import scala.util.{Try, Success, Failure}
 
 package object etl4s {
@@ -89,66 +90,54 @@ package object etl4s {
     * Type class for environment compatibility between different component requirements.
     * Determines the environment type needed when connecting components with different requirements.
     */
-  trait EnvCompat[T1, T2, R] {
+  trait ReaderCompat[T1, T2, R] {
     def toT1(r: R): T1
     def toT2(r: R): T2
   }
 
-  object EnvCompat extends LowPriorityEnvCompat2 {
+  object ReaderCompat extends LowPriorityReaderCompat2 {
+
     /* Highest priority: Case 1 - same types */
-    implicit def identityCompat[T]: EnvCompat[T, T, T] =
-      new EnvCompat[T, T, T] {
+    implicit def identityCompat[T]: ReaderCompat[T, T, T] =
+      new ReaderCompat[T, T, T] {
         def toT1(r: T): T = r
         def toT2(r: T): T = r
       }
   }
 
-  trait LowPriorityEnvCompat2 extends LowPriorityEnvCompat1 {
+  trait LowPriorityReaderCompat2 extends LowPriorityReaderCompat1 {
 
     /**
-   * Case 2: T1 is a subtype of T2 (e.g., HasFullConfig extends HasDateRange)
-   * Result type is the more specific one (T1)
-   */
-    implicit def t1SubT2[T1 <: T2, T2]: EnvCompat[T1, T2, T1] =
-      new EnvCompat[T1, T2, T1] {
+      * Case 2: T1 is a subtype of T2 (e.g., HasFullConfig extends HasDateRange)
+      * Result type is the more specific one (T1)
+      */
+    implicit def t1SubT2[T1 <: T2, T2]: ReaderCompat[T1, T2, T1] =
+      new ReaderCompat[T1, T2, T1] {
         def toT1(r: T1): T1 = r
-        def toT2(r: T1): T2 = r // This works because T1 <: T2
+        def toT2(r: T1): T2 = r /* This works because T1 <: T2 */
       }
   }
 
-  trait LowPriorityEnvCompat1 {
+  trait LowPriorityReaderCompat1 {
 
     /**
-   * Case 3: T2 is a subtype of T1 (e.g., HasDateRange extends HasBaseConfig)
-   * Result type is the more specific one (T2)
-   */
-    implicit def t2SubT1[T1, T2 <: T1]: EnvCompat[T1, T2, T2] =
-      new EnvCompat[T1, T2, T2] {
+      * Case 3: T2 is a subtype of T1 (e.g., HasDateRange extends HasBaseConfig)
+      * Result type is the more specific one (T2)
+      */
+    implicit def t2SubT1[T1, T2 <: T1]: ReaderCompat[T1, T2, T2] =
+      new ReaderCompat[T1, T2, T2] {
         def toT1(r: T2): T1 = r /* This works because T2 <: T1 */
         def toT2(r: T2): T2 = r
       }
-
-    /**
-   * Fallback case - for unrelated types with a common supertype
-   * (TODO: think about this more lol)... Not used often but provided for completeness
-   */
-    implicit def commonSuper[T1, T2, S](implicit
-      ev1: T1 <:< S,
-      ev2: T2 <:< S
-    ): EnvCompat[T1, T2, S] =
-      new EnvCompat[T1, T2, S] {
-        def toT1(r: S): T1 = r.asInstanceOf[T1]
-        def toT2(r: S): T2 = r.asInstanceOf[T2]
-      }
   }
 
-  implicit class EnvArrowOps[T1, F[_, _], A, B](val fa: Env[T1, F[A, B]])(implicit
+  implicit class ReaderArrowOps[T1, F[_, _], A, B](val fa: Reader[T1, F[A, B]])(implicit
     F: AsArrow[F]
   ) {
     /* For context to context with same type */
     def ~>[G[_, _], C](
-      gb: Env[T1, G[B, C]]
-    )(implicit G: AsArrow[G]): Env[T1, Pipeline[A, C]] = {
+      gb: Reader[T1, G[B, C]]
+    )(implicit G: AsArrow[G]): Reader[T1, Pipeline[A, C]] = {
       for {
         a <- fa
         b <- gb
@@ -164,11 +153,11 @@ package object etl4s {
 
     /* For context to context with different but compatible types */
     def ~>[T2, G[_, _], C, R](
-      gb: Env[T2, G[B, C]]
+      gb: Reader[T2, G[B, C]]
     )(implicit
       G: AsArrow[G],
-      compat: EnvCompat[T1, T2, R]
-    ): Env[R, Pipeline[A, C]] = {
+      compat: ReaderCompat[T1, T2, R]
+    ): Reader[R, Pipeline[A, C]] = {
       Reader { (env: R) =>
         val fa1   = fa.run(compat.toT1(env))
         val gb1   = gb.run(compat.toT2(env))
@@ -185,7 +174,7 @@ package object etl4s {
     }
 
     /* For context to function */
-    def ~>[C](gb: Function1[B, C]): Env[T1, Pipeline[A, C]] = {
+    def ~>[C](gb: Function1[B, C]): Reader[T1, Pipeline[A, C]] = {
       fa.map(a => {
         val nodeA = F.toNode(a)
         val nodeB = Transform(gb)
@@ -199,7 +188,7 @@ package object etl4s {
     }
 
     /* For context to E, T, L or Pipeline */
-    def ~>[C](gb: ETLComponent[B, C]): Env[T1, Pipeline[A, C]] = {
+    def ~>[C](gb: ETLComponent[B, C]): Reader[T1, Pipeline[A, C]] = {
       fa.map(a => {
         val nodeA = F.toNode(a)
         Pipeline(new Node[A, C] {
@@ -211,7 +200,7 @@ package object etl4s {
       })
     }
 
-    def toPipeline: Env[T1, Pipeline[A, B]] = {
+    def toPipeline: Reader[T1, Pipeline[A, B]] = {
       fa.map(f => Pipeline(F.toNode(f)))
     }
   }
@@ -219,7 +208,7 @@ package object etl4s {
   /**
     * Extension methods for regular ETL components to connect with context-aware components
     */
-  implicit class RegularComponentWithEnvOps[F[_, _], A, B, T](val fa: F[A, B])(implicit
+  implicit class RegularComponentWithReaderOps[F[_, _], A, B, T](val fa: F[A, B])(implicit
     F: AsArrow[F]
   ) {
 
@@ -227,8 +216,8 @@ package object etl4s {
       * Connect a regular (non-context) component with a context-aware component
       */
     def ~>[G[_, _], C](
-      gb: Env[T, G[B, C]]
-    )(implicit G: AsArrow[G]): Env[T, Pipeline[A, C]] = {
+      gb: Reader[T, G[B, C]]
+    )(implicit G: AsArrow[G]): Reader[T, Pipeline[A, C]] = {
       gb.map(b => {
         val nodeA = F.toNode(fa)
         val nodeB = G.toNode(b)
@@ -244,7 +233,6 @@ package object etl4s {
   }
 
   implicit class PipelineSequence[A, B](val pipeline: Pipeline[A, B]) {
-
     /* Sequences two pipelines */
     def >>[C](next: Pipeline[Unit, C]): Pipeline[A, C] =
       Pipeline(new Node[A, C] {
@@ -255,6 +243,20 @@ package object etl4s {
         def runAsync(implicit ec: ExecutionContext): A => Future[C] =
           a => pipeline.node.runAsync(ec)(a).flatMap(_ => next.node.runAsync(ec)(()))
       })
+  }
+
+  implicit class NodeSequence[B](val node: Node[Unit, B]) {
+    /* Sequences a node with another node that has Unit input */
+    def >>[C](next: Node[Unit, C]): Node[Unit, C] = new Node[Unit, C] {
+      def runSync: Unit => C = _ => {
+        node(())
+        next(())
+      }
+
+      def runAsync(implicit ec: ExecutionContext): Unit => Future[C] = _ => {
+        node.runAsync(ec)(()).flatMap(_ => next.runAsync(ec)(()))
+      }
+    }
   }
 
   implicit def pipelineToNode[A, B](p: Pipeline[A, B]): Node[A, B]           = p.node
@@ -399,19 +401,19 @@ package object etl4s {
   /**
     * Aliases and shorthands
     */
-  type Env[T, A] = Reader[T, A]
+  type Context[T, A] = Reader[T, A]
 
-  object Env {
-    def apply[T, A](f: T => A): Env[T, A] = Reader(f)
-    def pure[T, A](a: A): Env[T, A]       = Reader.pure(a)
-    def ask[T]: Env[T, T]                 = Reader.ask
+  object Context {
+    def apply[T, A](f: T => A): Reader[T, A] = Reader(f)
+    def pure[T, A](a: A): Reader[T, A]       = Reader.pure(a)
+    def ask[T]: Reader[T, T]                 = Reader.ask
   }
 
-  trait Etl4sEnv[T] {
-    type ExtractWithEnv[A, B]   = Env[T, Extract[A, B]]
-    type TransformWithEnv[A, B] = Env[T, Transform[A, B]]
-    type LoadWithEnv[A, B]      = Env[T, Load[A, B]]
-    type PipelineWithEnv[A, B]  = Env[T, Pipeline[A, B]]
+  trait Etl4sContext[T] {
+    type ExtractWithContext[A, B]   = Context[T, Extract[A, B]]
+    type TransformWithContext[A, B] = Context[T, Transform[A, B]]
+    type LoadWithContext[A, B]      = Context[T, Load[A, B]]
+    type PipelineWithContext[A, B]  = Context[T, Pipeline[A, B]]
   }
 }
 
@@ -426,7 +428,7 @@ package etl4s {
     def flatMap[B](f: A => Reader[R, B]): Reader[R, B] =
       Reader(r => f(run(r)).run(r))
 
-    def provideEnv(ctx: R): A = run(ctx)
+    def provideContext(ctx: R): A = run(ctx)
   }
 
   object Reader {

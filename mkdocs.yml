@@ -29,9 +29,12 @@ nav:
   - Installation: installation.md
   - Core Concepts: core-concepts.md
   - Your First Pipeline: first-pipeline.md
+  - Operators: operators.md
+  - Grouping: tasks.md
   - Handling failures: failures.md
   - Logging: logs.md
-  - Grouping: tasks.md
+  - Validations: validation.md
+  - Config-Driven Pipelines: config.md
   - Testing: testing.md
   - Examples: examples.md
 markdown_extensions:
