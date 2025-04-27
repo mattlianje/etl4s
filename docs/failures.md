@@ -4,7 +4,7 @@
 ### `withRetry`
 Give retry capability using the built-in `withRetry`:
 ```scala
-import etl4s.*
+import etl4s._
 
 var attempts = 0
 
@@ -26,7 +26,7 @@ Success after 3 attempts
 ### `onFailure`
 Catch exceptions and perform some action:
 ```scala
-import etl4s.*
+import etl4s._
 
 val riskyExtract =
     Extract[Unit, String](_ => throw new RuntimeException("Boom!"))

@@ -1,6 +1,8 @@
 
 **etl4s** has an elegant shorthand for grouping and parallelizing operations that share the same input type:
 ```scala
+import etl4s._
+
 /* Simulate slow IO operations (e.g: DB calls, API requests) */
 
 val e1 = Extract { Thread.sleep(100); 42 }

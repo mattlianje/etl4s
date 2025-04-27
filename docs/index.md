@@ -16,7 +16,7 @@ val process  = Transform[(String, String), String] { case (user, order) =>
 }
 val saveDb    = Load[String, String](s => { println(s"DB: $s"); s })
 val sendEmail = Load[String, Unit](s => println(s"Email: $s"))
-val cleanup   = Pipeline[Unit, Unit]((_: Unit) => println("Cleanup complete"))
+val cleanup   = Pipeline[Unit, Unit](_ => println("Cleanup complete"))
 
 /* Group tasks with &, Connect with ~>, Sequence with >> */
 val pipeline =

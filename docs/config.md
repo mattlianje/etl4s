@@ -28,7 +28,7 @@ val result = pipeline.provideContext(config).unsafeRun("user123")
 
 For cleaner code and access to the `WithContext` aliases use the `Etl4sContext` trait:
 ```scala
-object UserService extends Etl4sContext[ApiConfig] {
+object DummyService extends Etl4sContext[ApiConfig] {
   val extract: ExtractWithContext[String, String] = Context { config => 
     Extract(id => s"Fetched $id from ${config.url}")
   }
@@ -38,8 +38,50 @@ object UserService extends Etl4sContext[ApiConfig] {
   }
 }
 
-iport UserService._
+import DummyService._
 
 val pipeline = extract ~> transform
+```
+
+### Aliases
+
+With `Etl4sContext[T]`:
+
+| Standard Type | etl4s Alias |
+|:--------------|:------------|
+| `Reader[T, Extract[A, B]]` | `ExtractWithContext[A, B]` |
+| `Reader[T, Transform[A, B]]` | `TransformWithContext[A, B]` |
+| `Reader[T, Load[A, B]]` | `LoadWithContext[A, B]` |
+| `Reader[T, Pipeline[A, B]]` | `PipelineWithContext[A, B]` |
+
+### Environment Propagation
+
+**etl4s** automatically resolves the most specific configuration type needed when connecting components.
+
+```scala
+/* Define minimal config hierarchy */
+trait BaseConfig { def appName: String }
+trait SpecificConfig extends BaseConfig { def apiKey: String }
+
+/* Components with different requirements */
+val comp1 = Context[BaseConfig, Extract[Unit, String]] { cfg =>
+  Extract(_ => cfg.appName)
+}
+
+val comp2 = Context[SpecificConfig, Transform[String, String]] { cfg =>
+  Transform(s => s"$s: ${cfg.apiKey}")
+}
+
+/* Magic happens here - type resolved to SpecificConfig */
+val pipeline = comp1 ~> comp2
+
+/* Must provide the more specific config */
+val config = new SpecificConfig {
+  val appName = "MyApp"
+  val apiKey = "secret"
+}
+
+val result = pipeline.provideContext(config).unsafeRun(())
+// Result: "MyApp: secret"
 ```
 

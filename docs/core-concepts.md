@@ -8,6 +8,8 @@
 
 You have a shorthand to create nodes "purely"
 ```scala
+import etl4s._
+
 val extract: Extract[Unit, String] = Extract("hello")
 ```
 

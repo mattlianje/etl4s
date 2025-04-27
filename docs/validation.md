@@ -18,6 +18,8 @@ case class User(name: String, email: String, age: Int)
 
 Create a simple validator:
 ```scala
+import etl4s._
+
 val validateUser = Validated[User] { user =>
   require(user, user.name.nonEmpty, "Name required") &&
   require(user, user.email.contains("@"), "Valid email required") &&
@@ -28,24 +30,30 @@ val validateUser = Validated[User] { user =>
 Run validation:
 ```scala
 val result = validateUser(User("Alice", "alice@mail.com", 25))
-// Valid(User(Alice,alice@mail.com,25))
-
 val invalid = validateUser(User("", "not-an-email", 16))
-// Invalid(List("Name required", "Valid email required", "Must be 18+"))
+```
+
+You will get:
+```
+Valid(User(Alice,alice@mail.com,25))
+Invalid(List("Name required", "Valid email required", "Must be 18+"))
 ```
 
 ### Working with validation results
 
 Access validation results with pattern matching (recommended):
 ```scala
+val user = User("Alice", "alice@gmail.com", 25)
+
 validateUser(user) match {
   case Valid(validUser) => 
-    /* Process the valid user directly */
-    processUser(validUser)
+    println(s"Yay! Welcome $validUser")
     
   case Invalid(errors) => 
-    /* Handle validation errors */
-    displayErrors(errors)
+    println(
+      s"""Oops! User $user failed validation:
+         |${errors.mkString(",")}""".stripMargin
+    )
 }
 ```
 
@@ -56,11 +64,9 @@ val result = validateUser(user)
 if (result.isValid) {
   /* Get the validated value with .get */
   val validUser = result.get
-  processUser(validUser)
 } else {
   /* Access error messages with .errors */
   val errorMessages = result.errors
-  displayErrors(errorMessages)
 }
 ```
 
