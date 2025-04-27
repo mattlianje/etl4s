@@ -21,7 +21,10 @@ Battle-tested at [Instacart](https://www.instacart.com/)
 
 **etl4s** is on MavenCentral and cross-built for Scala, 2.12, 2.13, 3.x:
 ```scala
-"xyz.matthieucourt" %% "etl4s" % "1.3.0"
+// SBT
+libraryDependencies += "xyz.matthieucourt" %% "etl4s" % "1.3.0"
+// Mill
+ivy"xyz.matthieucourt::etl4s:1.3.0"
 ```
 
 Try it in your repl:
