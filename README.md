@@ -24,10 +24,11 @@ Battle-tested at [Instacart](https://www.instacart.com/)
 "xyz.matthieucourt" %% "etl4s" % "1.3.0"
 ```
 
-All you need. ([Try it](https://mattlianje.github.io/etl4s/installation/) in your REPL):
+All you need:
 ```scala
 import etl4s.*
 ```
+(Or [Try it](https://mattlianje.github.io/etl4s/installation/) in your REPL)
 
 ## Quick Example
 ```scala
