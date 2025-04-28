@@ -60,11 +60,11 @@ pipeline.unsafeRun(())
 ## Core Concepts
 **etl4s** has 2 building blocks. They are just wrappers around lazily-evaluated functions `In => Out` that we chain together with `~>`
 
-### `Node[-In, +Out]`
+- ### `Node[-In, +Out]`
 `Node` has three aliases purely to make your pipelines more readable and express intent clearly. `Extract`, `Transform` and `Load`.
 They all behave identically under the hood.
 
-### `Pipeline[-In, +Out]`
+- ### `Pipeline[-In, +Out]`
 Create pipelines by stitching `Node`s with `~>` or wrapping any lambda with `Pipeline`. Run them with `.unsafeRun(<INPUT>)`
 
 
@@ -225,8 +225,9 @@ val pipeline =
 - `Writer[W, A]`: Log accumulating pipelines
 - `Validated[T]` A lightweight, powerful validation stacking subsystem
 
-The **etl4s** `Reader` monad is extra-powerful. You can use the same `~>` operator to chain
-`Node`s wrapped in compatible environments. Learn more [here](https://mattlianje.github.io/etl4s/config/).
+The **etl4s** `Reader` monad is extra-powerful. You can use the `~>` operator to chain
+`Node`s wrapped in compatible environments without flat-mapping, using monad transformers,
+or converting environments. Learn more [here](https://mattlianje.github.io/etl4s/config/).
 
 ## Examples
 
