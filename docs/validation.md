@@ -137,41 +137,39 @@ Process valid and invalid records in parallel in a real pipeline:
 ```scala
 import etl4s._
 
-case class Record(id: String, value: Double)
+case class User(name: String, age: Int, email: String)
 
-val validateRecord = Validated[Record] { record =>
-  require(record, record.id.nonEmpty, "Empty ID") &&
-  require(record, record.value >= 0, "Negative value")
+val validateUser = Validated[User] { user =>
+  require(user, user.name.nonEmpty, "Name required") &&
+  require(user, user.age >= 18, "Must be 18+") &&
+  require(user, user.email.contains("@"), "Invalid email")
 }
 
-val sampleRecords: List[Record] = List(
-  Record("A1", 10.5),
-  Record("", -5.0),  /* Invalid: empty ID */
-  Record("A3", 0.0),
-  Record("A4", -2.3) /* Invalid: negative value */
+val users = List(
+  User("Alice", 25, "alice@example.com"),
+  User("", 17, "bob@example.com"),
+  User("Charlie", 30, "INVALIDEMAIL.com"),
+  User("David", 16, "")
 )
 
-val source = Extract[Unit, List[Record]](_ => sampleRecords)
+val extract = Extract[Unit, List[User]](_ => users)
 
-val validate = Transform[List[Record], (List[Record], List[String])] { records =>
-  val results = records.map(r => validateRecord(r))
-  val valid = results.collect { case Valid(r) => r }
-  val errors = results.collect { case Invalid(e) => e }.flatten
-  (valid, errors)
-}
+val partition: Transform[List[User], (List[User], List[User])] = 
+   Transform { users =>
+     users.partition(user => validateUser(user).isValid) }
 
-val processValid = Transform[(List[Record], List[String]), String] { 
-  case (valid, _) => s"Processed ${valid.size} valid records" 
-}
+val processValid: Transform[(List[User], List[User]), String] =
+   Transform { case (valid, _) =>
+     s"Processed ${valid.size} valid users" }
 
-val logErrors = Transform[(List[Record], List[String]), String] { 
-  case (_, errors) => s"Found ${errors.size} errors: ${errors.mkString(", ")}" 
-}
+val logInvalid: Transform[(List[User], List[User]), String] =
+   Transform { case (_, invalid) =>
+     s"Found ${invalid.size} invalid users" }
 ```
 
 Now you can do parallel processing of valid and invalid streams:
 ```scala
-val pipeline = source ~> validate ~> (processValid & logErrors)
+val p = extract ~> partition ~> (processValid & logInvalid)
 
 val (successReport, errorReport) = pipeline.unsafeRun(())
 ```
