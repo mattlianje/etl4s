@@ -50,7 +50,7 @@ val pipeline =
 pipeline.unsafeRun(())
 ```
 
-## Documentation 📚
+## 📚 Documentation 
 [Full Documentation](https://mattlianje.github.io/etl4s/) - Detailed guides, API references, and examples
 
 ## Core Concepts
