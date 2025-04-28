@@ -57,8 +57,7 @@ pipeline.unsafeRun(())
 ```
 
 ## Core Concepts
-**etl4s** has 2 building blocks. `Node[-In, +Out]` and `Pipeline[-In, +Out]`. 
-They are just wrappers around a function `In => Out` that we chain together with `~>`
+**etl4s** has 2 building blocks. They are just wrappers around a function `In => Out` that we chain together with `~>`
 
 ### `Node[-In, +Out]`
 There are 3 `Node` aliases purely to make your pipelines more readable and express intent clearly. `Extract`, `Transform` and `Load`.
