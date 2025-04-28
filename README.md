@@ -17,7 +17,7 @@ Battle-tested at [Instacart](https://www.instacart.com/)
 - Chain pipelines with `~>`
 - Built in retry/on-failure mechanism
 
-## Get started
+## Installation
 
 **etl4s** is on MavenCentral and cross-built for Scala, 2.12, 2.13, 3.x
 ```scala
@@ -28,7 +28,6 @@ All you need:
 ```scala
 import etl4s.*
 ```
-(Or [Try it](https://mattlianje.github.io/etl4s/installation/) in your REPL)
 
 ## Quick Example
 ```scala
@@ -50,7 +49,7 @@ val pipeline =
 pipeline.unsafeRun(())
 ```
 
-## 📚 Documentation 
+## Documentation 
 [Full Documentation](https://mattlianje.github.io/etl4s/) - Detailed guides, API references, and examples
 
 ## Core Concepts
