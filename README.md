@@ -60,11 +60,11 @@ pipeline.unsafeRun(())
 **etl4s** has 2 building blocks. `Node[-In, +Out]` and `Pipeline[-In, +Out]`. 
 They are just wrappers around a function `In => Out` that we chain together with `~>`
 
-#### `Node[-In, +Out]`
+### `Node[-In, +Out]`
 There are 3 `Node` aliases purely to make your pipelines more readable and express intent clearly. `Extract`, `Transform` and `Load`.
 They all behave identically under the hood.
 
-#### `Pipeline[-In, +Out]`
+### `Pipeline[-In, +Out]`
 Create pipelines by stitching `Node`s with `~>` or wrapping any lambda with `Pipeline`.
 
 
