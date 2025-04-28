@@ -33,8 +33,6 @@ All you need:
 ```scala
 import etl4s.*
 ```
-## 📚 Documentation
-[Full Documentation](https://mattlianje.github.io/etl4s/) - Detailed guides, API references, and examples
 
 ## Quick Example
 ```scala
@@ -55,6 +53,9 @@ val pipeline =
      (getUser & getOrder) ~> process ~> (saveDb & sendEmail) >> cleanup
 pipeline.unsafeRun(())
 ```
+
+## 📚 Documentation
+[Full Documentation](https://mattlianje.github.io/etl4s/) - Detailed guides, API references, and examples
 
 ## Core Concepts
 **etl4s** has 2 building blocks. They are just wrappers around lazily-evaluated functions `In => Out` that we chain together with `~>`
