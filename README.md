@@ -60,11 +60,12 @@ pipeline.unsafeRun(())
 **etl4s** has 2 building blocks. `Node[-In, +Out]` and `Pipeline[-In, +Out]`. 
 They are just wrappers around a function `In => Out` that we chain together with `~>`
 
-They're lazily evaluated data transformations take input `In`
-and produce output type `Out`.
-
-**etl4s** offers three `Node` aliases purely to make your pipelines more readable and express intent clearly. `Extract`, `Transform` and `Load`.
+### `Node[-In, +Out]`
+There are 3 `Node` aliases purely to make your pipelines more readable and express intent clearly. `Extract`, `Transform` and `Load`.
 They all behave identically under the hood.
+
+### `Pipeline[-In, +Out]`
+Create pipelines by stitching `Node`s with `~>` or wrapping any lambda with `Pipeline`.
 
 
 ## Type safety
