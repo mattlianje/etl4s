@@ -1,8 +1,11 @@
 
-**etl4s** encourages `Reader` (aliased `Context` in **etl4s**)  monad based dependency injection.
+**etl4s** has a simple, powerful approach to dependency injection (aliased `Context`) based on `Reader` monads.
+These just wrap your computations in the environment they need.
 
-Wrap your blocks in the `Context` they need, and chain together blocks propagating the most
-specific subtype.
+The "killer feature" is direct composition (via `~>`) of context-aware components without the usual flat-mapping boilerplate.
+The most specific `Context` type needed is automatically resolved.
+
+
 
 ```scala
 import etl4s._

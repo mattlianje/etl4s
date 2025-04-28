@@ -167,9 +167,11 @@ val processValid = Transform[(List[Record], List[String]), String] {
 val logErrors = Transform[(List[Record], List[String]), String] { 
   case (_, errors) => s"Found ${errors.size} errors: ${errors.mkString(", ")}" 
 }
+```
 
+Now you can do parallel processing of valid and invalid streams:
+```scala
 val pipeline = source ~> validate ~> (processValid & logErrors)
 
-/* Run the pipeline to get both reports */
 val (successReport, errorReport) = pipeline.unsafeRun(())
 ```

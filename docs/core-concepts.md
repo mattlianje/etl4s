@@ -6,21 +6,17 @@
 
 **etl4s** offers three nodes aliases purely to make your pipelines more readable and express intent clearly: `Extract`, `Transform` and `Load`. They all behave identically under the hood.
 
-You have a shorthand to create nodes "purely"
 ```scala
 import etl4s._
 
+/* Create nodes "purely" */
 val extract: Extract[Unit, String] = Extract("hello")
-```
 
-Or you can just wrap any lambda or `Function1`
-```scala
+/* Or you can just wrap any lambda or `Function1` */
 val extract2     = Extract[Int, String](n => n.toString)
 val getStringLen = Transform[String, Int](_.length)
-```
 
-Run nodes like calling functions
-```scala
+/* Run nodes like calling functions */
 println(extract(()))
 println(getStringLen("test"))
 ```
@@ -43,21 +39,14 @@ import etl4s._
 val E = Extract("hello")
 val T = Transform[String, Int](_.length)
 val L = Load[Int, String](n => s"Length: $n")
-```
 
-Build pipelines by chaining nodes 
-```scala
+/* Build pipelines by chaining nodes */
 val pipeline = E ~> T ~> L
-```
 
-Alternatively, create a `Pipeline` directly from a function
-
-```scala
+/* Alternatively, create a `Pipeline` directly from a function */
 val simplePipeline = Pipeline((s: String) => s.toUpperCase)
-```
 
-Execute pipelines with `unsafeRun(<PIPELINE_INPUT>)`
-```scala
+/* Execute pipelines with `unsafeRun(<PIPELINE_INPUT>)` */
 println(pipeline.unsafeRun(()))      
 println(simplePipeline.unsafeRun("hi"))
 ```
@@ -70,6 +59,8 @@ HI
 
 Use `safeRun` to handle exceptions safely 
 ```scala
+import etl4s._
+
 val riskyPipeline = Pipeline[String, Int](s => s.toInt)
 val safeResult = riskyPipeline.safeRun("not a number")
 
