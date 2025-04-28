@@ -2,7 +2,6 @@ import scala.language.{higherKinds, implicitConversions}
 import scala.concurrent.{Future, ExecutionContext}
 import scala.concurrent.duration._
 import scala.concurrent.Await
-import scala.reflect.ClassTag
 import scala.util.{Try, Success, Failure}
 
 package object etl4s {
