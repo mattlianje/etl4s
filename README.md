@@ -33,8 +33,6 @@ All you need:
 ```scala
 import etl4s.*
 ```
-## 📚 Documentation
-[Full Documentation](https://mattlianje.github.io/etl4s/) - Detailed guides, API references, and examples
 
 ## Quick Example
 ```scala
@@ -56,15 +54,18 @@ val pipeline =
 pipeline.unsafeRun(())
 ```
 
+## 📚 Documentation
+[Full Documentation](https://mattlianje.github.io/etl4s/) - Detailed guides, API references, and examples
+
 ## Core Concepts
-**etl4s** has 2 building blocks. `Node[-In, +Out]` and `Pipeline[-In, +Out]`. 
-They are just wrappers around a function `In => Out` that we chain together with `~>`
+**etl4s** has 2 building blocks. They are just wrappers around lazily-evaluated functions `In => Out` that we chain together with `~>`
 
-They're lazily evaluated data transformations take input `In`
-and produce output type `Out`.
-
-**etl4s** offers three `Node` aliases purely to make your pipelines more readable and express intent clearly. `Extract`, `Transform` and `Load`.
+### `Node[-In, +Out]`
+`Node` has three aliases purely to make your pipelines more readable and express intent clearly. `Extract`, `Transform` and `Load`.
 They all behave identically under the hood.
+
+### `Pipeline[-In, +Out]`
+Create pipelines by stitching `Node`s with `~>` or wrapping any lambda with `Pipeline`. Run them with `.unsafeRun(<INPUT>)`
 
 
 ## Type safety
@@ -218,13 +219,12 @@ val pipeline =
 
 ## Built-in Tools
 **etl4s** comes with 3 extra abstractions to make your pipelines hard like iron, and flexible like bamboo.
-You can use them directly or swap in your own favorites (like their better built homologues from [Cats](https://typelevel.org/cats/)).
 
 - `Reader[R, A]` Config-driven pipelines
 - `Writer[W, A]`: Log accumulating pipelines
 - `Validated[T]` A lightweight, powerful validation stacking subsystem
 
-The **etl4s** `Reader` monad is extra-powrful. You can use the same `~>` operator to chain
+The **etl4s** `Reader` monad is extra-powerful. You can use the same `~>` operator to chain
 `Node`s wrapped in compatible environments. Learn more [here](https://mattlianje.github.io/etl4s/config/).
 
 ## Examples
