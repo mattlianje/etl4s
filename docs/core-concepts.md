@@ -1,5 +1,5 @@
 
-**etl4s** has 2 building blocks. `Node[-In, +Out]` and `Pipeline[-In, +Out]`. They are just wrappers around a function
+**etl4s** has 2 building blocks. `Node` and `Pipeline`. They are just wrappers around lazily-evaluated functions
 `In => Out` that we chain together with `~>`
 
 ## `Node[-In, +Out]`
