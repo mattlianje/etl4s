@@ -224,7 +224,7 @@ val pipeline =
 - `Validated[T]` A lightweight, powerful validation stacking subsystem
 
 The **etl4s** `Reader` monad is extra-powerful. You can use the same `~>` operator to chain
-`Node`s wrapped in compatible** environments. Learn more [here](https://mattlianje.github.io/etl4s/config/).
+`Node`s wrapped in compatible environments. Learn more [here](https://mattlianje.github.io/etl4s/config/).
 
 ## Examples
 
