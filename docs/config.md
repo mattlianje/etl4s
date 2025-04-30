@@ -62,29 +62,35 @@ With `Etl4sContext[T]`:
 **etl4s** automatically resolves the most specific configuration type needed when connecting components.
 
 ```scala
-/* Define minimal config hierarchy */
+import etl4s._
+
+/* Your config hierarchy ... */
 trait BaseConfig { def appName: String }
-trait SpecificConfig extends BaseConfig { def apiKey: String }
+trait DateConfig extends BaseConfig { def startDate: String }
+trait DbConfig extends BaseConfig { def dbUrl: String }
+trait FullConfig extends DateConfig with DbConfig
 
-/* Components with different requirements */
-val comp1 = Context[BaseConfig, Extract[Unit, String]] { ctx =>
-  Extract(_ => ctx.appName)
+/* Components with different context requirements */
+val baseComp = Context[BaseConfig, Extract[Unit, String]] { ctx =>
+  Extract(_ => ctx.appName) 
+}
+val dateComp = Context[DateConfig, Transform[String, String]] { ctx =>
+  Transform(s => s"${s}|${ctx.startDate}") 
+}
+val fullComp = Context[FullConfig, Transform[String, String]] { ctx =>
+  Transform(s => s"${s}|${ctx.dbUrl}") 
 }
 
-val comp2 = Context[SpecificConfig, Transform[String, String]] { ctx =>
-  Transform(s => s"$s: ${ctx.apiKey}")
-}
+/* Type resolution happens automatically */
+val pipeline = baseComp ~> dateComp ~> fullComp
 
-/* Magic happens here - type resolved to SpecificConfig */
-val pipeline = comp1 ~> comp2
+/* Configuration must satisfy the most specific requirements */
+case class ETLConfig(appName: String, 
+                     startDate: String,
+                     dbUrl: String) extends FullConfig
 
-/* Must provide the more specific config */
-val config = new SpecificConfig {
-  val appName = "MyApp"
-  val apiKey = "secret"
-}
+val config = ETLConfig("MyApp", "2023-01-01", "localhost:5432")
 
 val result = pipeline.provideContext(config).unsafeRun(())
-// Result: "MyApp: secret"
 ```
 
