@@ -9,7 +9,7 @@ A lightweight, zero-dependency library for writing type-safe ✨🍰 pipelines i
 import etl4s._
 
 /* Define components */
-val getUser  = Extract("john_doe") ~> Transform(_.toUpperCase)
+val getUser  = Extract("Matthieu")
 val getOrder = Extract("2 items")
 val process  = Transform[(String, String), String] { case (user, order) => 
   s"$user ordered $order" 

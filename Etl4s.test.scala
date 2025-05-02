@@ -1,761 +1,165 @@
 package etl4s
 
 import scala.concurrent.ExecutionContext.Implicits.global
-import scala.concurrent.{Future, Await}
-import scala.concurrent.duration._
+import scala.util.{Success, Failure}
 
-import java.time.LocalDate
-import java.time.temporal.ChronoUnit
+class BasicSpecs extends munit.FunSuite {
 
-class Etl4sSpec extends munit.FunSuite {
+  /** Using these little synthetic types in multiple tests
+    */
+  case class User(name: String, age: Int)
+  case class Order(id: String, amount: Double)
+  case class EnrichedOrder(user: User, order: Order, tax: Double)
 
-  case class Address(street: String, city: String, zipCode: String)
-  case class Person(name: String, age: Int, address: Address)
+  test("basic node composition") {
+    val extract   = Extract[String, Int](str => str.length)
+    val transform = Transform[Int, String](num => s"Length is $num")
+    val load      = Load[String, Boolean](str => { println(str); true })
 
-  test("sequential pipeline should combine extracts and loads correctly") {
-    val e1 = Extract(42)
-    val e2 = Extract("hello")
-    val e3 = Extract("world")
+    val pipeline = extract ~> transform ~> load
 
-    val l1 = Load[String, List[String]](_.split("-").toList)
-    val l2 = Load[String, Map[String, Int]](s => Map("length" -> s.length))
+    val result = pipeline.unsafeRun("Hello world!")
 
-    val multiESync = e1 &> e2 &> e3
-    val flattened = Extract[Unit, (Int, String, String)] { x =>
-      val ((i, s1), s2) = multiESync.runSync(x)
-      (i, s1, s2)
-    }
-
-    val pipeline = flattened ~>
-      Transform[(Int, String, String), String]({ case (num, str, str2) =>
-        s"$str-$str2-$num"
-      }) ~>
-      (l1 & l2)
-
-    val (list, map) = pipeline.unsafeRun(())
-    assertEquals(list, List("hello", "world", "42"))
-    assertEquals(map, Map("length" -> 14))
+    assertEquals(result, true)
+    assertEquals(pipeline.safeRun("Hello").get, true)
   }
 
-  test("parallel pipeline should execute extracts and loads concurrently") {
-    var e1Started, e2Started, e3Started = 0L
-    var l1Started, l2Started            = 0L
+  test("parallel execution with &") {
+    val getName = Extract("John Doe")
+    val getAge  = Extract(30)
 
-    val e1 = Extract[Unit, Int] { _ =>
-      e1Started = System.currentTimeMillis()
+    val userExtract = (getName & getAge).map { case (name, age) =>
+      User(name, age)
+    }
+
+    val user = userExtract.unsafeRun(())
+    assertEquals(user, User("John Doe", 30))
+  }
+
+  test("parallel execution with &>") {
+    var started1, started2 = 0L
+
+    val slow1 = Node[Unit, String] { _ =>
+      started1 = System.currentTimeMillis()
+      Thread.sleep(100)
+      "result1"
+    }
+
+    val slow2 = Node[Unit, Int] { _ =>
+      started2 = System.currentTimeMillis()
       Thread.sleep(100)
       42
     }
 
-    val e2 = Extract[Unit, String] { _ =>
-      e2Started = System.currentTimeMillis()
-      Thread.sleep(100)
-      "hello"
-    }
+    val combined = (slow1 &> slow2).unsafeRun(())
 
-    val e3 = Extract[Unit, String] { _ =>
-      e3Started = System.currentTimeMillis()
-      Thread.sleep(100)
-      "world"
-    }
-
-    val l1 = Load[String, List[String]] { s =>
-      l1Started = System.currentTimeMillis()
-      Thread.sleep(100)
-      s.split("-").toList
-    }
-
-    val l2 = Load[String, Map[String, Int]] { s =>
-      l2Started = System.currentTimeMillis()
-      Thread.sleep(100)
-      Map("length" -> s.length)
-    }
-
-    val pipeline = (e1 &> e2 &> e3) ~>
-      Transform[((Int, String), String), String]({ case ((num, str), str2) =>
-        s"$str-$str2-$num"
-      }) ~>
-      (l1 &> l2)
-
-    val pipeline2 = (e1 &> e2 &> e3) ~>
-      Transform[((Int, String), String), String]({ case ((num, str), str2) =>
-        s"$str-$str2-$num"
-      }) ~>
-      (l1 &> l2)
-
-    val (list, map) = pipeline.unsafeRun(())
-
-    assertEquals(list, List("hello", "world", "42"))
-    assertEquals(map, Map("length" -> 14))
-
+    assertEquals(combined._1, "result1")
+    assertEquals(combined._2, 42)
     assert(
-      Math.abs(e1Started - e2Started) < 50,
-      "e1 and e2 should start around same time"
-    )
-    assert(
-      Math.abs(e2Started - e3Started) < 50,
-      "e2 and e3 should start around same time"
-    )
-    assert(
-      Math.abs(l1Started - l2Started) < 50,
-      "l1 and l2 should start around same time"
+      Math.abs(started1 - started2) < 50,
+      "Operations should start at similar times"
     )
   }
 
-  test("pipeline should support monadic composition") {
-    val fetchUser: Transform[String, String] =
-      Transform(id => s"Fetching user $id")
-    val loadUser: Load[String, String] = Load(msg => s"User loaded: $msg")
-
-    val fetchOrder: Transform[Int, String] =
-      Transform(id => s"Fetching order $id")
-    val loadOrder: Load[String, String] = Load(msg => s"Order loaded: $msg")
-
-    val userPipeline   = Extract("user123") ~> fetchUser ~> loadUser
-    val ordersPipeline = Extract(42) ~> fetchOrder ~> loadOrder
-
-    val combinedPipeline = (for {
-      userData  <- userPipeline
-      orderData <- ordersPipeline
-    } yield Extract(s"$userData | $orderData") ~>
-      Transform { _.toUpperCase } ~>
-      Load { x => s"Final result: $x" }).flatten
-
-    val result = combinedPipeline.unsafeRun(())
-
-    assertEquals(
-      result,
-      "Final result: USER LOADED: FETCHING USER USER123 | ORDER LOADED: FETCHING ORDER 42"
-    )
-  }
-
-  test("pipeline should run in config context") {
-    case class ApiConfig(url: String, key: String)
-    val config = ApiConfig("https://api.com", "secret")
-
-    val fetchUser = Reader[ApiConfig, Transform[String, String]] { config =>
-      Transform(id => s"Fetching user $id from ${config.url}")
+  test("error handling with onFailure") {
+    val failingNode = Node[String, Int] { s =>
+      if (s.isEmpty) throw new RuntimeException("Empty input!")
+      s.length
     }
 
-    val loadUser = Reader[ApiConfig, Load[String, String]] { config =>
-      Load(msg => s"User loaded with key ${config.key}: $msg")
-    }
+    val safeNode = failingNode.onFailure(_ => -1)
 
-    val fetchOrder = Reader[ApiConfig, Transform[Int, String]] { config =>
-      Transform(id => s"Fetching order $id from ${config.url}")
-    }
-
-    val loadOrder = Reader[ApiConfig, Load[String, String]] { config =>
-      Load(msg => s"Order loaded with key ${config.key}: $msg")
-    }
-
-    val configuredPipeline = for {
-      userTransform  <- fetchUser
-      userLoader     <- loadUser
-      orderTransform <- fetchOrder
-      orderLoader    <- loadOrder
-      userPipeline  = Extract("user123") ~> userTransform ~> userLoader
-      orderPipeline = Extract(42) ~> orderTransform ~> orderLoader
-      combined = for {
-        userData  <- userPipeline
-        orderData <- orderPipeline
-      } yield Extract(s"$userData | $orderData") ~>
-        Transform[String, String](_.toUpperCase) ~>
-        Load[String, String] { x => s"Final result: $x" }
-    } yield combined.flatten
-
-    val result = configuredPipeline.run(config).unsafeRun(())
-
-    assertEquals(
-      result,
-      "Final result: USER LOADED WITH KEY SECRET: FETCHING USER USER123 FROM HTTPS://API.COM | ORDER LOADED WITH KEY SECRET: FETCHING ORDER 42 FROM HTTPS://API.COM"
-    )
+    assertEquals(safeNode("hello"), 5)
+    assertEquals(safeNode(""), -1)
   }
 
-  test("flatten should work with sequential transformations") {
-    val pipeline = for {
-      n <- Pipeline(Extract(5))
-    } yield Pipeline(Extract(n * n)) ~>
-      Transform[Int, String](x => s"Result: $x") ~>
-      Load[String, String](identity)
-
-    val result = pipeline.flatten.unsafeRun(())
-    assertEquals(result, "Result: 25")
-  }
-
-  test("flatten should handle conditional paths") {
-    val pipeline = for {
-      n <- Pipeline(Extract(7))
-    } yield
-      if (n > 5) {
-        Pipeline(Extract("big")) ~> Transform(_.toUpperCase) ~> Load(identity)
-      } else {
-        Pipeline(Extract("small")) ~> Transform(_.toLowerCase) ~> Load(identity)
-      }
-
-    val result = pipeline.flatten.unsafeRun(())
-    assertEquals(result, "BIG")
-  }
-
-  test("flatten should work with chained operations") {
-    val pipeline = for {
-      initial <- Pipeline(Extract("test"))
-      withPrefix = s"prefix_$initial"
-      withSuffix = s"${withPrefix}_suffix"
-    } yield Pipeline(Extract(withSuffix)) ~> Load(identity)
-
-    val result = pipeline.flatten.unsafeRun(())
-    assertEquals(result, "prefix_test_suffix")
-  }
-
-  test("flatten should handle validation scenarios") {
-    case class ValidationError(msg: String)
-
-    val pipeline = for {
-      n <- Pipeline(Extract(-5))
-      validated =
-        if (n > 0) Right(n) else Left(ValidationError("Must be positive"))
-    } yield validated match {
-      case Right(value) => Pipeline(Extract(s"Valid: $value")) ~> Load(identity)
-      case Left(error) =>
-        Pipeline(Extract(s"Error: ${error.msg}")) ~> Load(identity)
-    }
-
-    val result = pipeline.flatten.unsafeRun(())
-    assertEquals(result, "Error: Must be positive")
-  }
-
-  test("flatten should work with dependent data") {
-    case class User(id: Int, name: String)
-    case class Order(userId: Int, item: String)
-
-    val pipeline = for {
-      user  <- Pipeline(Extract(User(1, "Alice")))
-      order <- Pipeline(Extract(Order(1, "Book")))
-    } yield Pipeline(
-      Extract(s"User ${user.name} ordered ${order.item}")
-    ) ~> Load(identity)
-
-    val result = pipeline.flatten.unsafeRun(())
-    assertEquals(result, "User Alice ordered Book")
-  }
-
-  test("pipeline should handle retries using Try") {
+  test("retry functionality") {
     var attempts = 0
-    val failingTransform = Transform[Int, String] { n =>
+
+    val unstableNode = Node[String, Int] { s =>
       attempts += 1
       if (attempts < 3) throw new RuntimeException(s"Attempt $attempts failed")
-      else s"Success after $attempts attempts"
+      s.length
     }
 
-    val pipeline = Pipeline(Extract(42)) ~> failingTransform.withRetry(
-      maxAttempts = 3,
-      initialDelayMs = 10
-    )
+    val resilientNode =
+      unstableNode.withRetry(maxAttempts = 3, initialDelayMs = 10)
 
-    val result = pipeline.safeRun(())
-    assert(result.isSuccess)
-    assertEquals(result.get, "Success after 3 attempts")
+    val result = resilientNode.unsafeRun("test")
+    assertEquals(result, 4)
     assertEquals(attempts, 3)
   }
 
-  test("pipeline should return Failure after max retries") {
-    var attempts = 0
-    val alwaysFailingTransform = Transform[Int, String] { n =>
-      attempts += 1
-      throw new RuntimeException(s"Failed attempt $attempts")
-    }
-
-    val pipeline = Pipeline(Extract(42)) ~> alwaysFailingTransform.withRetry(
-      maxAttempts = 2
-    )
-
-    val result = pipeline.safeRun(())
-    assert(result.isFailure)
-    assert(result.failed.get.getMessage == "Failed attempt 2")
-    assertEquals(attempts, 2)
-  }
-
-  test("pipeline should handle successful first attempt") {
-    var attempts = 0
-    val successfulTransform = Transform[Int, String] { n =>
-      attempts += 1
-      "First try success!"
-    }
-
-    val pipeline = Pipeline(Extract(42)) ~> successfulTransform.withRetry(
-      maxAttempts = 3
-    )
-
-    val result = pipeline.safeRun(())
-    assert(result.isSuccess)
-    assertEquals(result.get, "First try success!")
-    assertEquals(attempts, 1)
-  }
-
-  test("should flatten nested tuples") {
-    val e1 = Extract(1)
-    val e2 = Extract("two")
-    val e3 = Extract("three")
-
-    val result = (e1 &> e2 &> e3).zip.runSync(())
-    assertEquals(result, (1, "two", "three"))
-
-    val e4      = Extract[Unit, Double](_ => 4.0)
-    val result2 = (e1 &> e2 &> e3 &> e4).zip.runSync(())
-    assertEquals(result2, (1, "two", "three", 4.0))
-  }
-
-  test("should create pipeline with flattened tuples") {
-    val e1 = Extract(1)
-    val e2 = Extract("two")
-    val e3 = Extract("three")
-
-    val transform = Transform[(Int, String, String), String] { case (num, s1, s2) =>
-      s"Number: $num, First: $s1, Second: $s2"
-    }
-
-    val load = Load[String, String](s => s"Final: $s")
+  test("tap for debugging") {
+    var intercepted = ""
 
     val pipeline =
-      (e1 &> e2 &> e3).zip ~> transform ~> load
+      Extract("hello") ~>
+        Transform[String, Int](_.length) ~>
+        tap((n: Int) => intercepted = s"Length is $n") ~>
+        Transform[Int, String](n => n.toString)
 
     val result = pipeline.unsafeRun(())
-    assertEquals(result, "Final: Number: 1, First: two, Second: three")
 
-    val e4 = Extract[Unit, Double](_ => 4.0)
-    val transform2 = Transform[(Int, String, String, Double), String] { case (num, s1, s2, d) =>
-      s"Number: $num, First: $s1, Second: $s2, Double: $d"
+    assertEquals(result, "5")
+    assertEquals(intercepted, "Length is 5")
+  }
+
+  test("sequential operations with >>") {
+    var sequence = List.empty[String]
+
+    val step1 = Node[Unit, Int] { _ =>
+      sequence = sequence :+ "step1"
+      10
     }
 
-    val pipeline2 = (e1 &> e2 &> e3 &> e4).zip ~> transform2 ~> load
-    val result2   = pipeline2.unsafeRun(())
-    assertEquals(
-      result2,
-      "Final: Number: 1, First: two, Second: three, Double: 4.0"
-    )
-  }
-
-  test(
-    "Transform should handle Map input while maintaining sequential operations"
-  ) {
-    case class Person(name: String, age: Int, scores: List[Int])
-
-    val input = Map(
-      "alice" -> Person("Alice", 25, List(95, 88, 92)),
-      "bob"   -> Person("Bob", 23, List(88, 85, 90))
-    )
-
-    val process: Transform[Map[String, Person], Map[String, String]] = for {
-      avgScores <- Transform[Map[String, Person], Map[String, Double]](people =>
-        people.map { case (id, p) =>
-          id -> (p.scores.sum.toDouble / p.scores.length)
-        }
-      )
-      grades <- Transform[Map[String, Person], Map[String, String]](_ =>
-        avgScores.map { case (id, score) =>
-          id -> (if (score > 90) "A"
-                 else if (score > 80) "B"
-                 else "C")
-        }
-      )
-    } yield grades
-
-    val expected = Map(
-      "alice" -> "A",
-      "bob"   -> "B"
-    )
-
-    assertEquals(process.runSync(input), expected)
-  }
-
-  test(
-    "should handle Map input as ETL pipeline with sequential operations and for-comprehension"
-  ) {
-    case class Person(name: String, age: Int, scores: List[Int])
-
-    val e1 = Extract[Unit, Map[String, Person]]((u: Unit) =>
-      Map(
-        "alice" -> Person("Alice", 25, List(95, 88, 92)),
-        "bob"   -> Person("Bob", 23, List(88, 85, 90))
-      )
-    )
-
-    val process: Transform[Map[String, Person], Map[String, String]] = for {
-      avgScores <- Transform[Map[String, Person], Map[String, Double]](people =>
-        people.map { case (id, p) =>
-          id -> (p.scores.sum.toDouble / p.scores.length)
-        }
-      )
-      gradesByAge <- Transform[Map[String, Person], Map[String, String]](people =>
-        people.map { case (id, p) =>
-          id -> (if (p.age > 24) "Old " else "Young ")
-        }
-      )
-      finalGrades <- Transform[Map[String, Person], Map[String, String]](_ =>
-        avgScores.map { case (id, score) =>
-          val agePrefix = gradesByAge(id)
-          id -> s"$agePrefix${
-              if (score > 90) "A"
-              else if (score > 80) "B"
-              else "C"
-            }"
-        }
-      )
-    } yield finalGrades
-
-    val load = Load[Map[String, String], String](grades =>
-      grades
-        .map { case (id, grade) =>
-          s"Student $id received grade: $grade"
-        }
-        .mkString("\n")
-    )
-
-    val pipeline = e1 ~> process ~> load
-
-    val expected =
-      """Student alice received grade: Old A
-      |Student bob received grade: Young B""".stripMargin
-
-    assertEquals(pipeline.unsafeRun(()), expected)
-  }
-
-  test(
-    "should demonstrate simple ETL pipeline with multiple dataframes and config"
-  ) {
-    case class DataConfig(threshold: Double)
-
-    val inputDfs = Extract[Unit, Map[String, Map[String, Double]]](_ =>
-      Map(
-        "sales" -> Map(
-          "product1" -> 100.0,
-          "product2" -> 400.0,
-          "product3" -> 150.0
-        ),
-        "costs" -> Map(
-          "product1" -> 80.0,
-          "product2" -> 150.0,
-          "product3" -> 90.0
-        )
-      )
-    )
-
-    val process: Reader[DataConfig, Transform[
-      Map[String, Map[String, Double]],
-      Map[String, String]
-    ]] =
-      Reader { config =>
-        for {
-          dfs <- Transform.pure[Map[String, Map[String, Double]]]
-
-          margins: Map[String, Double] = dfs("sales").map { case (product, revenue) =>
-            val cost   = dfs("costs").getOrElse(product, 0.0)
-            val margin = revenue - cost
-            product -> margin
-          }
-
-          enriched <- Transform[Map[String, Map[String, Double]], Map[
-            String,
-            String
-          ]](_ =>
-            margins.map { case (product, margin) =>
-              product -> {
-                if (margin > config.threshold) s"High margin: $margin"
-                else s"Low margin: $margin"
-              }
-            }
-          )
-        } yield enriched
-      }
-
-    val load = Load[Map[String, String], String](results =>
-      results
-        .map { case (product, status) =>
-          s"$product -> $status"
-        }
-        .mkString("\n")
-    )
-
-    val config = DataConfig(threshold = 100.0)
-
-    val pipeline = inputDfs ~> process.run(config) ~> load
-    val result   = pipeline.unsafeRun(())
-
-    assert(result.contains("product2 -> High margin"))
-    assert(result.contains("product1 -> Low margin"))
-  }
-
-  test("should handle errors with onFailure") {
-    case class MyError(msg: String)
-
-    val riskyExtract =
-      Extract[Unit, String](_ => throw new RuntimeException("Boom!"))
-
-    val riskyTransform = Transform[String, Int](str =>
-      if (str.contains("safe")) str.length
-      else throw new IllegalArgumentException("Unsafe input")
-    )
-
-    val safeExtract = riskyExtract.onFailure(e => s"Failed: ${e.getMessage}")
-    assertEquals(safeExtract.runSync(()), "Failed: Boom!")
-
-    val p1 = Extract("bad input") ~>
-      riskyTransform.onFailure(e => -1) ~>
-      Transform[Int, String](n => if (n < 0) "Error occurred" else "Success")
-
-    val p2 =
-      (Extract("bad input") ~> riskyTransform).onFailure(_ => "Error occurred")
-
-    assertEquals(p1.unsafeRun(()), "Error occurred")
-    assertEquals(p2.unsafeRun(()), "Error occurred")
-  }
-
-  test("Extract and Load should support andThen composition") {
-    val extract1: Extract[String, Int] = Extract(_.length)
-    val extract2: Extract[Int, Double] = Extract(_ * 2.0)
-    val combined                       = extract1 andThen extract2
-    assertEquals(combined.runSync("hello"), 10.0)
-
-    val load1: Load[String, Int] = Load(_.toInt)
-    val load2: Load[Int, String] = Load(x => (x * 2).toString)
-    val combinedLoad             = load1 andThen load2
-    assertEquals(combinedLoad.runSync("21"), "42")
-  }
-
-  test(
-    "Transform should compose with Extract and Load in concurrent pipelines"
-  ) {
-    var t1Started, t2Started, l1Started = 0L
-
-    val e1 = Extract("hello")
-    val t1 = Transform[String, Int] { s =>
-      t1Started = System.currentTimeMillis()
-      Thread.sleep(100)
-      s.length
-    }
-    val t2 = Transform[String, String] { s =>
-      t2Started = System.currentTimeMillis()
-      Thread.sleep(100)
-      s.toUpperCase
-    }
-    val l1 = Load[(Int, String), List[String]] { s =>
-      l1Started = System.currentTimeMillis()
-      Thread.sleep(100)
-      s._2.split("").toList
+    val step2 = Node[Unit, String] { _ =>
+      sequence = sequence :+ "step2"
+      "done"
     }
 
-    val pipeline = e1 ~> (t1 &> t2) ~> l1
+    val pipeline = step1 >> step2
 
-    pipeline.unsafeRun(())
-
-    assert(
-      Math.abs(t1Started - t2Started) < 50,
-      "t1 and t2 should start around same time"
-    )
+    val result = pipeline.unsafeRun(())
+    assertEquals(result, "done")
+    assertEquals(sequence, List("step1", "step2"))
   }
 
-  test("ETL pipeline with Reader config and Writer logs") {
-    case class Config(url: String, key: String)
-    type Log           = List[String]
-    type DataWriter[A] = Writer[Log, A]
+  test("type flattening with zip") {
+    val e1 = Extract(1)
+    val e2 = Extract("two")
+    val e3 = Extract(3.0)
 
-    val fetchUser = Reader[Config, Transform[String, DataWriter[String]]] { config =>
-      Transform { id =>
-        Writer(
-          List(s"Fetching user $id from ${config.url}"),
-          s"User $id"
-        )
-      }
+    val combined = (e1 &> e2 &> e3).zip
+
+    val result = combined.unsafeRun(())
+    assertEquals(result, (1, "two", 3.0))
+  }
+
+  test("etl pattern with multiple sources") {
+    val userSource = Extract("user123") ~>
+      Transform[String, User](id => User(s"User $id", 30))
+
+    val orderSource = Extract("order456") ~>
+      Transform[String, Order](id => Order(id, 99.99))
+
+    val enrichOrders = Transform[(User, Order), EnrichedOrder] { case (user, order) =>
+      EnrichedOrder(user, order, order.amount * 0.1)
     }
 
-    val processUser =
-      Reader[Config, Transform[DataWriter[String], DataWriter[String]]] { config =>
-        Transform { writerInput =>
-          for {
-            value <- writerInput
-            result <- Writer(
-              List(s"Processing $value with key ${config.key}"),
-              s"Processed: $value"
-            )
-          } yield result
-        }
-      }
-
-    val configuredPipeline = for {
-      fetch   <- fetchUser
-      process <- processUser
-    } yield Extract("123") ~> fetch ~> process
-
-    val config         = Config("https://api.com", "secret")
-    val (logs, result) = configuredPipeline.run(config).unsafeRun(()).run()
-
-    assertEquals(
-      logs,
-      List(
-        "Fetching user 123 from https://api.com",
-        "Processing User 123 with key secret"
-      )
-    )
-    assertEquals(result, "Processed: User 123")
-  }
-
-  test("pipelines should compose with ~>") {
-    val plusFiveExclaim: Pipeline[Int, String] =
-      Transform((x: Int) => x + 5) ~>
-        Transform((x: Int) => x.toString + "!")
-
-    val doubleString: Pipeline[String, String] =
-      Extract((s: String) => s) ~>
-        Transform[String, String](x => x ++ x)
-
-    val pipeline: Pipeline[Int, String] = plusFiveExclaim ~> doubleString
-
-    assertEquals(pipeline.unsafeRun(2), "7!7!")
-  }
-
-  test("should flatten nested tuples up to 10 elements") {
-    val e1  = Extract(1)
-    val e2  = Extract("two")
-    val e3  = Extract(3.0)
-    val e4  = Extract(true)
-    val e5  = Extract('c')
-    val e6  = Extract(6L)
-    val e7  = Extract(7.0f)
-    val e8  = Extract("eight")
-    val e9  = Extract(9)
-    val e10 = Extract(10L)
-
-    val combined =
-      (e1 &> e2 &> e3 &> e4 &> e5 &> e6 &> e7 &> e8 &> e9 &> e10).zip
-
-    val result = combined.runSync(())
-
-    val expected = (1, "two", 3.0, true, 'c', 6L, 7.0f, "eight", 9, 10L)
-
-    assertEquals(result, expected)
-
-    val transform = Transform[
-      (Int, String, Double, Boolean, Char, Long, Float, String, Int, Long),
-      String
-    ] { case (a1, a2, a3, a4, a5, a6, a7, a8, a9, a10) =>
-      s"Combined: $a1,$a2,$a3,$a4,$a5,$a6,$a7,$a8,$a9,$a10"
+    val saveToDB = Load[EnrichedOrder, String] { enrichedOrder =>
+      s"Saved: User=${enrichedOrder.user.name}, Order=${enrichedOrder.order.id}, Total=${enrichedOrder.order.amount + enrichedOrder.tax}"
     }
 
-    val load = Load[String, String](identity)
+    val etlPipeline = (userSource & orderSource) ~> enrichOrders ~> saveToDB
+    val result      = etlPipeline.unsafeRun(())
 
-    val pipeline       = combined ~> transform ~> load
-    val pipelineResult = pipeline.unsafeRun(())
-
-    assert(
-      pipelineResult.startsWith("Combined: 1,two,3.0,true,c,6,7.0,eight,9,10")
-    )
+    assert(result.contains("Saved:"))
+    assert(result.contains("User=User user123"))
+    assert(result.contains("Order=order456"))
   }
 
-  test("pipeline should support both sequential and parallel composition") {
-    var p1Started, p2Started = 0L
-
-    val p1 = Pipeline(Extract[Unit, Int] { _ =>
-      p1Started = System.currentTimeMillis()
-      Thread.sleep(100)
-      42
-    })
-
-    val p2 = Pipeline(Extract[Unit, String] { _ =>
-      p2Started = System.currentTimeMillis()
-      Thread.sleep(100)
-      "hello"
-    })
-
-    val sequential       = p1 & p2
-    val (seqNum, seqStr) = sequential.unsafeRun(())
-    assertEquals(seqNum, 42)
-    assertEquals(seqStr, "hello")
-    assert(
-      Math.abs(p1Started - p2Started) >= 100,
-      "Sequential operations should run one after another"
-    )
-
-    p1Started = 0L
-    p2Started = 0L
-
-    val parallel         = p1 &> p2
-    val (parNum, parStr) = parallel.unsafeRun(())
-    assertEquals(parNum, 42)
-    assertEquals(parStr, "hello")
-    assert(
-      Math.abs(p1Started - p2Started) < 50,
-      "Parallel operations should start at roughly the same time"
-    )
-  }
-
-  test("should fuse two pipelines then split and return one result") {
-    case class User(name: String, age: Int)
-    case class Order(id: Int, amount: Double)
-    case class Report(text: String)
-    case class Notification(message: String)
-
-    val userPipeline =
-      Extract("Alice") ~> Transform[String, User](name => User(name, 25))
-    val orderPipeline =
-      Extract(42) ~> Transform[Int, Order](id => Order(id, 99.99))
-
-    val fusedPipeline = (userPipeline & orderPipeline).zip ~>
-      Transform[(User, Order), (Report, Notification)] { case (user, order) =>
-        val report = Report(s"User ${user.name} spent ${order.amount}")
-        val notification =
-          Notification(s"Order ${order.id} processed for ${user.name}")
-        (report, notification)
-      }
-
-    val reportPipeline =
-      fusedPipeline ~> Transform[(Report, Notification), Report](_._1)
-
-    val result = reportPipeline.unsafeRun(())
-    assertEquals(result, Report("User Alice spent 99.99"))
-  }
-
-  test("showcase multi-source pipeline with multiple writes") {
-    case class A(value: String)
-    case class B(value: Int)
-    case class C(value: Double)
-    case class D(a: String, b: Int)
-    case class E(value: Double)
-    case class F(d: D, e: E)
-    case class Result(value: String)
-
-    val s1 = Extract("source1") ~> Transform[String, A](s => A(s))
-    val s2 = Extract(42) ~> Transform[Int, B](n => B(n))
-    val s3 = Extract(3.14) ~> Transform[Double, C](d => C(d))
-
-    val tD = Transform[(A, B), D] { case (a, b) => D(a.value, b.value) }
-    val tE = Transform[C, E](c => E(c.value * 2))
-    val tF = Transform[(D, E), F] { case (d, e) => F(d, e) }
-
-    val w1 = Transform[F, Result] { f =>
-      println(s"W1: Writing ${f.d.a}")
-      Result(s"W1: ${f.d.a}")
-    }
-    val w2 = Transform[F, Unit] { f =>
-      println(s"W2: Writing ${f.d.b}")
-    }
-    val w3 = Transform[F, Unit] { f =>
-      println(s"W3: Writing ${f.e.value}")
-    }
-
-    val pipeline =
-      (
-        ((s1 & s2) ~> tD) &
-          (s3 ~> tE)
-      ) ~> tF ~>
-        (w1 & w2 & w3).zip
-
-    val R = pipeline.unsafeRun(())._1
-
-    assertEquals(R, Result("W1: source1"))
-  }
-
-  test("Pretty pipeline 1") {
+  test("pretty pipeline 1") {
 
     val s1 = Extract("foo") ~> Transform[String, String](_.toUpperCase)
     val s2 = Extract(10) ~> Transform[Int, String](n => s"num:$n")
@@ -786,170 +190,170 @@ class Etl4sSpec extends munit.FunSuite {
     assert(result == "[FOO + num:10 | double:2.50 processed]")
   }
 
-  test("Pretty pipeline 2") {
-    val fetchUser: Pipeline[Unit, String] =
-      Extract("john_doe") ~> Transform[String, String](_.toUpperCase)
+  test("can zip max nodes") {
+    /* Max is currently 10 */
+    val e1   = Extract(1)
+    val bigE = (e1 & e1 & e1 & e1 & e1 & e1 & e1 & e1 & e1 & e1).zip
+  }
 
-    val fetchOrder: Extract[Unit, String]   = Extract("order 42")
-    val fetchPayment: Extract[Unit, String] = Extract("99.99")
+  test("can create and chain effect") {
+    val e           = effect { println("yo"); println("dawg") }
+    val effectChain = e >> e >> e >> e >> e >> e
+  }
 
-    val D: Transform[(String, String), String] =
-      Transform { case (user, order) => s"$user placed $order" }
-    val E: Transform[String, String] =
-      Transform(payment => s"Validated: $payment")
-    val F: Transform[(String, String), String] =
-      Transform { case (userOrder, payment) =>
-        s"REPORT: [$userOrder | $payment]"
+  test("associative property holds") {
+    val e1     = Extract(1)
+    val plus1  = Transform[Int, Int](x => x + 2)
+    val times5 = Transform[Int, Int](x => x * 5)
+
+    val p1 = e1 ~> plus1 ~> times5
+    val p2 = e1 ~> (plus1 ~> times5)
+
+    assert(p1(()) == p2(()))
+  }
+
+  test("unsafeRunTimedMillis measures execution time") {
+    // Create a node that sleeps for a specific time
+    val sleepDuration = 100
+    val sleepNode = Node[Unit, Unit] { _ =>
+      Thread.sleep(sleepDuration)
+    }
+    val (_, elapsedTime) = sleepNode.unsafeRunTimedMillis(())
+    assert(
+      elapsedTime >= sleepDuration,
+      s"Elapsed time ($elapsedTime ms) should be at least $sleepDuration ms"
+    )
+    assert(
+      elapsedTime < sleepDuration + 50,
+      s"Elapsed time ($elapsedTime ms) should not be much longer than $sleepDuration ms"
+    )
+  }
+}
+
+class ReaderSpecs extends munit.FunSuite {
+  test("reader/context functionality") {
+    case class Config(prefix: String, multiplier: Int)
+
+    val contextNode = Context[Config, Node[String, String]] { cfg =>
+      Node(input => s"${cfg.prefix}: $input")
+    }
+
+    val processNode = Context[Config, Node[String, Int]] { cfg =>
+      Node(str => str.length * cfg.multiplier)
+    }
+
+    val pipeline = contextNode ~> processNode
+
+    val config = Config("MSG", 2)
+    val result = pipeline.provideContext(config).unsafeRun("hello")
+
+    assertEquals(result, 20)
+  }
+
+  test("regular node to reader-wrapped node composition") {
+    case class Config(multiplier: Int)
+
+    val stringToLength = Node[String, Int](str => str.length)
+
+    val lengthProcessor = Context[Config, Node[Int, String]] { cfg =>
+      Node(length => s"Length after processing: ${length * cfg.multiplier}")
+    }
+
+    val pipeline = stringToLength ~> lengthProcessor
+
+    val config = Config(3)
+    val result = pipeline.provideContext(config).unsafeRun("hello")
+
+    assertEquals(
+      result,
+      "Length after processing: 15"
+    )
+
+    val anotherConfig = Config(10)
+    val anotherResult = pipeline.provideContext(anotherConfig).unsafeRun("hi")
+
+    assertEquals(
+      anotherResult,
+      "Length after processing: 20"
+    )
+  }
+
+  test("can chain Reader to supertype Reader with simple types") {
+    trait HasBaseConfig { def appName: String }
+
+    trait HasDateConfig extends HasBaseConfig {
+      def startDate: String
+      def endDate: String
+    }
+
+    trait HasExtendedDateConfig extends HasDateConfig {
+      def dateFormat: String
+    }
+
+    case class FullConfig(
+      appName: String,
+      startDate: String,
+      endDate: String,
+      dateFormat: String
+    ) extends HasExtendedDateConfig
+
+    val formatTimestamp = Context[HasExtendedDateConfig, Node[String, String]] { cfg =>
+      Node { timestamp =>
+        s"Formatted with ${cfg.dateFormat}: $timestamp (from ${cfg.appName})"
       }
-
-    val saveToDB: Load[String, String] = Load(report => {
-      println(s"DB Save: $report"); report
-    })
-    val sendEmail: Load[String, Unit] =
-      Load(report => println(s"Email Sent: $report"))
-    val logReport: Load[String, Unit] =
-      Load(report => println(s"Log Entry: $report"))
-
-    val R = Load[(String, Unit, Unit), String](_._1)
-
-    val pipeline: Pipeline[Unit, String] =
-      (
-        (fetchUser & fetchOrder) ~> D &
-          (fetchPayment ~> E)
-      ) ~> F ~>
-        (saveToDB & sendEmail & logReport).zip ~> R
-
-    val result: String = pipeline.unsafeRun(())
-  }
-
-  test(
-    ">> operator should execute pipelines in sequence regardless of output"
-  ) {
-    var executionOrder = List[String]()
-
-    val p1 = Pipeline[Unit, Int]((u: Unit) => {
-      executionOrder = executionOrder :+ "p1"
-      42
-    })
-
-    val p2 = Pipeline[Unit, String]((u: Unit) => {
-      executionOrder = executionOrder :+ "p2"
-      "hello"
-    })
-
-    val p3 = Pipeline[Unit, Boolean]((u: Unit) => {
-      executionOrder = executionOrder :+ "p3"
-      true
-    })
-
-    val sequentialPipeline = p1 >> p2 >> p3
-    val result             = sequentialPipeline.unsafeRun(())
-
-    assertEquals(result, true)
-
-    assertEquals(executionOrder, List("p1", "p2", "p3"))
-  }
-
-  test("should allow sequencing nodes with Unit input") {
-    var executionOrder = List[String]()
-
-    val n1 = Transform[Unit, Int] { _ =>
-      executionOrder = executionOrder :+ "n1"
-      42
     }
 
-    val n2 = Transform[Unit, String] { _ =>
-      executionOrder = executionOrder :+ "n2"
-      "hello"
+    val checkDateRange = Context[HasDateConfig, Node[String, String]] { cfg =>
+      Node { formatted =>
+        s"$formatted - Range check: ${cfg.startDate} to ${cfg.endDate}"
+      }
     }
 
-    val sequentialNode = n1 >> n2
-    val result         = sequentialNode.runSync(())
+    val pipeline = formatTimestamp ~> checkDateRange
 
-    assertEquals(result, "hello")
-    assertEquals(executionOrder, List("n1", "n2"))
+    val config = FullConfig(
+      appName = "DateProcessor",
+      startDate = "2023-01-01",
+      endDate = "2023-01-31",
+      dateFormat = "yyyy-MM-dd"
+    )
+
+    val result = pipeline.provideContext(config).unsafeRun("2023-01-15")
+
+    assert(result.contains("Formatted with yyyy-MM-dd"))
+    assert(result.contains("from DateProcessor"))
+    assert(result.contains("Range check: 2023-01-01 to 2023-01-31"))
   }
 
-  test("should chain any arrow functions together") {
-    val f1: Int => String       = _.toString
-    val f2: String => List[Int] = s => s.map(_.toInt - 48).toList
+  test("etl4sContext and WithContext aliases") {
+    case class AppConfig(serviceName: String, timeout: Int)
 
-    val extract   = Extract((x: Int) => x * 2)
-    val transform = Transform((s: String) => s.toUpperCase)
-    val load      = Load((list: List[Int]) => list.sum)
+    object TestContext extends Etl4sContext[AppConfig] {
 
-    val pipeline1 = extract ~> f1 ~> transform ~> f2 ~> load
-    assertEquals(pipeline1.unsafeRun(5), 1)
+      val extractWithContext: ExtractWithContext[String, Int] =
+        Context[AppConfig, Extract[String, Int]] { cfg =>
+          Extract { input =>
+            s"${cfg.serviceName}: $input".length * cfg.timeout
+          }
+        }
 
-    val pipeline2 = f1 ~> transform
-    assertEquals(pipeline2.unsafeRun(42), "42")
+      val transformWithContext: TransformWithContext[Int, String] =
+        Context[AppConfig, Transform[Int, String]] { cfg =>
+          Transform { value =>
+            s"Processed by ${cfg.serviceName} with value $value"
+          }
+        }
+    }
 
-    val pipeline3 = f1 ~> f2
-    assertEquals(pipeline3.unsafeRun(42), List(4, 2))
+    import TestContext._
+    val pipeline = extractWithContext ~> transformWithContext
 
-    val complexPipeline =
-      extract ~> ((x: Int) => x / 2) ~> f1 ~> transform ~> f2 ~> ((nums: List[Int]) =>
-        nums.mkString(",")
-      )
-    assertEquals(complexPipeline.unsafeRun(10), "1,0")
+    val config = AppConfig("DataService", 2)
+    val result = pipeline.provideContext(config).unsafeRun("test")
   }
+}
 
-  test("should work with existing Extract & Load in parallel") {
-    val extract1 = Extract((i: Int) => i * 10)
-    val extract2 = Extract((i: Int) => i.toString)
-
-    val transform: (Int, String) => String = (num, str) => s"$num-$str"
-
-    val load: String => List[String] = _.split("-").toList
-
-    val parallelExtracts = extract1 &> extract2
-
-    val pipeline = parallelExtracts ~>
-      ((t: (Int, String)) => transform(t._1, t._2)) ~>
-      load
-
-    assertEquals(pipeline.unsafeRun(5), List("50", "5"))
-  }
-
-  test("tap should observe values without modifying them") {
-    var observed = ""
-    val pipeline = Pipeline((s: String) => s.toUpperCase)
-      .tap(result => observed = result)
-
-    val result = pipeline.unsafeRun("hello")
-
-    assertEquals(result, "HELLO")
-    assertEquals(observed, "HELLO")
-  }
-
-  test("tap should work in multi-stage pipelines") {
-    var stage1 = 0
-    var stage2 = ""
-
-    val pipeline = Pipeline((s: String) => s.length)
-      .tap(len => stage1 = len)
-      .map(len => s"Length is $len")
-      .tap(str => stage2 = str)
-
-    val result = pipeline.unsafeRun("hello")
-
-    assertEquals(result, "Length is 5")
-    assertEquals(stage1, 5)
-    assertEquals(stage2, "Length is 5")
-  }
-
-  test("unsafeRunTimed should measure longer operations appropriately") {
-    val pipeline = Pipeline((n: Int) => {
-      Thread.sleep(50)
-      n * 2
-    })
-
-    val (result, time) = pipeline.unsafeRunTimed(21)
-
-    assertEquals(result, 42)
-    assert(time >= 50, s"Time should be at least 50ms for sleep operation, but was $time ms")
-  }
-
+class ValidatedSpecs extends munit.FunSuite {
   test("simple validation with require") {
     assert(require(10 > 5, "error message").isValid)
     assert(!require(3 > 5, "error message").isValid)
@@ -969,17 +373,31 @@ class Etl4sSpec extends munit.FunSuite {
     val validateUser = Validated[User] { user =>
       val basicChecks = require(user, user.id.nonEmpty, "ID cannot be empty")
       val roleChecks = user.role match {
-        case Admin  => require(user, user.id.startsWith("A"), "Admin IDs must start with 'A'")
-        case Editor => require(user, user.id.startsWith("E"), "Editor IDs must start with 'E'")
-        case _      => success(user)
+        case Admin =>
+          require(
+            user,
+            user.id.startsWith("A"),
+            "Admin IDs must start with 'A'"
+          )
+        case Editor =>
+          require(
+            user,
+            user.id.startsWith("E"),
+            "Editor IDs must start with 'E'"
+          )
+        case _ => success(user)
       }
-      val statusCheck = if (!user.active) failure("User account is inactive") else success(user)
+      val statusCheck =
+        if (!user.active) failure("User account is inactive") else success(user)
       basicChecks && roleChecks && statusCheck
     }
 
     assert(validateUser(User("A123", Admin, true)).isValid)
     assert(!validateUser(User("E123", Admin, true)).isValid)
-    assert(validateUser(User("E123", Admin, true)).errors.contains("Admin IDs must start with 'A'"))
+    assert(
+      validateUser(User("E123", Admin, true)).errors
+        .contains("Admin IDs must start with 'A'")
+    )
     assert(!validateUser(User("V123", Viewer, false)).isValid)
   }
 
@@ -999,156 +417,7 @@ class Etl4sSpec extends munit.FunSuite {
     assert(!validatePerson(Person("John", -10)).isValid)
 
     val invalidBoth = validatePerson(Person("", -5))
-    println(invalidBoth)
     assert(!invalidBoth.isValid)
     assert(invalidBoth.errors.size == 2)
-  }
-
-  test("tap can inercept pipelines/flows") {
-    var processedValue = ""
-
-    val pipeline = Extract("test data") ~>
-      tap(s => processedValue = s"Processed: $s") ~>
-      Transform[String, Int](_.length)
-
-    val result = pipeline.unsafeRun(())
-
-    assertEquals(processedValue, "Processed: test data")
-    assertEquals(result, 9)
-  }
-}
-
-class Etl4sContextSpec extends munit.FunSuite {
-  case class DBConfig(url: String, username: String)
-
-  object DataService extends Etl4sContext[DBConfig] {
-    def getData: ExtractWithContext[String, String] = Context { ctx =>
-      Extract(query => s"Data from ${ctx.url} using ${ctx.username}: $query")
-    }
-
-    def processData: TransformWithContext[String, String] = Context { ctx =>
-      Transform(data => s"Processed with ${ctx.username}'s permissions: $data")
-    }
-
-    def saveData: LoadWithContext[String, String] = Context { ctx =>
-      Load(data => s"Saved to ${ctx.url} by ${ctx.username}: $data")
-    }
-
-    val uppercase    = Transform[String, String](_.toUpperCase)
-    val addTimestamp = Transform[String, String](data => s"[${java.time.LocalDateTime.now}] $data")
-    val logToConsole = Load[String, String](data => { println(s"LOG: $data"); data })
-  }
-
-  val config = DBConfig("jdbc:postgresql://localhost:5432/mydb", "admin")
-  val query  = "SELECT * FROM users"
-  val expectedBase =
-    "Data from jdbc:postgresql://localhost:5432/mydb using admin: SELECT * FROM users"
-  val expectedProcessed = s"Processed with admin's permissions: $expectedBase"
-
-  test("context should be accessible in pipeline components") {
-    val pipeline = for {
-      extract <- DataService.getData
-      process <- DataService.processData
-    } yield extract ~> process
-
-    assertEquals(pipeline.provideContext(config).unsafeRun(query), expectedProcessed)
-  }
-
-  test("can use ~> operator directly on context-aware components") {
-    import DataService._
-    val pipeline = getData ~> processData
-
-    assertEquals(pipeline.provideContext(config).unsafeRun(query), expectedProcessed)
-  }
-
-  test("can chain multiple context-aware components with ~>") {
-    import DataService._
-    val pipeline = getData ~> processData ~> saveData
-
-    val result = pipeline.provideContext(config).unsafeRun(query)
-    assert(result.contains("Saved to"))
-    assert(result.contains(expectedProcessed))
-  }
-
-  test("can mix context-aware and regular components") {
-    import DataService._
-
-    val contextualPart = getData ~> processData
-    val fullPipeline   = contextualPart.provideContext(config) ~> uppercase ~> addTimestamp
-
-    val result = fullPipeline.unsafeRun(query)
-    assert(result.contains("PROCESSED WITH ADMIN'S PERMISSIONS"))
-    assert(result.contains("["))
-  }
-
-  test("can create a complex mixed pipeline with functions and ETL components") {
-    import DataService._
-
-    val wrapWithBrackets = (s: String) => s"[[ $s ]]"
-    val countChars       = (s: String) => s"$s (length: ${s.length})"
-
-    val addMetadata = Transform[String, String] { s =>
-      s"$s | metadata: processed at ${java.time.LocalDateTime.now}"
-    }
-
-    val testNode: Reader[String, Transform[String, String]] = Reader { ctx =>
-      Transform { x => x }
-    }
-
-    val complexPipeline = getData ~> processData ~> wrapWithBrackets ~> addMetadata ~> countChars
-
-    val result = complexPipeline.provideContext(config).unsafeRun(query)
-
-    assert(result.contains("length:"))
-  }
-
-  test("chaining components with proper environment subset/superset relationships") {
-    trait HasBaseConfig { def appName: String }
-    trait HasDateRange  extends HasBaseConfig { def startDate: String }
-    trait HasDbConfig   extends HasBaseConfig { def dbUrl: String     }
-    trait HasFullConfig extends HasDateRange with HasDbConfig
-
-    /* Config implementation and simple data type */
-    case class FullConfig(appName: String, startDate: String, dbUrl: String) extends HasFullConfig
-    case class Data(value: String)
-
-    val baseComp = Context[HasBaseConfig, Extract[Unit, Data]] { ctx =>
-      Extract(_ => Data(s"base:${ctx.appName}"))
-    }
-    val dateComp = Context[HasDateRange, Transform[Data, Data]] { ctx =>
-      Transform(d => Data(s"${d.value},date:${ctx.startDate}"))
-    }
-    val dbComp = Context[HasDbConfig, Transform[Data, Data]] { ctx =>
-      Transform(d => Data(s"${d.value},db:${ctx.dbUrl}"))
-    }
-    val fullComp = Context[HasFullConfig, Transform[Data, Data]] { ctx =>
-      Transform(d => Data(s"${d.value},full:${ctx.appName}+${ctx.startDate}+${ctx.dbUrl}"))
-    }
-
-    val config = FullConfig("app", "2023-01-01", "localhost:5432")
-
-    /* Test 1: Base to Date (Base -> Date = Date) */
-    val p1 = baseComp ~> dateComp
-    val r1 = p1.provideContext(config).unsafeRun(())
-    assert(r1.value.contains("base:app") && r1.value.contains("date:2023-01-01"))
-
-    /* Test 2: Base to DB (Base -> DB = DB) */
-    val p2 = baseComp ~> dbComp
-    val r2 = p2.provideContext(config).unsafeRun(())
-    assert(r2.value.contains("base:app") && r2.value.contains("db:localhost:5432"))
-
-    /* Test 3: Full to DB (Full -> DB = Full) - more specific preserved */
-    val p3 = fullComp ~> dbComp
-    val r3 = p3.provideContext(config).unsafeRun(Data("start"))
-    assert(r3.value.contains("full:") && r3.value.contains("db:localhost:5432"))
-
-    /* Triple chain (Base -> Date -> Full = Full) */
-    val p4 = baseComp ~> dateComp ~> fullComp
-    val r4 = p4.provideContext(config).unsafeRun(())
-    assert(
-      r4.value.contains("base:app") && r4.value.contains("date:") && r4.value.contains("full:")
-    )
-
-    // The central idea is dateComp ~> dbComp would not compile (incompatible environments)
   }
 }

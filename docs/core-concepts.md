@@ -1,10 +1,11 @@
 
-**etl4s** has 2 building blocks. `Node` and `Pipeline`. They are just wrappers around lazily-evaluated functions
+**etl4s** has 1 fundamental building block: `Node`. Nodes are just wrappers around lazily-evaluated functions
 `In => Out` that we chain together with `~>`
 
 ## `Node[-In, +Out]`
 
-**etl4s** offers three nodes aliases purely to make your pipelines more readable and express intent clearly: `Extract`, `Transform` and `Load`. They all behave identically under the hood.
+**etl4s** offers four node aliases purely to make your pipelines more readable and express intent clearly: `Extract`, `Transform`, `Load` and
+`Pipeline`. They all behave identically under the hood.
 
 ```scala
 import etl4s._
@@ -26,10 +27,9 @@ hello
 4
 ```
 
-## `Pipeline[-In, +Out]`
-`Pipeline`'s are the core abstraction of **etl4s**.
-
-A pipeline won't execute until you call `unsafeRun()` or `safeRun()` on it and provide
+## `unsafeRun`, `safeRun`, `unsafeRunTimedMillis`
+You can be more deliberate about running nodes by calling them with
+`unsafeRun()` or `safeRun()` and providing
 the `In`.
 
 Let's start with some nodes:
@@ -65,6 +65,17 @@ val riskyPipeline = Pipeline[String, Int](s => s.toInt)
 val safeResult = riskyPipeline.safeRun("not a number")
 
 println(safeResult)  /* Failure(java.lang.NumberFormatException: ..) */
+```
+
+Use `unsafeRunTimedMillis` to time your pipeline executions:
+```scala
+import etl4s._
+
+val sleepDuration = 100
+val sleepNode = Node[Unit, Unit] { _ =>
+  Thread.sleep(sleepDuration)
+}
+val (_, elapsedTime) = sleepNode.unsafeRunTimedMillis(())
 ```
 
 

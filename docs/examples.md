@@ -16,12 +16,14 @@ Connect the output of two pipelines to a third:
 import etl4s._
 
 val namePipeline = Pipeline((_: Unit) => "John Doe")
-val agePipeline = Pipeline((_: Unit) => 30)
+val agePipeline  = Pipeline((_: Unit) => 30)
+val toUpper      = Transform[String, String](_.toUpperCase)
+val consoleLoad  = Load[String, Unit](println(_))
 
 val combined: Pipeline[Unit, Unit] =
   for {
     name <- namePipeline
     age <- agePipeline
-    _ <- Extract(s"$name | $age") ~> Transform(_.toUpperCase) ~> Load(println(_))
+    _ <- Extract(s"$name | $age") ~> toUpper ~> consoleLoad
   } yield ()
 ```
