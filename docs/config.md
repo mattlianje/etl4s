@@ -13,10 +13,10 @@ import etl4s._
 case class ApiConfig(url: String, key: String)
 val config = ApiConfig("https://api.example.com", "secret-key")
 
-/* Create context-aware components */
-val fetchData = Context[ApiConfig, Extract[String, String]] { ctx =>
-  Extract(id => s"Fetched $id from ${ctx.url}")
-}
+/* Create context-aware components
+ * (mix with regular nodes)
+ */
+ val fetchData = Extract[String, String](id => s"Fetched $id ...")
 
 val processData = Context[ApiConfig, Transform[String, String]] { ctx =>
   Transform(data => s"Processed with key ${ctx.key}: $data")
