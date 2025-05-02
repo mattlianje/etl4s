@@ -15,8 +15,8 @@ Connect the output of two pipelines to a third:
 ```scala
 import etl4s._
 
-val namePipeline = Pipeline((_: Unit) => "John Doe")
-val agePipeline  = Pipeline((_: Unit) => 30)
+val namePipeline = Pipeline("John Doe")
+val agePipeline  = Pipeline(30)
 val toUpper      = Transform[String, String](_.toUpperCase)
 val consoleLoad  = Load[String, Unit](println(_))
 
