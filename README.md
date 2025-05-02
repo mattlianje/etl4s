@@ -34,7 +34,7 @@ import etl4s.*
 import etl4s.*
 
 /* Define components */
-val getUser  = Extract("john_doe") ~> Transform(_.toUpperCase)
+val getUser  = Extract("Matthieu")
 val getOrder = Extract("2 items")
 val process  = Transform[(String, String), String] { case (user, order) => 
   s"$user ordered $order" 
@@ -53,15 +53,14 @@ pipeline.unsafeRun(())
 [Full Documentation](https://mattlianje.github.io/etl4s/) - Detailed guides, API references, and examples
 
 ## Core Concepts
-**etl4s** has 2 building blocks. They are just wrappers around lazily-evaluated functions `In => Out` that we chain together with `~>`
+etl4s has 1 core building block: `Node[-In, +Out]`. Nodes are just wrappers around lazily-evaluated functions `In => Out` that we chain together with `~>`
 
 - #### `Node[-In, +Out]`
-`Node` has three aliases purely to make your pipelines more readable and express intent clearly. `Extract`, `Transform` and `Load`.
-They all behave identically under the hood.
+`Node` has four aliases purely to make your pipelines more readable and express intent clearly. `Extract`, `Transform`, `Load` and `Pipeline`.
+They all behave identically under the hood. Stitch nodes with `~>` to create new ones, or drop any lambda inside a node. Run them like calling functions.
 
-- #### `Pipeline[-In, +Out]`
-Create pipelines by stitching `Node`s with `~>` or wrapping any lambda with `Pipeline`. Run them with `.unsafeRun(<INPUT>)`
-
+- #### `unsafeRun`, `safeRun`, `unsafeRunTimedMillis`
+You can be more deliberate about running nodes by calling them with `unsafeRun()` or `safeRun()` and providing the `In`. `safeRun` wraps your result in a `Try` monad to catch exceptions, and `unsafeRunTimedMillis` returns a tuple: `(<result>, <run-time-in-millis>)`
 
 ## Type safety
 **etl4s** won't let you chain together "blocks" that don't fit together:
@@ -229,7 +228,7 @@ or converting environments. Learn more [here](https://mattlianje.github.io/etl4s
 #### Chain two pipelines
 Simple UNIX-pipe style chaining of two pipelines:
 ```scala
-import etl4s.*
+import etl4s._
 
 val p1 = Pipeline((i: Int) => i.toString)
 val p2 = Pipeline((s: String) => s + "!")
@@ -240,16 +239,18 @@ val p3: Pipeline[Int, String] = p1 ~> p2
 #### Complex chaining
 Connect the output of two pipelines to a third:
 ```scala
-import etl4s.*
+import etl4s._
 
 val namePipeline = Pipeline((_: Unit) => "John Doe")
-val agePipeline = Pipeline((_: Unit) => 30)
+val agePipeline  = Pipeline((_: Unit) => 30)
+val toUpper      = Transform[String, String](_.toUpperCase)
+val consoleLoad  = Load[String, Unit](println(_))
 
 val combined: Pipeline[Unit, Unit] =
   for {
     name <- namePipeline
     age <- agePipeline
-    _ <- Extract(s"$name | $age") ~> Transform(_.toUpperCase) ~> Load(println(_))
+    _ <- Extract(s"$name | $age") ~> toUpper ~> consoleLoad
   } yield ()
 ```
 

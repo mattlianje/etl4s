@@ -1,5 +1,5 @@
 
-**etl4s** has 1 fundamental building block: `Node`. Nodes are just wrappers around lazily-evaluated functions
+**etl4s** has 1 core building block: `Node`. Nodes are just wrappers around lazily-evaluated functions
 `In => Out` that we chain together with `~>`
 
 ## `Node[-In, +Out]`
