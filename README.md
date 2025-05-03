@@ -53,7 +53,7 @@ pipeline.unsafeRun(())
 [Full Documentation](https://mattlianje.github.io/etl4s/) - Detailed guides, API references, and examples
 
 ## Core Concepts
-etl4s has 1 core building block: `Node[-In, +Out]`. Nodes are just wrappers around lazily-evaluated functions `In => Out` that we chain together with `~>`
+etl4s has 1 fundamental building block: `Node[-In, +Out]`. Nodes are just wrappers around lazily-evaluated functions `In => Out` that we chain together with `~>`
 
 - #### `Node[-In, +Out]`
 `Node` has four aliases purely to make your pipelines more readable and express intent clearly. `Extract`, `Transform`, `Load` and `Pipeline`.
