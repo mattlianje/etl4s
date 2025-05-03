@@ -14,7 +14,6 @@
  */
 
 package object etl4s {
-  import scala.language.implicitConversions
   import scala.language.{higherKinds, implicitConversions}
   import scala.concurrent.{Future, ExecutionContext}
   import scala.concurrent.duration._

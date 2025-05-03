@@ -164,6 +164,19 @@ Processing: hello world
 Array("hello", "world")
 ```
 
+## Actions with `effect`
+The `effect` method lets you execute code without disrupting the flow of values through your pipeline.
+This is good for performing side effects, closing connections, doing IO's etc...
+
+```scala
+import etl4s._
+
+val fetchData      = Extract(_ => List("file1.txt", "file2.txt")
+val flushTempFiles = effect { println("Cleaning up temporary files...") }
+val processFiles   = Transform[List[String], Int](_.size)
+
+val p = fetchData ~> flushTempFiles ~> processFiles
+```
 
 ## Parallelizing Tasks
 **etl4s** has an elegant shorthand for grouping and parallelizing operations that share the same input type:
