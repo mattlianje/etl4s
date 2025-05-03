@@ -9,7 +9,7 @@ val sayHello   = Extract("hello world")
 val splitWords = Transform[String, Array[String]](_.split(" "))
 
 val pipeline = sayHello ~> 
-               tap(x => println(s"Processing: $x")) ~>
+               tap((x: String) => println(s"Processing: $x")) ~>
                splitWords
 
 val result = pipeline.unsafeRun(())
