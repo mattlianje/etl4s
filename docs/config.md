@@ -59,38 +59,60 @@ With `Etl4sContext[T]`:
 
 ### Environment Propagation
 
-**etl4s** automatically resolves the most specific configuration type needed when connecting components.
+**etl4s** automatically resolves context requirements through subtyping. When composing components with different but compatible environmental needs. The most specific type in the subtyping hierarchy is propagated.
+
 
 ```scala
 import etl4s._
 
-/* Your config hierarchy ... */
-trait BaseConfig { def appName: String }
-trait DateConfig extends BaseConfig { def startDate: String }
-trait DbConfig extends BaseConfig { def dbUrl: String }
-trait FullConfig extends DateConfig with DbConfig
-
-/* Components with different context requirements */
-val baseComp = Context[BaseConfig, Extract[Unit, String]] { ctx =>
-  Extract(_ => ctx.appName) 
+/* Define component capabilities */
+trait HasBase { def appName: String }
+trait HasDateRange extends HasBase { 
+  def startDate: String
+  def endDate: String 
 }
-val dateComp = Context[DateConfig, Transform[String, String]] { ctx =>
-  Transform(s => s"${s}|${ctx.startDate}") 
-}
-val fullComp = Context[FullConfig, Transform[String, String]] { ctx =>
-  Transform(s => s"${s}|${ctx.dbUrl}") 
+trait HasFull extends HasDateRange {
+  def dbUrl: String
 }
 
-/* Type resolution happens automatically */
-val pipeline = baseComp ~> dateComp ~> fullComp
-
-/* Configuration must satisfy the most specific requirements */
-case class ETLConfig(appName: String, 
-                     startDate: String,
-                     dbUrl: String) extends FullConfig
-
-val config = ETLConfig("MyApp", "2023-01-01", "localhost:5432")
-
-val result = pipeline.provideContext(config).unsafeRun(())
+/* Reusable component library */
+object ETLComponents {
+  val logger = Context[HasBase, Transform[String, String]] { cfg =>
+    Transform(data => s"[${cfg.appName}] $data")
+  }
+  
+  val dateProcessor = Context[HasDateRange, Transform[String, String]] { cfg =>
+    Transform(data => s"$data (${cfg.startDate} to ${cfg.endDate})")
+  }
+  
+  val dbSaver = Context[HasFull, Load[String, Boolean]] { cfg =>
+    Load { data =>
+      println(s"Saving to ${cfg.dbUrl}: $data")
+      true
+    }
+  }
+}
 ```
 
+When connecting these components, **etl4s** automatically identifies that HasFull is required -
+since it's a subtype that satisfies all component requirements
+
+```scala
+import ETLComponents._
+
+val p = Extract("Job started") ~> logger ~> dateProcessor ~> dbSaver
+
+/* Config provides the full context required by the pipeline */
+case class JobConfig(
+  appName: String,
+  startDate: String,
+  endDate: String,
+  dbUrl: String
+) extends HasFull
+
+val result = p.provideContext(
+  JobConfig("DataPipeline", "2023-01-01", "2023-01-31", "jdbc:pg://localhost")
+).unsafeRun(())
+```
+
+![Context Telescoping](assets/etl4s-diagram.jpg)
