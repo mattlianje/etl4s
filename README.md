@@ -14,8 +14,7 @@ Battle-tested at [Instacart](https://www.instacart.com/)
 - Type-safe, compile-time checked pipelines
 - Effortless concurrent execution of parallelizable tasks with `&>`
 - Easy monadic composition of pipelines
-- Purely config-driven pipelines
-    - Wrap components in Reader monads with automatic subtype resolution
+- Purely config-driven pipelines via "smart" Reader monad
 - Chain pipelines with `~>`
 - Built in retry/on-failure mechanism
 
