@@ -14,6 +14,8 @@ Battle-tested at [Instacart](https://www.instacart.com/)
 - Type-safe, compile-time checked pipelines
 - Effortless concurrent execution of parallelizable tasks with `&>`
 - Easy monadic composition of pipelines
+- Purely config-driven pipelines
+    - Wrap components in Reader monads with automatic subtype resolution
 - Chain pipelines with `~>`
 - Built in retry/on-failure mechanism
 
@@ -235,6 +237,32 @@ val pipeline =
 The **etl4s** `Reader` monad is extra-powerful. You can use the `~>` operator to chain
 `Node`s wrapped in compatible environments without flat-mapping, using monad transformers,
 or converting environments. Learn more [here](https://mattlianje.github.io/etl4s/config/).
+
+## Config-driven pipelines
+**etl4s** pipeline components specify exactly what they need, with automatic requirement
+resolution when composing components with a subtyping relationship
+
+```scala 
+import etl4s._
+
+trait HasAuth { def apiKey: String }
+trait HasStorage extends HasAuth { def bucket: String }
+
+/* Components request only what they need */
+val auth = Context[HasAuth, Transform[String, String]] { ctx =>
+  Transform(data => s"Authenticated: $data")
+}
+val store = Context[HasStorage, Load[String, Boolean]] { ctx =>
+  Load(data => { println(s"Saved to ${ctx.bucket}"); true })
+}
+
+/* Compiler automatically ensures configuration compatibility */
+val pipeline = Extract("data.csv") ~> auth ~> store
+
+case class Config(apiKey: String, bucket: String) extends HasStorage
+
+pipeline.provideContext(Config("abc123", "s3://data")).unsafeRun(())
+```
 
 ## Examples
 
