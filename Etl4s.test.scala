@@ -234,12 +234,12 @@ class ReaderSpecs extends munit.FunSuite {
   test("reader/context functionality") {
     case class Config(prefix: String, multiplier: Int)
 
-    val contextNode = Context[Config, Node[String, String]] { cfg =>
-      Node(input => s"${cfg.prefix}: $input")
+    val contextNode = Context[Config, Node[String, String]] { ctx =>
+      Node(input => s"${ctx.prefix}: $input")
     }
 
-    val processNode = Context[Config, Node[String, Int]] { cfg =>
-      Node(str => str.length * cfg.multiplier)
+    val processNode = Context[Config, Node[String, Int]] { ctx =>
+      Node(str => str.length * ctx.multiplier)
     }
 
     val pipeline = contextNode ~> processNode
@@ -255,8 +255,8 @@ class ReaderSpecs extends munit.FunSuite {
 
     val stringToLength = Node[String, Int](str => str.length)
 
-    val lengthProcessor = Context[Config, Node[Int, String]] { cfg =>
-      Node(length => s"Length after processing: ${length * cfg.multiplier}")
+    val lengthProcessor = Context[Config, Node[Int, String]] { ctx =>
+      Node(length => s"Length after processing: ${length * ctx.multiplier}")
     }
 
     val pipeline = stringToLength ~> lengthProcessor
@@ -297,15 +297,15 @@ class ReaderSpecs extends munit.FunSuite {
       dateFormat: String
     ) extends HasExtendedDateConfig
 
-    val formatTimestamp = Context[HasExtendedDateConfig, Node[String, String]] { cfg =>
+    val formatTimestamp = Context[HasExtendedDateConfig, Node[String, String]] { ctx =>
       Node { timestamp =>
-        s"Formatted with ${cfg.dateFormat}: $timestamp (from ${cfg.appName})"
+        s"Formatted with ${ctx.dateFormat}: $timestamp (from ${ctx.appName})"
       }
     }
 
-    val checkDateRange = Context[HasDateConfig, Node[String, String]] { cfg =>
+    val checkDateRange = Context[HasDateConfig, Node[String, String]] { ctx =>
       Node { formatted =>
-        s"$formatted - Range check: ${cfg.startDate} to ${cfg.endDate}"
+        s"$formatted - Range check: ${ctx.startDate} to ${ctx.endDate}"
       }
     }
 
@@ -331,16 +331,16 @@ class ReaderSpecs extends munit.FunSuite {
     object TestContext extends Etl4sContext[AppConfig] {
 
       val extractWithContext: ExtractWithContext[String, Int] =
-        Context[AppConfig, Extract[String, Int]] { cfg =>
+        Context { ctx =>
           Extract { input =>
-            s"${cfg.serviceName}: $input".length * cfg.timeout
+            s"${ctx.serviceName}: $input".length * ctx.timeout
           }
         }
 
       val transformWithContext: TransformWithContext[Int, String] =
-        Context[AppConfig, Transform[Int, String]] { cfg =>
+        Context { ctx =>
           Transform { value =>
-            s"Processed by ${cfg.serviceName} with value $value"
+            s"Processed by ${ctx.serviceName} with value $value"
           }
         }
     }
@@ -350,6 +350,20 @@ class ReaderSpecs extends munit.FunSuite {
 
     val config = AppConfig("DataService", 2)
     val result = pipeline.provideContext(config).unsafeRun("test")
+  }
+
+  test("reader(node) all operators compat") {
+    val r1    = Context[Int, Transform[Int, Int]] { ctx => Transform(_ * 2) }
+    val t1    = Transform[Int, Int](_ * 2)
+    val tUnit = Transform[Unit, Unit](_ => ())
+    val unitR = Context[Int, Transform[Unit, Unit]] { ctx => Transform(_ => ()) }
+
+    val test1 = r1 & r1 & r1 & t1
+    val test2 = r1 &> r1 &> r1 &> t1
+    val test3 = unitR >> Extract(1)
+    val test4 = unitR >> unitR
+    val test5 = t1 & r1
+    val test6 = tUnit >> unitR
   }
 }
 

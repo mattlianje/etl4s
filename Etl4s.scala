@@ -60,41 +60,64 @@ package object etl4s {
       g(b)(a)
     }
 
-    /** Node composition */
+    /** 
+      * Sequential composition (~>): Chain nodes together where the output of one becomes the input to the next.
+      * Supports both regular Node and Reader-wrapped Node as the next step.
+      */
     def ~>[C](next: Node[B, C]): Node[A, C]      = Node(a => next(f(a)))
     def andThen[C](next: Node[B, C]): Node[A, C] = Node(a => next(f(a)))
-
-    /** Connect with context-aware node */
     def ~>[T, C](next: Reader[T, Node[B, C]]): Reader[T, Node[A, C]] = {
       next.map(nextNode => this ~> nextNode)
     }
 
-    /** Node sequencing operator: Execute this node then execute the next with
-      * unit input
+    /**
+      * Sequential operation (>>): Execute this node then execute the next with unit input.
+      * The result of the first node is ignored and the result of the second node is returned.
+      * Supports both regular Node and Reader-wrapped Node as the next step.
       */
     def >>[C](next: Node[Unit, C]): Node[A, C] = Node { a =>
       f(a)
       next(()) /* Execute the next node with unit input and return its result */
     }
 
-    /** Parallel composition */
+    def >>[T, C](next: Reader[T, Node[Unit, C]]): Reader[T, Node[A, C]] = {
+      next.map(nextNode => this >> nextNode)
+    }
+
+    /**
+      * Parallel composition (&): Execute two nodes with the same input and combine their results into a tuple.
+      * Supports both regular Node and Reader-wrapped Node as the second operand.
+      */
     def &[C](that: Node[A, C]): Node[A, (B, C)] = Node { a =>
       (f(a), that(a))
     }
 
-    /** Parallel composition with Future based concurrency */
+    def &[T, C](that: Reader[T, Node[A, C]]): Reader[T, Node[A, (B, C)]] = {
+      that.map(thatNode => this & thatNode)
+    }
+
+    /**
+      * Parallel composition with concurrency (&>): Execute two nodes concurrently using Futures.
+      * Results are combined into a tuple once both operations complete.
+      * Supports both regular Node and Reader-wrapped Node as the second operand.
+      */
     def &>[C](that: Node[A, C])(implicit
       ec: ExecutionContext
-    ): Node[A, (B, C)] =
-      Node { a =>
-        val f1 = Future(f(a))
-        val f2 = Future(that(a))
-        val combined = for {
-          r1 <- f1
-          r2 <- f2
-        } yield (r1, r2)
-        Await.result(combined, Duration.Inf)
-      }
+    ): Node[A, (B, C)] = Node { a =>
+      val f1 = Future(f(a))
+      val f2 = Future(that(a))
+      val combined = for {
+        r1 <- f1
+        r2 <- f2
+      } yield (r1, r2)
+      Await.result(combined, Duration.Inf)
+    }
+
+    def &>[T, C](that: Reader[T, Node[A, C]])(implicit
+      ec: ExecutionContext
+    ): Reader[T, Node[A, (B, C)]] = {
+      that.map(thatNode => this &> thatNode)
+    }
 
     /** Observe and tap into node execution flow */
     def tap(g: B => Any): Node[A, B] = Node { a =>
@@ -244,16 +267,15 @@ package object etl4s {
     def ask[T]: Reader[T, T]                 = Reader.ask
   }
 
-  implicit class NodeToReaderOps[A, B](val node: Node[A, B]) {
-    def ~>[R, C](reader: Reader[R, Node[B, C]]): Reader[R, Node[A, C]] = {
-      reader.map(nextNode => node ~> nextNode)
-    }
-  }
-
-  /** Extension methods for Reader composition */
+  /**
+    * Extension methods to connect Reader wrapped nodes to other Reader nodes
+    * with all operators
+    */
   implicit class ReaderOps[T1, A, B](val fa: Reader[T1, Node[A, B]]) {
 
-    /** Compose with another Reader with same context */
+    /**
+      *  ~>: Reader(Node) ~> {Reader(Node) | Reader(Node) compat | Node}
+      */
     def ~>[C](fb: Reader[T1, Node[B, C]]): Reader[T1, Node[A, C]] = {
       for {
         nodeA <- fa
@@ -261,7 +283,6 @@ package object etl4s {
       } yield nodeA ~> nodeB
     }
 
-    /** Compose with another Reader with compatible context */
     def ~>[T2, C, R](fb: Reader[T2, Node[B, C]])(implicit
       compat: ReaderCompat[T1, T2, R]
     ): Reader[R, Node[A, C]] = {
@@ -272,9 +293,85 @@ package object etl4s {
       }
     }
 
-    /** Compose with a regular Node */
     def ~>[C](node: Node[B, C]): Reader[T1, Node[A, C]] = {
       fa.map(contextNode => contextNode ~> node)
+    }
+
+    /**
+      *  &: Reader(Node) & {Reader(Node) | Reader(Node) compat | Node}
+      */
+    def &[C](fb: Reader[T1, Node[A, C]]): Reader[T1, Node[A, (B, C)]] = {
+      for {
+        nodeA <- fa
+        nodeB <- fb
+      } yield nodeA & nodeB
+    }
+
+    def &[T2, C, R](fb: Reader[T2, Node[A, C]])(implicit
+      compat: ReaderCompat[T1, T2, R]
+    ): Reader[R, Node[A, (B, C)]] = {
+      Reader { (env: R) =>
+        val nodeA = fa.run(compat.toT1(env))
+        val nodeB = fb.run(compat.toT2(env))
+        nodeA & nodeB
+      }
+    }
+
+    def &[C](node: Node[A, C]): Reader[T1, Node[A, (B, C)]] = {
+      fa.map(readerNode => readerNode & node)
+    }
+
+    /**
+      *  &>: Reader(Node) &> {Reader(Node) | Reader(Node) compat | Node}
+      */
+    def &>[C](fb: Reader[T1, Node[A, C]])(implicit
+      ec: ExecutionContext
+    ): Reader[T1, Node[A, (B, C)]] = {
+      for {
+        nodeA <- fa
+        nodeB <- fb
+      } yield nodeA &> nodeB
+    }
+
+    def &>[T2, C, R](fb: Reader[T2, Node[A, C]])(implicit
+      compat: ReaderCompat[T1, T2, R],
+      ec: ExecutionContext
+    ): Reader[R, Node[A, (B, C)]] = {
+      Reader { (env: R) =>
+        val nodeA = fa.run(compat.toT1(env))
+        val nodeB = fb.run(compat.toT2(env))
+        nodeA &> nodeB
+      }
+    }
+
+    def &>[C](node: Node[A, C])(implicit
+      ec: ExecutionContext
+    ): Reader[T1, Node[A, (B, C)]] = {
+      fa.map(readerNode => readerNode &> node)
+    }
+
+    /**
+      *  >>: Reader(Node) >> {Reader(Node) | Reader(Node) compat | Node}
+      */
+    def >>[C](fb: Reader[T1, Node[Unit, C]]): Reader[T1, Node[A, C]] = {
+      for {
+        nodeA <- fa
+        nodeB <- fb
+      } yield nodeA >> nodeB
+    }
+
+    def >>[T2, C, R](fb: Reader[T2, Node[Unit, C]])(implicit
+      compat: ReaderCompat[T1, T2, R]
+    ): Reader[R, Node[A, C]] = {
+      Reader { (env: R) =>
+        val nodeA = fa.run(compat.toT1(env))
+        val nodeB = fb.run(compat.toT2(env))
+        nodeA >> nodeB
+      }
+    }
+
+    def >>[C](node: Node[Unit, C]): Reader[T1, Node[A, C]] = {
+      fa.map(readerNode => readerNode >> node)
     }
   }
 
@@ -591,5 +688,6 @@ package object etl4s {
     type TransformWithContext[A, B] = Context[T, Transform[A, B]]
     type LoadWithContext[A, B]      = Context[T, Load[A, B]]
     type NodeWithContext[A, B]      = Context[T, Node[A, B]]
+    type PipelineWithContext[A, B]  = Context[T, Pipeline[A, B]]
   }
 }
