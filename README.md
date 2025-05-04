@@ -23,7 +23,7 @@ Battle-tested at [Instacart](https://www.instacart.com/)
 
 **etl4s** is on MavenCentral and cross-built for Scala, 2.12, 2.13, 3.x
 ```scala
-"xyz.matthieucourt" %% "etl4s" % "1.3.0"
+"xyz.matthieucourt" %% "etl4s" % "1.4.0"
 ```
 
 All you need:
