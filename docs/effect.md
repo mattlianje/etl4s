@@ -11,5 +11,5 @@ val processFiles = Transform[List[String], Int](_.size)
 val p = effect { println("clear dir ...") } >>
         effect { println("purge caches ...") } >>
         fetchData ~>
-	processFiles
+        processFiles
 ```
