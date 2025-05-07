@@ -238,29 +238,26 @@ The **etl4s** `Reader` monad is extra-powerful. You can use the `~>` operator to
 or converting environments. Learn more [here](https://mattlianje.github.io/etl4s/config/).
 
 ## Config-driven pipelines
-**etl4s** pipeline components specify exactly what they need, with automatic requirement
-resolution when composing components with a subtyping relationship
+**etl4s** wrap Nodes with the context they need (just a Reader monad), and
+swap out configuration like formula-1 wheels.
 
 ```scala 
 import etl4s._
 
-trait HasAuth { def apiKey: String }
-trait HasStorage extends HasAuth { def bucket: String }
+case class PipelineConfig(lookbackDays: Int)
 
-/* Components request only what they need */
-val auth = Context[HasAuth, Transform[String, String]] { ctx =>
-  Transform(data => s"Authenticated: $data")
-}
-val store = Context[HasStorage, Load[String, Boolean]] { ctx =>
-  Load(data => { println(s"Saved to ${ctx.bucket}"); true })
-}
+val transformWithConf: Context[PipelineConfig, Transform[String, String]] =
+  Context { ctx =>
+     println(s"Processing ${ctx.lookbackDays} days of data")
+     Transform(data => s"Authenticated: $data")
+  }
 
-/* Compiler automatically ensures configuration compatibility */
-val pipeline = Extract("data.csv") ~> auth ~> store
+val consoleLoad = Load[String, Unit](x => println(s"Load $x"))
 
-case class Config(apiKey: String, bucket: String) extends HasStorage
+val p: Context[PipelineConfig, Pipeline[Unit, Unit]] =
+        Extract("data.csv") ~> transformWithConf ~> consoleLoad
 
-pipeline.provideContext(Config("abc123", "s3://data")).unsafeRun(())
+p.provideContext(PipelineConfig(1)).unsafeRun(())
 ```
 
 ## Examples
