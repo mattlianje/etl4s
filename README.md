@@ -60,8 +60,8 @@ etl4s has 1 fundamental building block: `Node[-In, +Out]`. Nodes are just wrappe
 `Node` has four aliases purely to make your pipelines more readable and express intent clearly. `Extract`, `Transform`, `Load` and `Pipeline`.
 They all behave identically under the hood. Stitch nodes with `~>` to create new ones, or drop any lambda inside a node. Run them like calling functions.
 
-- #### `unsafeRun`, `safeRun`, `unsafeRunTimedMillis`
-You can be more deliberate about running nodes by calling them with `unsafeRun()` or `safeRun()` and providing the `In`. `safeRun` wraps your result in a `Try` monad to catch exceptions, and `unsafeRunTimedMillis` returns a tuple: `(<result>, <run-time-in-millis>)`
+- #### Running `Node`s
+  - You can be more deliberate about running nodes by calling them with `unsafeRun()` or `safeRun()` and providing the `In`. `safeRun` wraps your result in a `Try` monad to catch exceptions, and `unsafeRunTimedMillis` returns a tuple: `(<result>, <run-time-in-millis>)`
 
 ## Type safety
 **etl4s** won't let you chain together "blocks" that don't fit together:
