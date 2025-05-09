@@ -238,27 +238,22 @@ The **etl4s** `Reader` monad is extra-powerful. You can use the `~>` operator to
 or converting environments. Learn more [here](https://mattlianje.github.io/etl4s/config/).
 
 ## Config-driven pipelines
-**etl4s** wrap Nodes with the context they need (just a Reader monad), and
-swap out configuration like formula-1 wheels.
+Some steps need config. Some don’t.
+**etl4s** lets you declare exactly what each step `requires` — and then `provide` it when you're ready.
 
-```scala 
-import etl4s._
+```scala
+case class ApiConfig(key: String)
 
-case class PipelineConfig(lookbackDays: Int)
+val step = Transform.requires[ApiConfig, String, String]
+               { conf => s => s"Signed with ${conf.key}: $s" }
 
-val transformWithConf: Context[PipelineConfig, Transform[String, String]] =
-  Context { ctx =>
-     println(s"Processing ${ctx.lookbackDays} days of data")
-     Transform(data => s"Authenticated: $data")
-  }
+val pipeline = Extract("hello") ~> step ~> Load(println)
 
-val consoleLoad = Load[String, Unit](x => println(s"Load $x"))
-
-val p: Context[PipelineConfig, Pipeline[Unit, Unit]] =
-        Extract("data.csv") ~> transformWithConf ~> consoleLoad
-
-p.provideContext(PipelineConfig(1)).unsafeRun(())
+pipeline.provide(ApiConfig("abc123")).unsafeRun(())
 ```
+> 💡 Compose freely: if different steps require different configs,
+> etl4s automatically infers the smallest shared environment that satisfies them all.
+
 
 ## Examples
 
