@@ -247,7 +247,9 @@ case class ApiConfig(key: String)
 val step = Transform.requires[ApiConfig, String, String]
                { conf => s => s"Signed with ${conf.key}: $s" }
 
-val pipeline = Extract("hello") ~> step ~> Load(println)
+val consoleLoad = Load[String, Unit](println)
+
+val pipeline = Extract("hello") ~> step ~> consoleLoad
 
 pipeline.provide(ApiConfig("abc123")).unsafeRun(())
 ```
