@@ -247,16 +247,18 @@ All you write is:
 ```
 Like this, every Node step can declare the exact config it needs:
 ```scala
-case class ApiConfig(key: String)
+import etl4s._
 
-val step = Transform.requires[ApiConfig, String, String]
-               { conf => s => s"Signed with ${conf.key}: $s" }
+case class ApiConfig(url: String, key: String)
 
-val consoleLoad = Load[String, Unit](println)
+val fetchData = Extract("user123")
 
-val pipeline = Extract("hello") ~> step ~> consoleLoad
+val processData =
+  Transform.requires[ApiConfig, String, String] { cfg => data =>
+    s"Processed using ${cfg.key}: $data"
+  }
 
-pipeline.provide(ApiConfig("abc123")).unsafeRun(())
+val pipeline = fetchData ~> processData
 ```
 
 > 💡 Compose freely: if different steps require different configs,
