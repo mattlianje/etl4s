@@ -365,6 +365,17 @@ class ReaderSpecs extends munit.FunSuite {
     val test5 = t1 & r1
     val test6 = tUnit >> unitR
   }
+
+  test("requires and provide") {
+    case class Config(factor: Int)
+
+    val node1 = Transform[Int, Int](identity)
+      .requires[Config] { cfg => x => x * cfg.factor }
+
+    val node2 = Transform.requires[Config, Int, Int] { cfg => x =>
+      x * cfg.factor
+    }
+  }
 }
 
 class ValidatedSpecs extends munit.FunSuite {

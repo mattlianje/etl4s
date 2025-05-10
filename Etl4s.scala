@@ -42,6 +42,14 @@ package object etl4s {
       (result, endTime - startTime)
     }
 
+    def requires[T](f: T => A => B): Reader[T, Node[A, B]] = {
+      Reader { config =>
+        Node { a =>
+          f(config)(a)
+        }
+      }
+    }
+
     /** Functorial mapping (map):
       *
       * val lengthNode = Node[String, Int](_.length) val doubledNode =
@@ -175,6 +183,13 @@ package object etl4s {
     def unit[B](value: => B): Node[Unit, B]       = Node(_ => value)
     def effect(action: => Unit): Node[Unit, Unit] = Node(_ => action)
     def pure[A, B](b: B): Node[A, B]              = Node(_ => b)
+    def requires[T, A, B](f: T => A => B): Reader[T, Node[A, B]] = {
+      Reader { config =>
+        Node { a =>
+          f(config)(a)
+        }
+      }
+    }
   }
 
   /** Semantic type aliases for ETL operations */
@@ -185,27 +200,45 @@ package object etl4s {
 
   /** Factory objects for semantic clarity */
   object Pipeline {
-    def apply[A, B](func: A => B): Pipeline[A, B] = Node(func)
-    def apply[B](value: B): Pipeline[Unit, B]     = Node(_ => value)
-    def pure[A]: Pipeline[A, A]                   = Node.identity[A]
+    def apply[A, B](func: A => B): Pipeline[A, B]                = Node(func)
+    def apply[B](value: B): Pipeline[Unit, B]                    = Node(_ => value)
+    def pure[A]: Pipeline[A, A]                                  = Node.identity[A]
+    def requires[T, A, B](f: T => A => B): Reader[T, Node[A, B]] = Node.requires[T, A, B](f)
   }
 
   object Extract {
-    def apply[A, B](func: A => B): Extract[A, B] = Node(func)
-    def apply[B](value: B): Extract[Unit, B]     = Node(_ => value)
-    def pure[A]: Extract[A, A]                   = Node.identity[A]
+    def apply[A, B](func: A => B): Extract[A, B]                 = Node(func)
+    def apply[B](value: B): Extract[Unit, B]                     = Node(_ => value)
+    def pure[A]: Extract[A, A]                                   = Node.identity[A]
+    def requires[T, A, B](f: T => A => B): Reader[T, Node[A, B]] = Node.requires[T, A, B](f)
   }
 
   object Transform {
-    def apply[A, B](func: A => B): Transform[A, B] = Node(func)
-    def apply[B](value: B): Transform[Unit, B]     = Node(_ => value)
-    def pure[A]: Transform[A, A]                   = Node.identity[A]
+    def apply[A, B](func: A => B): Transform[A, B]               = Node(func)
+    def apply[B](value: B): Transform[Unit, B]                   = Node(_ => value)
+    def pure[A]: Transform[A, A]                                 = Node.identity[A]
+    def requires[T, A, B](f: T => A => B): Reader[T, Node[A, B]] = Node.requires[T, A, B](f)
   }
 
   object Load {
-    def apply[A, B](func: A => B): Load[A, B] = Node(func)
-    def apply[B](value: B): Load[Unit, B]     = Node(_ => value)
-    def pure[A]: Load[A, A]                   = Node.identity[A]
+    def apply[A, B](func: A => B): Load[A, B]                    = Node(func)
+    def apply[B](value: B): Load[Unit, B]                        = Node(_ => value)
+    def pure[A]: Load[A, A]                                      = Node.identity[A]
+    def requires[T, A, B](f: T => A => B): Reader[T, Node[A, B]] = Node.requires[T, A, B](f)
+  }
+
+  /** 
+   * Extension methods for Node factory methods - this allows the pattern:
+   * Transform[Int, Int].requires[Config] { ... }
+   */
+  implicit class NodeFactoryRequiresOps[A, B](val factory: (A => B) => Node[A, B]) {
+    def requires[T](f: T => A => B): Reader[T, Node[A, B]] = {
+      Reader { config =>
+        factory { a =>
+          f(config)(a)
+        }
+      }
+    }
   }
 
   /** Type class for environment compatibility between different component
@@ -252,6 +285,7 @@ package object etl4s {
     def flatMap[B](f: A => Reader[R, B]): Reader[R, B] =
       Reader(r => f(run(r)).run(r))
     def provideContext(ctx: R): A = run(ctx)
+    def provide(ctx: R): A        = run(ctx)
   }
 
   object Reader {
