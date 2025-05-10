@@ -239,8 +239,13 @@ or converting environments. Learn more [here](https://mattlianje.github.io/etl4s
 
 ## Config-driven pipelines
 Some steps need config. Some don’t.
-**etl4s** lets you declare exactly what each step `requires` — and then `provide` it when you're ready.
+**etl4s** lets you declare exactly what each step `requires`, and then `provide` it when you're ready.
+All you write is:
 
+```scala
+.requires[Config, Input, Output](cfg => input => ...)
+```
+Like this, every Node step can declare the exact config it needs:
 ```scala
 case class ApiConfig(key: String)
 
@@ -253,6 +258,7 @@ val pipeline = Extract("hello") ~> step ~> consoleLoad
 
 pipeline.provide(ApiConfig("abc123")).unsafeRun(())
 ```
+
 > 💡 Compose freely: if different steps require different configs,
 > etl4s automatically infers the smallest shared environment that satisfies them all.
 
