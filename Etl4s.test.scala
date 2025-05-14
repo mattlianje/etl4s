@@ -343,6 +343,10 @@ class ReaderSpecs extends munit.FunSuite {
             s"Processed by ${ctx.serviceName} with value $value"
           }
         }
+
+      val testC = extractWithContext[Int, Int] { ctx => x =>
+        println(s"Yo ${ctx.serviceName}"); x * 2
+      }
     }
 
     import TestContext._

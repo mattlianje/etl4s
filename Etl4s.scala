@@ -723,5 +723,14 @@ package object etl4s {
     type LoadWithContext[A, B]      = Context[T, Load[A, B]]
     type NodeWithContext[A, B]      = Context[T, Node[A, B]]
     type PipelineWithContext[A, B]  = Context[T, Pipeline[A, B]]
+
+    def extractWithContext[A, B](f: T => A => B): ExtractWithContext[A, B] =
+      Extract.requires[T, A, B](f)
+    def transformWithContext[A, B](f: T => A => B): TransformWithContext[A, B] =
+      Transform.requires[T, A, B](f)
+    def loadWithContext[A, B](f: T => A => B): LoadWithContext[A, B] = Load.requires[T, A, B](f)
+    def nodeWithContext[A, B](f: T => A => B): NodeWithContext[A, B] = Node.requires[T, A, B](f)
+    def pipelineWithContext[A, B](f: T => A => B): PipelineWithContext[A, B] =
+      Pipeline.requires[T, A, B](f)
   }
 }
