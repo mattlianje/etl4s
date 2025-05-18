@@ -237,7 +237,7 @@ The **etl4s** `Reader` monad is extra-powerful. You can use the `~>` operator to
 `Node`s wrapped in compatible environments without flat-mapping, using monad transformers,
 or converting environments. Learn more [here](https://mattlianje.github.io/etl4s/config/).
 
-## Config-driven pipelines
+## Configuration
 Some steps need config. Some don’t.
 **etl4s** lets you declare exactly what each step `requires`, and then `provide` it when you're ready.
 All you write is:
