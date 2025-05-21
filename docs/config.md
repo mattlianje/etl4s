@@ -73,3 +73,26 @@ val myTestConfig = JobConfig("ETL4s", "2023-01-01", "2023-01-31", "jdbc:pg")
 
 pipeline.provide(myTestConfig).unsafeRun(())
 ```
+
+## Etl4sContext[A] - Shorthand for Context-Aware components
+
+When building ETL libraries with many context-aware components, etl4s provides Etl4sContext[A] to reduce boilerplate.
+
+**The problem**
+```scala
+val step1: Context[Config, Extract[String, User]] = Extract.requires[Config, String, User] { ... }
+val step2: Context[Config, Transform[User, Data]] = Transform.requires[Config, User, Data] { ... }
+```
+
+**The solution**
+```scala
+object MyETL extends Etl4sContext[Config] {
+  val step1 = extractWithContext { cfg => userId => fetchUser(userId, cfg.apiKey) }
+  val step2 = transformWithContext { cfg => user => processUser(user) }
+}
+```
+
+**When to Use**
+- ✅ Building reusable ETL component libraries
+- ✅ Multiple components sharing the same config type
+- ❌ Simple one-off pipelines (just use .requires directly)
