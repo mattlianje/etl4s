@@ -93,6 +93,8 @@ object MyETL extends Etl4sContext[Config] {
 ```
 
 **When to Use**
+
+
 - ✅ Building reusable ETL component libraries
 - ✅ Multiple components sharing the same config type
 - ❌ Simple one-off pipelines (just use .requires directly)
