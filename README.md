@@ -247,7 +247,7 @@ Some steps need config. Some don’t.
 All you write is:
 
 ```scala
-.requires[Config, Input, Output](cfg => input => ...)
+Node[In, Out].requires[Config](cfg => input => ...)
 ```
 Like this, every Node step can declare the exact config it needs:
 ```scala
@@ -258,7 +258,7 @@ case class ApiConfig(url: String, key: String)
 val fetchData = Extract("user123")
 
 val processData =
-  Transform.requires[ApiConfig, String, String] { cfg => data =>
+  Transform[String, String].requires[ApiConfig] { cfg => data =>
     s"Processed using ${cfg.key}: $data"
   }
 
