@@ -249,7 +249,7 @@ All you write is:
 ```scala
 Node[In, Out].requires[Config](cfg => input => ...)
 ```
-Like this, every Node step can declare the exact config it needs:
+Like this, every Node step can declare the exact config it needs (just Reader monads under the hood):
 ```scala
 import etl4s._
 
