@@ -22,21 +22,21 @@ Battle-tested at [Instacart](https://www.instacart.com/). Part of [d4](https://g
 
 **etl4s** is on MavenCentral and cross-built for Scala, 2.12, 2.13, 3.x
 ```scala
-"xyz.matthieucourt" %% "etl4s" % "1.4.0"
+"xyz.matthieucourt" %% "etl4s" % "1.4.1"
 ```
 Or try in REPL:
 ```bash
-scala-cli repl --scala 3 --dep xyz.matthieucourt:etl4s_3:1.4.0
+scala-cli repl --scala 3 --dep xyz.matthieucourt:etl4s_3:1.4.1
 ```
 
 All you need:
 ```scala
-import etl4s.*
+import etl4s._
 ```
 
 ## Quick Example
 ```scala
-import etl4s.*
+import etl4s._
 
 /* Define components */
 val getUser  = Extract("Matthieu")
@@ -108,7 +108,7 @@ etl4s uses a few simple operators to build pipelines:
 #### `withRetry`
 Give retry capability using the built-in `withRetry`:
 ```scala
-import etl4s.*
+import etl4s._
 
 var attempts = 0
 
@@ -130,7 +130,7 @@ Success after 3 attempts
 #### `onFailure`
 Catch exceptions and perform some action:
 ```scala
-import etl4s.*
+import etl4s._
 
 val riskyExtract =
     Extract[Unit, String](_ => throw new RuntimeException("Boom!"))
