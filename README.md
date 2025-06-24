@@ -14,7 +14,7 @@ Battle-tested at [Instacart](https://www.instacart.com/). Part of [d4](https://g
 - Type-safe, compile-time checked pipelines
 - Effortless concurrent execution of parallelizable tasks with `&>`
 - Easy monadic composition of pipelines
-- Purely config-driven pipelines via "smart" Reader monad
+- Purely config-driven pipelines
 - Chain pipelines with `~>`
 - Built in retry/on-failure mechanism
 
