@@ -5,18 +5,18 @@
 # <img src="pix/etl4s-logo.png" width="50"> etl4s
 **Powerful, whiteboard-style ETL**
 
-A lightweight, zero-dependency library for writing type-safe, declarative, beautiful ✨🍰  data flows in functional Scala. 
+A lightweight, zero-dependency library for writing type-safe, beautiful ✨🍰  data flows in functional Scala. 
 Battle-tested at [Instacart](https://www.instacart.com/). Part of [d4](https://github.com/mattlianje/d4)
 
 ## Features
-- White-board style ETL
-- Drop **Etl4s.scala** into any Scala project like a header file
-- Type-safe, compile-time checked pipelines
-- Effortless concurrent execution of parallelizable tasks with `&>`
-- Easy monadic composition of pipelines
-- Purely config-driven pipelines
-- Chain pipelines with `~>`
-- Built in retry/on-failure mechanism
+- Whiteboard-style pipelines
+- Declarative, typed pipeline endpoints
+- Use `Etl4s.scala` like a header file
+- Type-safe, compile-time checked
+- Parallelism with `&>`  
+- Composition with `~>`  
+- Config-driven by design
+- Built-in retry/failure handling
 
 ## Installation
 
