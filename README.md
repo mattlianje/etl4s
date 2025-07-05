@@ -9,12 +9,9 @@ A lightweight, zero-dependency library for writing type-safe, beautiful ✨🍰 
 Battle-tested at [Instacart](https://www.instacart.com/). Part of [d4](https://github.com/mattlianje/d4)
 
 ## Features
-- Whiteboard-style pipelines
 - Declarative, typed pipeline endpoints
 - Use `Etl4s.scala` like a header file
 - Type-safe, compile-time checked
-- Parallelism with `&>`  
-- Composition with `~>`  
 - Config-driven by design
 - Built-in retry/failure handling
 
