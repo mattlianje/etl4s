@@ -13,6 +13,7 @@ Battle-tested at [Instacart](https://www.instacart.com/). Part of [d4](https://g
 - Use `Etl4s.scala` like a header file
 - Type-safe, compile-time checked
 - Config-driven by design
+- Monadic, chainable pipelines
 - Built-in retry/failure handling
 
 ## Installation
