@@ -256,7 +256,7 @@ val pipeline =
 - `Validated[T]` A lightweight, powerful validation stacking subsystem
 
 With `Reader` (aliased `Context`), you can chain context-aware Nodes using `~>` - no flatMaps, no monadic
-stack or transformers. ([More on etl4s config...](https://mattlianje.github.io/etl4s/config/))
+stack or transformers. [More on etl4s config...](https://mattlianje.github.io/etl4s/config/)
 
 ## Configuration
 
