@@ -1,68 +1,59 @@
 
-Lets build a pipeline with **etl4s** that processes a Spark DataFrame
+This example shows how to use **etl4s** to build a real ETL pipeline with Apache Spark and minimal setup. You'll learn to:
 
-## Setup
-First, import **etl4s** and Spark:
+- Define reusable pipeline nodes
+- Compose and run them
+- Inject configuration cleanly
+
+### Setup in REPL
+Run the following in your terminal to start a REPL with all dependencies:
+```bash
+scala-cli repl \
+  --scala 2.13 \
+  --dep xyz.matthieucourt::etl4s:1.4.1 \
+  --dep org.apache.spark:spark-sql_2.13:3.5.0
+```
+
+### (1/2) Dataset + Basic Pipeline
 ```scala
 import etl4s._
 import org.apache.spark.sql.{SparkSession, DataFrame}
 import org.apache.spark.sql.functions._
 
-/*
- * Init your SparkSession
- */
 val spark = SparkSession.builder()
-  .appName("Etl4sPipeline")
+  .appName("etl4sDemo")
   .master("local[*]")
   .getOrCreate()
 
 import spark.implicits._
-```
 
-Next, create a synthetic user dataset:
-```scala
-val usersData = Seq(
+val usersDF = Seq(
   (1, "Évariste", "egalois@polytech.fr", 19, "2023-01-15", true),
   (2, "Jean Lannes", "jlannes@example.com", 32, "2023-03-22", true),
   (3, "Clovis", "clovis@gmail.com", 45, "2022-11-08", false),
   (4, "Matthieu", "matthieu@nargothrond.xyz", 28, "2023-06-30", true),
   (5, "Test User", "test@example.com", 37, "2022-09-14", true),
   (6, "Amélie", "apoulain@wanadoo.com", 26, "2023-05-19", false)
+).toDF("id", "name", "email", "age", "register_date", "active")
+
+val extract = Extract[Unit, DataFrame](_ => usersDF)
+
+val filter = Transform[DataFrame, DataFrame](
+  _.filter("active = true AND register_date >= '2023-01-01'")
 )
 
-val usersDF = usersData.toDF("id", "name", "email", "age", "register_date", "active")
-```
-
-## Creating etl4s blocks
-Next, we create some **etl4s** nodes.
-
-```scala
-val getUsers: Extract[Unit, DataFrame] = Extract(_ => usersDF)
-
-val filterUsers = Transform[DataFrame, DataFrame](
-  _.filter("register_date >= '2023-01-01' AND active = true")
-  )
-
-val saveReport = Load[DataFrame, Unit] { df =>
+val report = Load[DataFrame, Unit] { df =>
   println("*** User Report ***")
-    df.show()
+  df.show()
 }
-```
 
-## Stitching a pipeline
-Stitch our nodes together to make a pipeline:
-```scala
-val simplePipeline = getUsers ~> filterUsers ~> saveReport
-```
+val pipeline = extract ~> filter ~> report
 
-## Running your pipeline
-```scala
-simplePipeline.unsafeRun(())
+pipeline.unsafeRun(())
 ```
 
 You will see:
 ```
-*** User Report ***
 +---+-----------+--------------------+---+-------------+------+
 | id|       name|               email|age|register_date|active|
 +---+-----------+--------------------+---+-------------+------+
@@ -72,80 +63,41 @@ You will see:
 +---+-----------+--------------------+---+-------------+------+
 ```
 
-If your pipeline were:
+### (2/2) Config-driven pipeline
 ```scala
-val pipelineWithInput: Pipeline[DataFrame, Unit] = 
-     filterUsers ~> saveReport
-```
-You would have to provide the type `In` to run it:
-```scala
-pipelineWithInput.unsafeRun(usersDF)
-```
-
-
-## Making your pipeline config-driven
-First, create a config object:
-
-```scala
-case class PipelineConfig(
+case class ReportConfig(
   minAge: Int,
   startDate: String,
   endDate: String,
   outputPath: String
 )
-```
 
-Then create nodes wrapped in the `Context` they need:
-```scala
-object DummyPipeline extends Etl4sContext[PipelineConfig] {
-  def getFilteredUsers: ExtractWithContext[Unit, DataFrame] = Context { ctx =>
-    Extract { (_: Unit) =>
-      usersDF
-        .filter(col("age") >= ctx.minAge)
-        .filter(col("register_date").between(ctx.startDate, ctx.endDate))
-    }
-  }
-  
-  def saveResults: LoadWithContext[DataFrame, Unit] = Context { ctx =>
-    Load { df =>
-      println(s"Would save results to ${ctx.outputPath}")
-      df.show()
-    }
-  }
+val extract = Node.requires[ReportConfig, Unit, DataFrame] { cfg => _ =>
+  usersDF
+    .filter(col("age") >= cfg.minAge)
+    .filter(col("register_date").between(cfg.startDate, cfg.endDate))
 }
-```
 
-Now, we can create a `Pipeline` that depends on configuration:
-```scala
-import DummyPipeline._
+val save = Node.requires[ReportConfig, DataFrame, Unit] { cfg => df =>
+  println(s"Saving results to ${cfg.outputPath}")
+  df.show()
+}
 
-val configPipeline: Context[PipelineConfig, Pipeline[Unit, Unit]] = 
-  getFilteredUsers ~> saveResults
-```
+val reportPipeline = extract ~> save
 
-Build the config and run the pipeline:
-```scala
-val myConfig = PipelineConfig(
+val config = ReportConfig(
   minAge = 25,
   startDate = "2023-01-01",
   endDate = "2023-06-30",
   outputPath = "data/users_report"
 )
 
-/*
- * Provide a `Context`, get back a configured pipeline
- */
-val configuredPipeline: Pipeline[Unit, Unit] = 
-    configPipeline.provideContext(myConfig)
-
-/*
- * Run the pipeline
- */
-configuredPipeline.unsafeRun(())
+val finalPipeline = reportPipeline.provide(config)
+finalPipeline.unsafeRun(())
 ```
-You will see:
+Output:
 ```
-Would save results to data/users_report
+Saving results to data/users_report
 +---+-----------+--------------------+---+-------------+------+
 | id|       name|               email|age|register_date|active|
 +---+-----------+--------------------+---+-------------+------+
@@ -154,4 +106,3 @@ Would save results to data/users_report
 |  6|     Amélie|apoulain@wanadoo.com| 26|   2023-05-19| false|
 +---+-----------+--------------------+---+-------------+------+
 ```
-

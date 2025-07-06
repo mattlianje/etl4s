@@ -1,8 +1,8 @@
 
 **etl4s** comes with 2 methods you can use (on a `Node` or `Pipeline`) to handle failures out of the box:
 
-### `withRetry`
-Give retry capability using the built-in `withRetry`:
+### 1) `.withRetry`
+Give any Node retry capability using the built-in `withRetry`:
 ```scala
 import etl4s._
 
@@ -23,7 +23,7 @@ This prints:
 Success after 3 attempts
 ```
 
-### `onFailure`
+### 2) `.onFailure`
 Catch exceptions and perform some action:
 ```scala
 import etl4s._

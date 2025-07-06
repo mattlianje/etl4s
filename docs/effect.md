@@ -5,7 +5,7 @@ like printing to stdout or gluing nodes with unrelated types.
 ```scala
 import etl4s._
 
-val fetchData    = Extract(() => List("file1.txt", "file2.txt"))
+val fetchData    = Extract((_: Unit) => List("file1.txt", "file2.txt"))
 val processFiles = Transform[List[String], Int](_.size)
 
 val p = effect { println("clear dir ...") } >>
