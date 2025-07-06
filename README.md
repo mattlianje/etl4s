@@ -9,34 +9,31 @@ A lightweight, zero-dependency library for writing type-safe, beautiful ✨🍰 
 Battle-tested at [Instacart](https://www.instacart.com/). Part of [d4](https://github.com/mattlianje/d4)
 
 ## Features
-- White-board style ETL
-- Drop **Etl4s.scala** into any Scala project like a header file
-- Type-safe, compile-time checked pipelines
-- Effortless concurrent execution of parallelizable tasks with `&>`
-- Easy monadic composition of pipelines
-- Purely config-driven pipelines via "smart" Reader monad
-- Chain pipelines with `~>`
-- Built in retry/on-failure mechanism
+- Declarative, typed pipeline endpoints
+- Use `Etl4s.scala` like a header file
+- Type-safe, compile-time checked
+- Config-driven by design
+- Built-in retry/failure handling
 
 ## Installation
 
 **etl4s** is on MavenCentral and cross-built for Scala, 2.12, 2.13, 3.x
 ```scala
-"xyz.matthieucourt" %% "etl4s" % "1.4.0"
+"xyz.matthieucourt" %% "etl4s" % "1.4.1"
 ```
 Or try in REPL:
 ```bash
-scala-cli repl --scala 3 --dep xyz.matthieucourt:etl4s_3:1.4.0
+scala-cli repl --scala 3 --dep xyz.matthieucourt:etl4s_3:1.4.1
 ```
 
 All you need:
 ```scala
-import etl4s.*
+import etl4s._
 ```
 
 ## Quick Example
 ```scala
-import etl4s.*
+import etl4s._
 
 /* Define components */
 val getUser  = Extract("Matthieu")
@@ -65,7 +62,7 @@ etl4s has 1 fundamental building block: `Node[-In, +Out]`. Nodes are just wrappe
 They all behave identically under the hood. Stitch nodes with `~>` to create new ones, or drop any lambda inside a node. Run them like calling functions.
 
 - #### Running `Node`s
-  - You can be more deliberate about running nodes by calling them with `unsafeRun()` or `safeRun()` and providing the `In`. `safeRun` wraps your result in a `Try` monad to catch exceptions, and `unsafeRunTimedMillis` returns a tuple: `(<result>, <run-time-in-millis>)`
+You can be more deliberate about running nodes by calling them with `unsafeRun()` or `safeRun()` and providing the `In`. `safeRun` wraps your result in a `Try` monad to catch exceptions, and `unsafeRunTimedMillis` returns a tuple: `(<result>, <run-time-in-millis>)`
 
 ## Type safety
 **etl4s** won't let you chain together "blocks" that don't fit together:
@@ -108,7 +105,7 @@ etl4s uses a few simple operators to build pipelines:
 #### `withRetry`
 Give retry capability using the built-in `withRetry`:
 ```scala
-import etl4s.*
+import etl4s._
 
 var attempts = 0
 
@@ -130,7 +127,7 @@ Success after 3 attempts
 #### `onFailure`
 Catch exceptions and perform some action:
 ```scala
-import etl4s.*
+import etl4s._
 
 val riskyExtract =
     Extract[Unit, String](_ => throw new RuntimeException("Boom!"))
@@ -247,9 +244,9 @@ Some steps need config. Some don’t.
 All you write is:
 
 ```scala
-.requires[Config, Input, Output](cfg => input => ...)
+Node[In, Out].requires[Config](cfg => input => ...)
 ```
-Like this, every Node step can declare the exact config it needs:
+Like this, every Node step can declare the exact config it needs (just Reader monads under the hood):
 ```scala
 import etl4s._
 
@@ -258,7 +255,7 @@ case class ApiConfig(url: String, key: String)
 val fetchData = Extract("user123")
 
 val processData =
-  Transform.requires[ApiConfig, String, String] { cfg => data =>
+  Transform[String, String].requires[ApiConfig] { cfg => data =>
     s"Processed using ${cfg.key}: $data"
   }
 
