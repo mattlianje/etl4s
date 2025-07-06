@@ -161,7 +161,8 @@ body {
     <p>Powerful, whiteboard-style ETL</p>
 
     <div class="hero-buttons">
-      <a href="#quickstart">TRY IT!</a>
+      <a href="https://scastie.scala-lang.org/mattlianje/1280QhQ5RWODgizeXOIsXA/5"
+      target="_blank">TRY IT!</a>
       <a href="installation/">GET STARTED</a>
     </div>
   </div>
