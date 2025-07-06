@@ -146,6 +146,22 @@ pre code,
   }
 }
 
+@media (max-width: 768px) {
+  .hero-buttons {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: 0.75rem;
+  }
+
+  .hero-buttons a.github-btn {
+    width: auto;
+    margin: 0.5rem auto 0;
+    display: inline-flex;
+    justify-content: center;
+  }
+}
+
 /* Final padding + margin */
 html, body, .md-main, .md-main__inner, .md-content, .md-container, main, article {
   margin: 0 !important;
