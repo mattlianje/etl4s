@@ -55,13 +55,13 @@ pipeline.unsafeRun(())
 [Full Documentation](https://mattlianje.github.io/etl4s/) - Detailed guides, API references, and examples
 
 ## Core Concepts
-etl4s has one core building block:
+**etl4s** has one core building block:
 ```scala
 Node[-In, +Out]
 ```
 A Node wraps a lazily-evaluated function `In => Out`. Chain them with `~>` to build pipelines.
 
-#### Node aliases
+### Node aliases
 To improve readability and express intent, **etl4s** defines four aliases: `Extract`, `Transform`, `Load` and `Pipeline`.
 All behave the same under the hood.
 
@@ -74,7 +74,7 @@ Or chain:
 val pipeline = Extract("abc") ~> step
 ```
 
-#### Running nodes
+### Running nodes
 You can run nodes like plain functions:
 ```scala
 pipeline(())
@@ -254,17 +254,18 @@ val pipeline =
 - `Writer[W, A]`: Log accumulating pipelines
 - `Validated[T]` A lightweight, powerful validation stacking subsystem
 
-The **etl4s** `Reader` monad is extra-powerful. You can use the `~>` operator to chain
-`Node`s wrapped in compatible environments without flat-mapping, using monad transformers,
-or converting environments. Learn more [here](https://mattlianje.github.io/etl4s/config/).
+With `Reader` (aliased `Context`), you can chain context-aware Nodes using ~> `—` no flatMaps, no monadic
+stack or transformers. 🔗[More on etl4s config](https://mattlianje.github.io/etl4s/config/).
 
 ## Configuration
+
 Some steps need config. Some don’t.
-**etl4s** lets you declare exactly what each step `requires`, and then `provide` it when you're ready.
-All you write is:
+Just declare what each step `.requires`, then `.provide` it later.
 
 ```scala
-Node[In, Out].requires[Config](cfg => input => ...)
+Node[In, Out].requires[Config](cfg => in => out)
+// Scala 2.x:
+// Node.requires[Config, In, Out](cfg => in => out)
 ```
 Like this, every Node step can declare the exact config it needs (just Reader monads under the hood):
 ```scala
@@ -272,18 +273,15 @@ import etl4s._
 
 case class ApiConfig(url: String, key: String)
 
-val fetchData = Extract("user123")
+val fetchData  = Extract("user123")
+val enrichData = Transform[String, String].requires[ApiConfig] { cfg => user =>
+  s"Processed with ${cfg.key}: $user"
+}
 
-val processData =
-  Transform[String, String].requires[ApiConfig] { cfg => data =>
-    s"Processed using ${cfg.key}: $data"
-  }
-
-val pipeline = fetchData ~> processData
+val pipeline = fetchData ~> enrichData
 ```
-
-> 💡 Compose freely: if different steps require different configs,
-> etl4s automatically infers the smallest shared environment that satisfies them all.
+**etl4s** automatically infers the smallest shared config needed for your whole pipeline.
+Just `.provide` once.
 
 
 ## Examples
