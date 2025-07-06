@@ -93,7 +93,7 @@ pre code,
   margin-right: 0.4rem;
   vertical-align: middle;
   position: relative;
-  top: -0.5px; /* small nudge for pixel-perfect alignment */
+  top: -0.5px;
 }
 
 /* Feature tiles row */
