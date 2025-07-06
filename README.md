@@ -55,14 +55,34 @@ pipeline.unsafeRun(())
 [Full Documentation](https://mattlianje.github.io/etl4s/) - Detailed guides, API references, and examples
 
 ## Core Concepts
-etl4s has 1 fundamental building block: `Node[-In, +Out]`. Nodes are just wrappers around lazily-evaluated functions `In => Out` that we chain together with `~>`
+etl4s has one core building block:
+```scala
+Node[-In, +Out]
+```
+A Node wraps a lazily-evaluated function `In => Out`. Chain them with `~>` to build pipelines.
 
-- #### `Node[-In, +Out]`
-`Node` has four aliases purely to make your pipelines more readable and express intent clearly. `Extract`, `Transform`, `Load` and `Pipeline`.
-They all behave identically under the hood. Stitch nodes with `~>` to create new ones, or drop any lambda inside a node. Run them like calling functions.
+#### Node aliases
+To improve readability and express intent, **etl4s** defines four aliases: `Extract`, `Transform`, `Load` and `Pipeline`.
+All behave the same under the hood.
 
-- #### Running `Node`s
-You can be more deliberate about running nodes by calling them with `unsafeRun()` or `safeRun()` and providing the `In`. `safeRun` wraps your result in a `Try` monad to catch exceptions, and `unsafeRunTimedMillis` returns a tuple: `(<result>, <run-time-in-millis>)`
+Drop in any function like:
+```scala
+val step = Transform[String, Int](_.length)
+```
+Or chain:
+```scala
+val pipeline = Extract("abc") ~> step
+```
+
+#### Running nodes
+You can run nodes like plain functions:
+```scala
+pipeline(())
+```
+Or explicitly:
+- `.unsafeRun(input)` - runs and throws on failure
+- `.safeRun(input)` - returns a Try
+- `.unsafeRunTimedMillis(input)` - returns (result, elapsedTimeMillis)
 
 ## Type safety
 **etl4s** won't let you chain together "blocks" that don't fit together:
