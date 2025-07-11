@@ -1,15 +1,12 @@
 /*
  * +==========================================================================+
  * |                                 etl4s                                    |
- * |              Powerful, whiteboard-style pipelines for Scala              |
- * |                            Version 1.4.0                                 |
+ * |                     Powerful, whiteboard-style ETL                       |
+ * |                            Version 1.4.1                                 |
  * |                 Compatible with Scala 2.12, 2.13, and 3                  |
  * |                                                                          |
  * | Copyright 2025 Matthieu Court (matthieu.court@protonmail.com)            |
  * | Apache License 2.0                                                       |
- * |                                                                          |
- * | Drop into your project like a header file. Everything is defined in this |
- * | package object: just import etl4s._ to use                               |
  * +==========================================================================+
  */
 
