@@ -10,7 +10,7 @@ Battle-tested at [Instacart](https://www.instacart.com/). Part of [d4](https://g
 
 ## Features
 - Declarative, typed pipeline endpoints
-- Use `Etl4s.scala` like a header file
+- Use **Etl4s.scala** like a header file
 - Type-safe, compile-time checked
 - Config-driven by design
 - Easy, monadic composition of pipelines
