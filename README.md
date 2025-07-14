@@ -37,18 +37,17 @@ import etl4s._
 import etl4s._
 
 /* Define components */
-val getUser  = Extract("Matthieu")
+val getUser  = Extract("John Doe")
 val getOrder = Extract("2 items")
 val process  = Transform[(String, String), String] { case (user, order) => 
   s"$user ordered $order" 
 }
 val saveDb    = Load[String, String](s => { println(s"DB: $s"); s })
 val sendEmail = Load[String, Unit](s => println(s"Email: $s"))
-val cleanup   = Pipeline[Unit, Unit](_ => println("Cleanup complete"))
 
-/* Group tasks with &, Connect with ~>, Sequence with >> */
+/* Group tasks with &, Connect with ~> */
 val pipeline =
-     (getUser & getOrder) ~> process ~> (saveDb & sendEmail) >> cleanup
+     (getUser & getOrder) ~> process ~> (saveDb & sendEmail)
 pipeline.unsafeRun(())
 ```
 
