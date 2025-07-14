@@ -388,6 +388,28 @@ class ReaderSpecs extends munit.FunSuite {
       x * cfg.factor
     }
   }
+
+  test("Etl4sContext companion object methods") {
+    case class AppConfig(serviceName: String, timeout: Int)
+
+    object TestContext extends Etl4sContext[AppConfig] {
+      val getData = Etl4sContext.extract[String, Int] { config => input =>
+        s"${config.serviceName}: $input".length * config.timeout
+      }
+
+      val processData = Etl4sContext.transform[Int, String] { config => value =>
+        s"Processed by ${config.serviceName} with value $value"
+      }
+    }
+
+    import TestContext._
+    val pipeline = getData ~> processData
+
+    val config = AppConfig("DataService", 2)
+    val result = pipeline.provideContext(config).unsafeRun("test")
+
+    assertEquals(result, "Processed by DataService with value 34")
+  }
 }
 
 class ValidatedSpecs extends munit.FunSuite {

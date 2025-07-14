@@ -42,6 +42,15 @@ package object etl4s {
       (result, endTime - startTime)
     }
 
+    /** Make this node depend on some config.
+      * 
+      * {{{
+      * val configNode = someNode.requires[DatabaseConfig] { config => input =>
+      *   // use config.url, config.timeout, etc
+      *   processWithConfig(config, input)
+      * }
+      * }}}
+      */
     def requires[T](f: T => A => B): Reader[T, Node[A, B]] = {
       Reader { config =>
         Node { a =>
@@ -50,6 +59,7 @@ package object etl4s {
       }
     }
 
+    /** Attach whatever you want to this node */
     def withMetadata(meta: Any): Node[A, B] = {
       val currentF = this.f
       new Node[A, B] {
@@ -76,9 +86,11 @@ package object etl4s {
       g(b)(a)
     }
 
-    /** 
-      * Sequential composition (~>): Chain nodes together where the output of one becomes the input to the next.
-      * Supports both regular Node and Reader-wrapped Node as the next step.
+    /** Chain nodes together: A => B ~> B => C becomes A => C
+      * 
+      * {{{
+      * val pipeline = extract ~> transform ~> load
+      * }}}
       */
     def ~>[C](next: Node[B, C]): Node[A, C]      = Node(a => next(f(a)))
     def andThen[C](next: Node[B, C]): Node[A, C] = Node(a => next(f(a)))
@@ -86,10 +98,13 @@ package object etl4s {
       next.map(nextNode => this ~> nextNode)
     }
 
-    /**
-      * Sequential operation (>>): Execute this node then execute the next with unit input.
-      * The result of the first node is ignored and the result of the second node is returned.
-      * Supports both regular Node and Reader-wrapped Node as the next step.
+    /** Run this, ignore result, then run next with Unit input.
+      * 
+      * Useful for side effects like logging or cleanup.
+      * 
+      * {{{
+      * val saveData = processData >> logSuccess
+      * }}}
       */
     def >>[C](next: Node[Unit, C]): Node[A, C] = Node { a =>
       f(a)
@@ -100,9 +115,11 @@ package object etl4s {
       next.map(nextNode => this >> nextNode)
     }
 
-    /**
-      * Parallel composition (&): Execute two nodes with the same input and combine their results into a tuple.
-      * Supports both regular Node and Reader-wrapped Node as the second operand.
+    /** Run both nodes with same input, combine results.
+      * 
+      * {{{
+      * val getBoth = getName & getAge  // gives (String, Int)
+      * }}}
       */
     def &[C](that: Node[A, C]): Node[A, (B, C)] = Node { a =>
       (f(a), that(a))
@@ -112,11 +129,7 @@ package object etl4s {
       that.map(thatNode => this & thatNode)
     }
 
-    /**
-      * Parallel composition with concurrency (&>): Execute two nodes concurrently using Futures.
-      * Results are combined into a tuple once both operations complete.
-      * Supports both regular Node and Reader-wrapped Node as the second operand.
-      */
+    /** Like & but runs both Nodes concurrently */
     def &>[C](that: Node[A, C])(implicit
       ec: ExecutionContext
     ): Node[A, (B, C)] = Node { a =>
@@ -135,7 +148,12 @@ package object etl4s {
       that.map(thatNode => this &> thatNode)
     }
 
-    /** Observe and tap into node execution flow */
+    /** Peek at the result without changing it.
+      * 
+      * {{{
+      * val debug = pipeline.tap(result => println(s"Got: $result"))
+      * }}}
+      */
     def tap(g: B => Any): Node[A, B] = Node { a =>
       val result = f(a)
       g(result)
@@ -235,9 +253,8 @@ package object etl4s {
     def requires[T, A, B](f: T => A => B): Reader[T, Node[A, B]] = Node.requires[T, A, B](f)
   }
 
-  /** 
-   * Extension methods for Node factory methods - this allows the pattern:
-   * Transform[Int, Int].requires[Config] { ... }
+  /** Extension methods for Node factory methods - this allows the pattern:
+   *  Transform[Int, Int].requires[Config] { ... }
    */
   implicit class NodeFactoryRequiresOps[A, B](val factory: (A => B) => Node[A, B]) {
     def requires[T](f: T => A => B): Reader[T, Node[A, B]] = {
@@ -287,7 +304,19 @@ package object etl4s {
       }
   }
 
-  /** Reader monad for context handling */
+  /** Just a Reader monad for context/dependency injection. 
+    * 
+    * Wrap your node in this when it needs config:
+    * 
+    * {{{
+    * val dbNode = Reader { config: DatabaseConfig =>
+    *   Node { data => saveToDatabase(config.url, data) }
+    * }
+    * 
+    * // Later:
+    * dbNode.provide(myConfig).unsafeRun(data)
+    * }}}
+    */
   case class Reader[R, A](run: R => A) {
     def map[B](f: A => B): Reader[R, B] = Reader(r => f(run(r)))
     def flatMap[B](f: A => Reader[R, B]): Reader[R, B] =
@@ -309,14 +338,13 @@ package object etl4s {
     def ask[T]: Reader[T, T]                 = Reader.ask
   }
 
-  /**
-    * Extension methods to connect Reader wrapped nodes to other Reader nodes
+  /** Extension methods to connect Reader wrapped nodes to other Reader nodes
     * with all operators
     */
   implicit class ReaderOps[T1, A, B](val fa: Reader[T1, Node[A, B]]) {
 
     /**
-      *  ~>: Reader(Node) ~> {Reader(Node) | Reader(Node) compat | Node}
+      * ~>: Reader(Node) ~> {Reader(Node) | Reader(Node) compat | Node}
       */
     def ~>[C](fb: Reader[T1, Node[B, C]]): Reader[T1, Node[A, C]] = {
       for {
@@ -724,7 +752,22 @@ package object etl4s {
     type Aux[A, B] = Flatten[A] { type Out = B }
   }
 
-  /** Contextual types for ETL operations */
+  /** When you need config/context for your ETL operations.
+    * 
+    * Extend this trait with your config type, then use the methods
+    * to build context-aware operations:
+    * 
+    * {{{
+    * case class MyConfig(dbUrl: String, timeout: Int)
+    * 
+    * object MyETL extends Etl4sContext[MyConfig] {
+    *   val saveUser = Etl4sContext.load[User, Unit] { config => user =>
+    *     // use config.dbUrl, config.timeout
+    *     saveToDatabase(config, user)
+    *   }
+    * }
+    * }}}
+    */
   trait Etl4sContext[T] {
     type ExtractWithContext[A, B]   = Context[T, Extract[A, B]]
     type TransformWithContext[A, B] = Context[T, Transform[A, B]]
@@ -740,5 +783,23 @@ package object etl4s {
     def nodeWithContext[A, B](f: T => A => B): NodeWithContext[A, B] = Node.requires[T, A, B](f)
     def pipelineWithContext[A, B](f: T => A => B): PipelineWithContext[A, B] =
       Pipeline.requires[T, A, B](f)
+
+    /** Context object for more natural access to context wrapped
+      * Nodes - you just do:
+      * Etl4sContext.extract[A, B] { ctx => in => out } vs some magical "extractWithContext" that comes into scope
+      */
+    object Etl4sContext {
+      def extract[A, B](f: T => A => B): Context[T, Extract[A, B]] =
+        Extract.requires[T, A, B](f)
+
+      def transform[A, B](f: T => A => B): Context[T, Transform[A, B]] =
+        Transform.requires[T, A, B](f)
+
+      def load[A, B](f: T => A => B): Context[T, Load[A, B]] =
+        Load.requires[T, A, B](f)
+
+      def pipeline[A, B](f: T => A => B): Context[T, Pipeline[A, B]] =
+        Pipeline.requires[T, A, B](f)
+    }
   }
 }
