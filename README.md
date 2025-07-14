@@ -10,10 +10,10 @@ Battle-tested at [Instacart](https://www.instacart.com/). Part of [d4](https://g
 
 ## Features
 - Declarative, typed pipeline endpoints
-- Use `Etl4s.scala` like a header file
+- Use **Etl4s.scala** like a header file
 - Type-safe, compile-time checked
 - Config-driven by design
-- Monadic, chainable pipelines
+- Easy, monadic composition of pipelines
 - Built-in retry/failure handling
 
 ## Installation
@@ -295,7 +295,7 @@ import etl4s._
 val p1 = Pipeline((i: Int) => i.toString)
 val p2 = Pipeline((s: String) => s + "!")
 
-val p3: Pipeline[Int, String] = p1 ~> p2
+val p3 = p1 ~> p2
 ```
 
 #### Complex chaining
@@ -308,7 +308,7 @@ val agePipeline  = Pipeline(30)
 val toUpper      = Transform[String, String](_.toUpperCase)
 val consoleLoad  = Load[String, Unit](println(_))
 
-val combined: Pipeline[Unit, Unit] =
+val combined =
   for {
     name <- namePipeline
     age <- agePipeline
