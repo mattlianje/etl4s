@@ -228,6 +228,14 @@ class BasicSpecs extends munit.FunSuite {
       s"Elapsed time ($elapsedTime ms) should not be much longer than $sleepDuration ms"
     )
   }
+
+  test("metadata works") {
+    case class Info(source: String)
+    val node = Extract("data").withMetadata(Info("db"))
+
+    assertEquals(node.metadata.asInstanceOf[Info].source, "db")
+    assertEquals(node.unsafeRun(()), "data")
+  }
 }
 
 class ReaderSpecs extends munit.FunSuite {

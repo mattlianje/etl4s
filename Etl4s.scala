@@ -30,6 +30,9 @@ package object etl4s {
     /** Core function wrapped by the node */
     val f: A => B
 
+    /** You can attach any custom metadata to a Node at compile time */
+    val metadata: Any = None
+
     def apply(a: A): B = f(a)
 
     /** Run the node with timing and error handling */
@@ -47,6 +50,14 @@ package object etl4s {
         Node { a =>
           f(config)(a)
         }
+      }
+    }
+
+    def withMetadata(meta: Any): Node[A, B] = {
+      val currentF = this.f
+      new Node[A, B] {
+        val f: A => B              = currentF
+        override val metadata: Any = meta
       }
     }
 
