@@ -10,6 +10,16 @@
  * +==========================================================================+
  */
 
+/**
+ * The etl4s package provides a powerful, composable ETL (Extract, Transform, Load) framework
+ * built around the core [[Node]] and [[Reader]] abstractions.
+ * 
+ * It enables whiteboard-style pipeline composition
+ * with functional programming principles.
+ *
+ * @author Matthieu Court
+ * @version 1.4.1
+ */
 package object etl4s {
   import scala.language.{higherKinds, implicitConversions}
   import scala.concurrent.{Future, ExecutionContext}
@@ -17,24 +27,66 @@ package object etl4s {
   import scala.concurrent.Await
   import scala.util.Try
 
-  /** The core abstraction of etl4s: a composable wrapper around a function:
-    * f: A => B.
-    *
-    * (Extract, Transform, Load, Pipeline) are just type aliases of Node
-    */
+  /**
+   * The core abstraction of etl4s: a composable wrapper around a function `A => B`.
+   *
+   * Node represents a single step in an ETL pipeline and provides a rich set of
+   * combinators for composition, error handling, and parallel execution.
+   *
+   * @tparam A the input type
+   * @tparam B the output type
+   */
   trait Node[A, B] {
 
-    /** Core function wrapped by the node */
+    /**
+     * The core function wrapped by this node.
+     * This is the actual computation that transforms input `A` to output `B`.
+     */
     val f: A => B
 
-    /** You can attach any custom metadata to a Node at compile time */
+    /**
+     * Optional metadata that can be attached to a Node at compile time.
+     * Useful for debugging, documentation, or runtime introspection.
+     *
+     * @example
+     * {{{
+     * val node = Node[String, Int](_.length)
+     *   .withMetadata("String length calculator")
+     * }}}
+     */
     val metadata: Any = None
 
+    /**
+     * Applies the node's function to the input.
+     *
+     * @param a the input value
+     * @return the transformed output
+     */
     def apply(a: A): B = f(a)
 
-    /** Run the node with timing and error handling */
-    def unsafeRun(a: A): B    = f(a)
+    /**
+     * Runs the node without any error handling.
+     *
+     * @param a the input value
+     * @return the transformed output
+     * @throws any exception thrown by the underlying function
+     */
+    def unsafeRun(a: A): B = f(a)
+
+    /**
+     * Runs the node with error handling, wrapping the result in a Try.
+     *
+     * @param a the input value
+     * @return Success(result) or Failure(exception)
+     */
     def safeRun(a: A): Try[B] = Try(f(a))
+
+    /**
+     * Runs the node and measures execution time in milliseconds.
+     *
+     * @param a the input value
+     * @return a tuple of (result, execution_time_in_millis)
+     */
     def unsafeRunTimedMillis(a: A): (B, Long) = {
       val startTime = System.currentTimeMillis()
       val result    = f(a)
@@ -42,15 +94,27 @@ package object etl4s {
       (result, endTime - startTime)
     }
 
-    /** Make this node depend on some config.
-      * 
-      * {{{
-      * val configNode = someNode.requires[DatabaseConfig] { config => input =>
-      *   // use config.url, config.timeout, etc
-      *   processWithConfig(config, input)
-      * }
-      * }}}
-      */
+    /**
+     * Makes this node depend on some configuration type `T`.
+     *
+     * This method transforms a regular Node into a Reader-wrapped Node,
+     * enabling dependency injection patterns.
+     *
+     * @tparam T the configuration/context type
+     * @param f a function that takes config and returns the node function
+     * @return a Reader that produces a Node when given configuration
+     *
+     * @example
+     * {{{
+     * case class Config(multiplier: Int)
+     * 
+     * val configNode = someNode.requires[Config] { config => input =>
+     *   input * config.multiplier
+     * }
+     * 
+     * val result = configNode.provide(Config(5)).unsafeRun(10) // 50
+     * }}}
+     */
     def requires[T](f: T => A => B): Reader[T, Node[A, B]] = {
       Reader { config =>
         Node { a =>
@@ -59,7 +123,18 @@ package object etl4s {
       }
     }
 
-    /** Attach whatever you want to this node */
+    /**
+     * Attaches custom metadata to this node.
+     *
+     * @param meta the metadata to attach (can be any type)
+     * @return a new Node with the attached metadata
+     *
+     * @example
+     * {{{
+     * val documented = node.withMetadata("Processes user data")
+     * val versioned = node.withMetadata(("v1.2", "Critical path"))
+     * }}}
+     */
     def withMetadata(meta: Any): Node[A, B] = {
       val currentF = this.f
       new Node[A, B] {
@@ -68,68 +143,151 @@ package object etl4s {
       }
     }
 
-    /** Functorial mapping (map):
-      *
-      * val lengthNode = Node[String, Int](_.length) val doubledNode =
-      * lengthNode.map(_ * 2) // Creates Node[String, Int] doubledNode("hello")
-      */
-
+    /**
+     * Functorial mapping: transforms the output of this node.
+     *
+     * @tparam C the new output type
+     * @param g the transformation function
+     * @return a new Node that applies g to the result of this node
+     *
+     * @example
+     * {{{
+     * val lengthNode = Node[String, Int](_.length)
+     * val doubledNode = lengthNode.map(_ * 2)
+     * doubledNode("hello") // returns 10
+     * }}}
+     */
     def map[C](g: B => C): Node[A, C] = Node(a => g(f(a)))
 
-    /** Monadic binding (flatMap):
-      *
-      * val get = Node[String, Int](_.toInt) val process = get.flatMap(n =>
-      * Node[String, String](_ => "~" * n)) process("5") // Returns "~~~~~"
-      */
+    /**
+     * Monadic binding: allows dynamic node selection based on intermediate results.
+     *
+     * @tparam C the final output type
+     * @param g a function that takes the result of this node and returns a new Node
+     * @return a new Node that chains the computation
+     *
+     * @example
+     * {{{
+     * val get = Node[String, Int](_.toInt)
+     * val process = get.flatMap(n => Node[String, String](_ => "~" * n))
+     * process("5") // returns "~~~~~"
+     * }}}
+     */
     def flatMap[C](g: B => Node[A, C]): Node[A, C] = Node { a =>
       val b = f(a)
       g(b)(a)
     }
 
-    /** Chain nodes together: A => B ~> B => C becomes A => C
-      * 
-      * {{{
-      * val pipeline = extract ~> transform ~> load
-      * }}}
-      */
-    def ~>[C](next: Node[B, C]): Node[A, C]      = Node(a => next(f(a)))
+    /**
+     * Sequential composition: chains two nodes together.
+     * 
+     * The output type of this node must match the input type of the next node.
+     *
+     * @tparam C the output type of the next node
+     * @param next the node to execute after this one
+     * @return a new Node representing the composed computation
+     *
+     * @example
+     * {{{
+     * val extract = Node[String, Int](_.length)
+     * val transform = Node[Int, String](i => s"Length: $i")
+     * val pipeline = extract ~> transform
+     * pipeline("hello") // returns "Length: 5"
+     * }}}
+     */
+    def ~>[C](next: Node[B, C]): Node[A, C] = Node(a => next(f(a)))
+
+    /**
+     * Alias for `~>` with more explicit naming.
+     */
     def andThen[C](next: Node[B, C]): Node[A, C] = Node(a => next(f(a)))
+
+    /**
+     * Sequential composition with a Reader-wrapped node.
+     *
+     * @tparam T the configuration type required by the next node
+     * @tparam C the output type of the next node
+     * @param next a Reader-wrapped node
+     * @return a Reader that produces the composed Node
+     */
     def ~>[T, C](next: Reader[T, Node[B, C]]): Reader[T, Node[A, C]] = {
       next.map(nextNode => this ~> nextNode)
     }
 
-    /** Run this, ignore result, then run next with Unit input.
-      * 
-      * Useful for side effects like logging or cleanup.
-      * 
-      * {{{
-      * val saveData = processData >> logSuccess
-      * }}}
-      */
+    /**
+     * Side effect composition: runs this node, ignores result, then runs next with Unit input.
+     *
+     * Useful for logging, cleanup, or other side effects that don't affect the main data flow.
+     *
+     * @tparam C the output type of the next node
+     * @param next a node that takes Unit as input
+     * @return a new Node that performs the side effect after the main computation
+     *
+     * @example
+     * {{{
+     * val processData = Node[String, Int](_.length)
+     * val logSuccess = Node[Unit, Unit](_ => println("Processing complete"))
+     * val withLogging = processData >> logSuccess
+     * }}}
+     */
     def >>[C](next: Node[Unit, C]): Node[A, C] = Node { a =>
       f(a)
       next(()) /* Execute the next node with unit input and return its result */
     }
 
+    /**
+     * Side effect composition with a Reader-wrapped node.
+     */
     def >>[T, C](next: Reader[T, Node[Unit, C]]): Reader[T, Node[A, C]] = {
       next.map(nextNode => this >> nextNode)
     }
 
-    /** Run both nodes with same input, combine results.
-      * 
-      * {{{
-      * val getBoth = getName & getAge  // gives (String, Int)
-      * }}}
-      */
+    /**
+     * Parallel composition: runs both nodes with the same input, combines results into a tuple.
+     *
+     * Both nodes execute sequentially but with the same input value.
+     *
+     * @tparam C the output type of the other node
+     * @param that the other node to run in parallel
+     * @return a new Node that returns a tuple of both results
+     *
+     * @example
+     * {{{
+     * val getName = Node[Person, String](_.name)
+     * val getAge = Node[Person, Int](_.age)
+     * val getBoth = getName & getAge  // returns (String, Int)
+     * }}}
+     */
     def &[C](that: Node[A, C]): Node[A, (B, C)] = Node { a =>
       (f(a), that(a))
     }
 
+    /**
+     * Parallel composition with a Reader-wrapped node.
+     */
     def &[T, C](that: Reader[T, Node[A, C]]): Reader[T, Node[A, (B, C)]] = {
       that.map(thatNode => this & thatNode)
     }
 
-    /** Like & but runs both Nodes concurrently */
+    /**
+     * Concurrent parallel composition: runs both nodes concurrently with the same input.
+     *
+     * Unlike `&`, this version uses Future to execute both nodes simultaneously,
+     * potentially improving performance for I/O bound operations.
+     *
+     * @tparam C the output type of the other node
+     * @param that the other node to run concurrently
+     * @param ec implicit ExecutionContext for Future execution
+     * @return a new Node that returns a tuple of both results
+     *
+     * @example
+     * {{{
+     * implicit val ec = ExecutionContext.global
+     * val fetchUser = Node[UserId, User](id => fetchFromDB(id))
+     * val fetchPrefs = Node[UserId, Preferences](id => fetchPrefsFromCache(id))
+     * val fetchBoth = fetchUser &> fetchPrefs  // concurrent execution
+     * }}}
+     */
     def &>[C](that: Node[A, C])(implicit
       ec: ExecutionContext
     ): Node[A, (B, C)] = Node { a =>
@@ -142,25 +300,53 @@ package object etl4s {
       Await.result(combined, Duration.Inf)
     }
 
+    /**
+     * Concurrent parallel composition with a Reader-wrapped node.
+     */
     def &>[T, C](that: Reader[T, Node[A, C]])(implicit
       ec: ExecutionContext
     ): Reader[T, Node[A, (B, C)]] = {
       that.map(thatNode => this &> thatNode)
     }
 
-    /** Peek at the result without changing it.
-      * 
-      * {{{
-      * val debug = pipeline.tap(result => println(s"Got: $result"))
-      * }}}
-      */
+    /**
+     * Tap operation: peek at the result without changing it.
+     *
+     * Useful for debugging, logging, or side effects that don't modify the data flow.
+     *
+     * @param g a function to execute with the result (return value is ignored)
+     * @return a new Node that passes through the original result unchanged
+     *
+     * @example
+     * {{{
+     * val pipeline = extractData
+     *   .tap(data => logger.info(s"Extracted ${data.size} records"))
+     *   .map(transform)
+     *   .tap(result => println(s"Transformation complete: $result"))
+     * }}}
+     */
     def tap(g: B => Any): Node[A, B] = Node { a =>
       val result = f(a)
       g(result)
       result
     }
 
-    /** Error handling */
+    /**
+     * Error handling: provides a fallback value when this node fails.
+     *
+     * @tparam BB a supertype of B (to allow for fallback values of compatible types)
+     * @param handler function that converts exceptions to fallback values
+     * @return a new Node that never throws exceptions
+     *
+     * @example
+     * {{{
+     * val parseNumber = Node[String, Int](_.toInt)
+     *   .onFailure(_ => 0)  // return 0 for invalid strings
+     * 
+     * parseNumber("123")  // returns 123
+     * parseNumber("abc")  // returns 0
+     * }}}
+     */
     def onFailure[BB >: B](handler: Throwable => BB): Node[A, BB] =
       Node { a =>
         try {
@@ -170,7 +356,22 @@ package object etl4s {
         }
       }
 
-    /** Add retry capability to any node */
+    /**
+     * Adds retry capability to any node.
+     *
+     * Automatically retries failed operations with exponential backoff.
+     *
+     * @param maxAttempts maximum number of attempts (default: 3)
+     * @param initialDelayMs initial delay between retries in milliseconds (default: 100)
+     * @param backoffFactor multiplier for delay between attempts (default: 2.0)
+     * @return a new Node with retry behavior
+     *
+     * @example
+     * {{{
+     * val unreliableService = Node[Request, Response](callExternalAPI)
+     *   .withRetry(maxAttempts = 5, initialDelayMs = 200, backoffFactor = 1.5)
+     * }}}
+     */
     def withRetry(
       maxAttempts: Int = 3,
       initialDelayMs: Long = 100,
@@ -189,10 +390,42 @@ package object etl4s {
       attempt(maxAttempts, initialDelayMs)
     }
 
-    /** Run asynchronously */
+    /**
+     * Creates an asynchronous version of this node.
+     *
+     * @param ec implicit ExecutionContext for Future execution
+     * @return a function that returns Future[B] instead of B
+     *
+     * @example
+     * {{{
+     * implicit val ec = ExecutionContext.global
+     * val asyncProcessor = heavyComputation.runAsync
+     * val futureResult: Future[Result] = asyncProcessor(input)
+     * }}}
+     */
     def runAsync(implicit ec: ExecutionContext): A => Future[B] = a => Future(f(a))
 
-    /** Support for flattening nested tuples */
+    /**
+     * Flattens nested tuple results.
+     *
+     * When combining multiple nodes with `&`, you can end up with nested tuples
+     * like `((A, B), C)`. This method flattens them to `(A, B, C)`.
+     *
+     * @tparam BB a supertype of B
+     * @tparam Out the flattened output type
+     * @param flattener implicit evidence for how to flatten the type
+     * @return a new Node with flattened output
+     *
+     * @example
+     * {{{
+     * val node1 = Node[String, Int](_.length)
+     * val node2 = Node[String, String](_.toUpperCase)
+     * val node3 = Node[String, Boolean](_.nonEmpty)
+     * 
+     * val combined = (node1 & node2) & node3  // Node[String, ((Int, String), Boolean)]
+     * val flattened = combined.zip  // Node[String, (Int, String, Boolean)]
+     * }}}
+     */
     def zip[BB >: B, Out](implicit
       flattener: Flatten.Aux[BB, Out]
     ): Node[A, Out] =
@@ -253,8 +486,10 @@ package object etl4s {
     def requires[T, A, B](f: T => A => B): Reader[T, Node[A, B]] = Node.requires[T, A, B](f)
   }
 
-  /** Extension methods for Node factory methods - this allows the pattern:
-   *  Transform[Int, Int].requires[Config] { ... }
+  /**
+   * Extension methods for Node factory methods.
+   * 
+   * This allows the pattern: `Transform[Int, Int].requires[Config] { ... }`
    */
   implicit class NodeFactoryRequiresOps[A, B](val factory: (A => B) => Node[A, B]) {
     def requires[T](f: T => A => B): Reader[T, Node[A, B]] = {
@@ -266,14 +501,27 @@ package object etl4s {
     }
   }
 
-  /** Type class for environment compatibility between different component
-    * requirements
-    */
+  /**
+   * Type class for environment compatibility between different component requirements.
+   *
+   * This enables composition of Reader-wrapped nodes that require different but compatible
+   * configuration types. The type class provides evidence of how to extract the required
+   * configuration from a common environment type.
+   *
+   * @tparam T1 the first configuration type
+   * @tparam T2 the second configuration type  
+   * @tparam R the common environment type that can provide both T1 and T2
+   */
   trait ReaderCompat[T1, T2, R] {
     def toT1(r: R): T1
     def toT2(r: R): T2
   }
 
+  /**
+   * Companion object providing implicit instances for ReaderCompat.
+   * 
+   * The priority hierarchy ensures the most specific instances are selected first.
+   */
   object ReaderCompat extends ReaderCompat2 {
 
     /** Highest priority: Case 1 - same types */
@@ -304,19 +552,30 @@ package object etl4s {
       }
   }
 
-  /** Just a Reader monad for context/dependency injection. 
-    * 
-    * Wrap your node in this when it needs config:
-    * 
-    * {{{
-    * val dbNode = Reader { config: DatabaseConfig =>
-    *   Node { data => saveToDatabase(config.url, data) }
-    * }
-    * 
-    * // Later:
-    * dbNode.provide(myConfig).unsafeRun(data)
-    * }}}
-    */
+  /**
+   * The Reader monad for dependency injection and context management.
+   *
+   * Reader represents a computation that depends on some shared environment or configuration.
+   * It's essentially a wrapper around a function `R => A` where `R` is the environment type
+   * and `A` is the result type.
+   *
+   * @example
+   * {{{
+   * case class DatabaseConfig(url: String, timeout: Int)
+   * 
+   * val dbNode = Reader { config: DatabaseConfig =>
+   *   Node { data => saveToDatabase(config.url, data) }
+   * }
+   * 
+   * // Later, provide the configuration:
+   * val result = dbNode.provide(DatabaseConfig("localhost", 5000))
+   *                   .unsafeRun(myData)
+   * }}}
+   *
+   * @tparam R the environment/configuration type
+   * @tparam A the result type
+   * @param run the function that computes A given environment R
+   */
   case class Reader[R, A](run: R => A) {
     def map[B](f: A => B): Reader[R, B] = Reader(r => f(run(r)))
     def flatMap[B](f: A => Reader[R, B]): Reader[R, B] =
@@ -338,9 +597,12 @@ package object etl4s {
     def ask[T]: Reader[T, T]                 = Reader.ask
   }
 
-  /** Extension methods to connect Reader wrapped nodes to other Reader nodes
-    * with all operators
-    */
+  /**
+   * Extension methods for composing Reader-wrapped Nodes.
+   *
+   * These methods enable natural composition of context-dependent operations
+   * while handling environment compatibility automatically.
+   */
   implicit class ReaderOps[T1, A, B](val fa: Reader[T1, Node[A, B]]) {
 
     /**
@@ -470,7 +732,31 @@ package object etl4s {
       }
   }
 
-  /** Writer monad for accumulating logs */
+  /**
+   * The Writer monad for accumulating logs alongside computations.
+   *
+   * Writer represents a computation that produces both a result and accumulated log values.
+   * The log type must have a Monoid instance to support combining logs from different
+   * computations.
+   *
+   * @tparam L the log type (must have a Monoid instance)
+   * @tparam A the result type
+   * @param run a thunk that produces the (log, result) pair
+   *
+   * @example
+   * {{{
+   * val computation = for {
+   *   x <- Writer.pure[List[String], Int](42)
+   *   _ <- Writer.tell(List("Starting computation"))
+   *   y <- Writer(List("Computing..."), x * 2)
+   *   _ <- Writer.tell(List("Computation complete"))
+   * } yield y
+   * 
+   * val (logs, result) = computation.run()
+   * // logs: List("Starting computation", "Computing...", "Computation complete")
+   * // result: 84
+   * }}}
+   */
   case class Writer[L, A](run: () => (L, A))(implicit L: Monoid[L]) {
     def map[B](f: A => B): Writer[L, B] = Writer(() => {
       val (l, a) = run()
@@ -497,7 +783,14 @@ package object etl4s {
       Writer(() => (Monoid[L].empty, a))
   }
 
-  /** Validation result type */
+  /**
+   * Represents the result of a validation operation.
+   *
+   * ValidationResult is similar to Either but specifically designed for validation
+   * scenarios where you might want to accumulate multiple errors.
+   *
+   * @tparam A the type of the valid result
+   */
   sealed trait ValidationResult[+A] {
     def isValid: Boolean
     def errors: List[String]
@@ -541,7 +834,11 @@ package object etl4s {
     def get: Nothing     = throw new NoSuchElementException("Invalid.get")
   }
 
-  /** Validated typeclass */
+  /**
+   * Type class for validating values of type T.
+   *
+   * @tparam T the type being validated
+   */
   trait Validated[T] {
     def validate(value: T): ValidationResult[T]
 
@@ -594,11 +891,17 @@ package object etl4s {
   def success[A](value: A): ValidationResult[A]        = Valid(value)
   def failure[A](message: String): ValidationResult[A] = Invalid(List(message))
 
-  /** Flatten typeclasses for tuple flattening. This helps transform nested
-    * tuples like ((a,b),c) into (a,b,c). Makes pipelines that combine multiple
-    * steps more ergonomic. Yuck - but don't wan't to use shapeless. Also can't
-    * nest past 7-8 ish to cross build with 2.12
-    */
+  /**
+   * Type class for flattening nested tuple structures.
+   *
+   * This helps transform nested tuples like `((a,b),c)` into flat tuples like `(a,b,c)`.
+   * Makes pipelines that combine multiple steps more ergonomic.
+   *
+   * Note: Implementation is limited to avoid shapeless dependency and maintain
+   * cross-compilation with Scala 2.12. Nesting is supported up to about 7-8 levels.
+   *
+   * @tparam A the input type to flatten
+   */
   trait Flatten[A] {
     type Out
     def apply(a: A): Out
@@ -752,22 +1055,33 @@ package object etl4s {
     type Aux[A, B] = Flatten[A] { type Out = B }
   }
 
-  /** When you need config/context for your ETL operations.
-    * 
-    * Extend this trait with your config type, then use the methods
-    * to build context-aware operations:
-    * 
-    * {{{
-    * case class MyConfig(dbUrl: String, timeout: Int)
-    * 
-    * object MyETL extends Etl4sContext[MyConfig] {
-    *   val saveUser = Etl4sContext.load[User, Unit] { config => user =>
-    *     // use config.dbUrl, config.timeout
-    *     saveToDatabase(config, user)
-    *   }
-    * }
-    * }}}
-    */
+  /**
+   * Base trait for creating context-aware ETL operations.
+   *
+   * When you need configuration or context for your ETL operations, extend this trait
+   * with your config type. It provides convenient methods to build context-aware
+   * operations using the Reader monad.
+   *
+   * == Usage ==
+   *
+   * {{{
+   * case class MyConfig(dbUrl: String, timeout: Int)
+   * 
+   * object MyETL extends Etl4sContext[MyConfig] {
+   *   val saveUser = Etl4sContext.load[User, Unit] { config => user =>
+   *     // use config.dbUrl, config.timeout
+   *     saveToDatabase(config, user)
+   *   }
+   * 
+   *   val pipeline = extractUsers ~> transformUsers ~> saveUser
+   * 
+   *   // Later, provide config and run:
+   *   pipeline.provide(MyConfig("localhost", 5000)).unsafeRun(inputData)
+   * }
+   * }}}
+   *
+   * @tparam T the configuration/context type
+   */
   trait Etl4sContext[T] {
     type ExtractWithContext[A, B]   = Context[T, Extract[A, B]]
     type TransformWithContext[A, B] = Context[T, Transform[A, B]]
@@ -784,10 +1098,12 @@ package object etl4s {
     def pipelineWithContext[A, B](f: T => A => B): PipelineWithContext[A, B] =
       Pipeline.requires[T, A, B](f)
 
-    /** Context object for more natural access to context wrapped
-      * Nodes - you just do:
-      * Etl4sContext.extract[A, B] { ctx => in => out } vs some magical "extractWithContext" that comes into scope
-      */
+    /**
+     * Object providing more natural access to context-wrapped operations.
+     *
+     * Instead of calling `extractWithContext`, you can use the more natural:
+     * `Etl4sContext.extract[A, B] { ctx => in => out }`
+     */
     object Etl4sContext {
       def extract[A, B](f: T => A => B): Context[T, Extract[A, B]] =
         Extract.requires[T, A, B](f)
