@@ -71,7 +71,7 @@ val step = Transform[String, Int](_.length)
 
 You can run nodes like plain functions:
 ```scala
-pipeline(())
+val len: Int = step("HELLO") // 5
 ```
 Or explicitly:
 - `.unsafeRun(input)` - runs and throws on failure
