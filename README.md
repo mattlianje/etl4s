@@ -61,7 +61,6 @@ Node[-In, +Out]
 ```
 A Node wraps a lazily-evaluated function `In => Out`. Chain them with `~>` to build pipelines.
 
-### Node aliases
 To improve readability and express intent, **etl4s** defines four aliases: `Extract`, `Transform`, `Load` and `Pipeline`.
 All behave the same under the hood.
 
@@ -69,12 +68,7 @@ Drop in any function like:
 ```scala
 val step = Transform[String, Int](_.length)
 ```
-Or chain:
-```scala
-val pipeline = Extract("abc") ~> step
-```
 
-### Running nodes
 You can run nodes like plain functions:
 ```scala
 pipeline(())
