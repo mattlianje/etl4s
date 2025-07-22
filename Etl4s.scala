@@ -11,10 +11,10 @@
  */
 
 /**
- * The etl4s package provides a powerful, composable ETL (Extract, Transform, Load) framework
+ * The etl4s package provides a lightweight, powerful, composable ETL library
  * built around the core [[Node]] and [[Reader]] abstractions.
  * 
- * It enables whiteboard-style pipeline composition
+ * It enables config-driven, whiteboard-style pipeline composition
  * with functional programming principles.
  *
  * @author Matthieu Court
