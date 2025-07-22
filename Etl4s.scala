@@ -11,8 +11,8 @@
  */
 
 /**
- * The etl4s package provides a lightweight, powerful, composable ETL library
- * built around the core [[Node]] and [[Reader]] abstractions.
+ * A lightweight, powerful library for writing dataflows
+ * using the core [[Node]] and [[Reader]] abstractions.
  * 
  * It enables config-driven, whiteboard-style pipeline composition
  * with functional programming principles.
@@ -1062,8 +1062,7 @@ package object etl4s {
    * with your config type. It provides convenient methods to build context-aware
    * operations using the Reader monad.
    *
-   * == Usage ==
-   *
+   * @example
    * {{{
    * case class MyConfig(dbUrl: String, timeout: Int)
    * 
