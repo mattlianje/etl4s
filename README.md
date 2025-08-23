@@ -1,3 +1,11 @@
+<div align="right">
+  <a href="https://www.bitcomplete.io/">
+    <img src="https://slack-imgs.com/?c=1&o1=gu&url=https%3A%2F%2Femoji.slack-edge.com%2FT0117JGDT51%2Fbitcomplete-logo%2F8fb56be75206e8a2.png" width="100">
+  </a>
+  <br>
+  <sub><i>Sponsored by Bit Complete</i></sub>
+</div>
+
 <p align="center">
   <img src="pix/etl4s.png" width="700">
 </p>
