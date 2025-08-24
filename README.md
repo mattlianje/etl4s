@@ -12,6 +12,7 @@ Battle-tested at [Instacart](https://www.instacart.com/). Part of [d4](https://g
   <a href="https://www.bitcomplete.io/"><img src="pix/bc-logo.png" width="52"></a>
   <sub><i> Sponsored by <a href="https://www.bitcomplete.io/">Bit Complete</a></i></sub>
 </div>
+---
 
 ## Features
 - Declarative, typed pipeline endpoints
