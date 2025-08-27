@@ -1,8 +1,3 @@
-<div align="center">
-  <a href="https://www.bitcomplete.io/"><img src="pix/bc-logo.png" width="52"></a>
-  <sub><i> Sponsored by <a href="https://www.bitcomplete.io/">Bit Complete</a></i></sub>
-</div>
-
 <p align="center">
   <img src="pix/etl4s.png" width="700">
 </p>
@@ -13,6 +8,10 @@
 A lightweight, zero-dependency library for writing type-safe, beautiful ✨🍰  data flows in functional Scala. 
 Battle-tested at [Instacart](https://www.instacart.com/). Part of [d4](https://github.com/mattlianje/d4)
 
+<div align="center">
+  <a href="https://www.bitcomplete.io/"><img src="pix/bc-logo.png" width="48"></a>
+  <sub><i> Sponsored by <a href="https://www.bitcomplete.io/">Bit Complete</a></i></sub>
+</div>
 
 ## Features
 - Declarative, typed pipeline endpoints
