@@ -82,16 +82,38 @@ package object etl4s {
     def safeRun(a: A): Try[B] = Try(f(a))
 
     /**
-     * Runs the node and measures execution time in milliseconds.
+     * Runs the node and collects insights about the execution.
      *
      * @param a the input value
-     * @return a tuple of (result, execution_time_in_millis)
+     * @return ExecutionInsights containing result and collected information
      */
-    def unsafeRunTimedMillis(a: A): (B, Long) = {
+    def unsafeRunTraced(a: A): ExecutionInsights[B] = {
+      val logCollector = new ThreadLocal[List[Any]] {
+        override def initialValue(): List[Any] = List.empty
+      }
+      val validationCollector = new ThreadLocal[List[Any]] {
+        override def initialValue(): List[Any] = List.empty
+      }
+
       val startTime = System.currentTimeMillis()
-      val result    = f(a)
-      val endTime   = System.currentTimeMillis()
-      (result, endTime - startTime)
+      Etl4sExecution.setCollectors(logCollector, validationCollector, startTime)
+
+      try {
+        val result   = f(a)
+        val endTime  = System.currentTimeMillis()
+        val duration = endTime - startTime
+
+        ExecutionInsights(
+          result = result,
+          logs = logCollector.get().reverse,
+          timing = Some(duration),
+          validationErrors = validationCollector.get().reverse
+        )
+      } finally {
+        Etl4sExecution.clearCollectors()
+        logCollector.remove()
+        validationCollector.remove()
+      }
     }
 
     /**
@@ -328,6 +350,70 @@ package object etl4s {
     def tap(g: B => Any): Node[A, B] = Node { a =>
       val result = f(a)
       g(result)
+      result
+    }
+
+    /**
+     * Attaches a log message to this node.
+     *
+     * @param message static log message (any type - will be converted to string)
+     * @return a new Node that logs the message during execution
+     */
+    def withLog[T](message: T): Node[A, B] = Node { a =>
+      Etl4sExecution.log(message)
+      f(a)
+    }
+
+    /**
+     * Attaches a dynamic log message based on input and output.
+     *
+     * @param messageFunc function that generates log message from input and output
+     * @return a new Node that logs the generated message during execution
+     *
+     * @example
+     * {{{
+     * val transform = Transform[String, Int](_.length)
+     *   .withLog((input, output) => s"Transformed '$input' -> length $output")
+     *   .withLog((input, output) => output)  // Log the actual output value
+     * 
+     * // If you only need input or output, just ignore the other parameter:
+     * .withLog((input, _) => s"Processing: $input")
+     * .withLog((_, output) => s"Result: $output")
+     * 
+     * // Static messages (any type):
+     * .withLog("Starting transform")
+     * .withLog(42)
+     * .withLog(User("John", 30))
+     * }}}
+     */
+    def withLog[T](messageFunc: (A, B) => T): Node[A, B] = Node { a =>
+      val result = f(a)
+      Etl4sExecution.log(messageFunc(a, result))
+      result
+    }
+
+    /**
+     * Attaches a validation that checks input and output.
+     *
+     * @param validationFunc function that takes (input, output) and returns (condition, message)
+     * @return a new Node that validates during execution
+     *
+     * @example
+     * {{{
+     * val transform = Transform[String, Int](_.length)
+     *   .validate((input, output) => (
+     *     output == input.length, 
+     *     s"Length mismatch: expected ${input.length}, got $output"
+     *   ))
+     *   .validate((_, output) => (output > 0, "Length must be positive"))
+     * }}}
+     */
+    def validate[E](validationFunc: (A, B) => (Boolean, E)): Node[A, B] = Node { a =>
+      val result             = f(a)
+      val (condition, error) = validationFunc(a, result)
+      if (!condition) {
+        Etl4sExecution.logValidation(error)
+      }
       result
     }
 
@@ -705,191 +791,178 @@ package object etl4s {
     def >>[C](node: Node[Unit, C]): Reader[T1, Node[A, C]] = {
       fa.map(readerNode => readerNode >> node)
     }
+
+    /**
+     * Tap operation for Reader-wrapped nodes with access to context.
+     *
+     * Allows peeking at both the context and result of a context-dependent node.
+     *
+     * @param g a curried function that receives context then result for side effects
+     * @return a Reader that produces a Node with context-aware tap behavior
+     *
+     * @example
+     * {{{
+     * val contextExtract = Etl4sContext.Extract[Config, String, Int] { config => input =>
+     *   process(input, config)
+     * }
+     * 
+     * val withTap = contextExtract.tap(config => result => 
+     *   println(s"[${config.serviceName}] Extracted: $result")
+     * )
+     * }}}
+     */
+    def tap(g: T1 => B => Any): Reader[T1, Node[A, B]] = {
+      Reader { ctx =>
+        fa.run(ctx).tap(result => g(ctx)(result))
+      }
+    }
+  }
+
+  /**
+   * Comprehensive insights collected during pipeline execution.
+   *
+   * @tparam A the result type
+   * @param result the actual computation result
+   * @param logs collected log values from withLog calls (any type)
+   * @param timing execution duration in milliseconds (if collected)
+   * @param validationErrors validation errors encountered (any type)
+   */
+  case class ExecutionInsights[A](
+    result: A,
+    logs: List[Any] = List.empty,
+    timing: Option[Long] = None,
+    validationErrors: List[Any] = List.empty
+  ) {
+
+    /** Convenience method to check if any validation errors occurred */
+    def hasValidationErrors: Boolean = validationErrors.nonEmpty
+
+    /** Convenience method to check if any issues (validation errors) occurred */
+    def hasIssues: Boolean = hasValidationErrors
+
+    /** Get timing in a more readable format */
+    def timingMillis: Option[Long]    = timing
+    def timingSeconds: Option[Double] = timing.map(_ / 1000.0)
+
+    /** Get logs as strings (for display/compatibility) */
+    def logsAsStrings: List[String] = logs.map(_.toString)
+
+    /** Get validation errors as strings (for display/compatibility) */
+    def validationErrorsAsStrings: List[String] = validationErrors.map(_.toString)
+
+    /** Get all messages (logs + validation errors) as strings */
+    def allMessagesAsStrings: List[String] =
+      logsAsStrings ++ validationErrorsAsStrings.map(e => s"[VALIDATION] $e")
   }
 
   /** Utility functions */
-  def tap[A](f: A => Any): Node[A, A]           = Node[A, A](a => { f(a); a })
-  def effect(action: => Unit): Node[Unit, Unit] = Node(_ => action)
-
-  /** Monoid typeclass for combining values */
-  trait Monoid[A] {
-    def empty: A
-    def combine(x: A, y: A): A
-  }
-
-  object Monoid {
-    def apply[A](implicit M: Monoid[A]): Monoid[A] = M
-
-    implicit val listMonoid: Monoid[List[String]] = new Monoid[List[String]] {
-      def empty                                     = List.empty[String]
-      def combine(x: List[String], y: List[String]) = x ++ y
-    }
-
-    implicit val vectorMonoid: Monoid[Vector[String]] =
-      new Monoid[Vector[String]] {
-        def empty                                         = Vector.empty[String]
-        def combine(x: Vector[String], y: Vector[String]) = x ++ y
-      }
-  }
+  def tap[A](f: A => Any): Node[A, A] = Node[A, A](a => { f(a); a })
 
   /**
-   * The Writer monad for accumulating logs alongside computations.
-   *
-   * Writer represents a computation that produces both a result and accumulated log values.
-   * The log type must have a Monoid instance to support combining logs from different
-   * computations.
-   *
-   * @tparam L the log type (must have a Monoid instance)
-   * @tparam A the result type
-   * @param run a thunk that produces the (log, result) pair
-   *
-   * @example
-   * {{{
-   * val computation = for {
-   *   x <- Writer.pure[List[String], Int](42)
-   *   _ <- Writer.tell(List("Starting computation"))
-   *   y <- Writer(List("Computing..."), x * 2)
-   *   _ <- Writer.tell(List("Computation complete"))
-   * } yield y
+   * Access to current pipeline execution insights and state.
    * 
-   * val (logs, result) = computation.run()
-   * // logs: List("Starting computation", "Computing...", "Computation complete")
-   * // result: 84
-   * }}}
+   * Provides unified access to the currently executing pipeline's insights,
+   * including logs, validation errors, and execution timing.
    */
-  case class Writer[L, A](run: () => (L, A))(implicit L: Monoid[L]) {
-    def map[B](f: A => B): Writer[L, B] = Writer(() => {
-      val (l, a) = run()
-      (l, f(a))
-    })
-
-    def flatMap[B](f: A => Writer[L, B]): Writer[L, B] = Writer(() => {
-      val (l1, a) = run()
-      val (l2, b) = f(a).run()
-      (L.combine(l1, l2), b)
-    })
-
-    def value: A = run()._2
-  }
-
-  object Writer {
-    def apply[L: Monoid, A](l: L, a: A): Writer[L, A] =
-      Writer(() => (l, a))
-
-    def tell[L: Monoid](l: L): Writer[L, Unit] =
-      Writer(() => (l, ()))
-
-    def pure[L: Monoid, A](a: A): Writer[L, A] =
-      Writer(() => (Monoid[L].empty, a))
-  }
-
-  /**
-   * Represents the result of a validation operation.
-   *
-   * ValidationResult is similar to Either but specifically designed for validation
-   * scenarios where you might want to accumulate multiple errors.
-   *
-   * @tparam A the type of the valid result
-   */
-  sealed trait ValidationResult[+A] {
-    def isValid: Boolean
-    def errors: List[String]
-    def get: A
-
-    def &&[B >: A](other: ValidationResult[B]): ValidationResult[B] =
-      (this, other) match {
-        case (Valid(a), Valid(_))         => Valid(a)
-        case (Valid(_), invalid: Invalid) => invalid
-        case (invalid: Invalid, Valid(_)) => invalid
-        case (Invalid(e1), Invalid(e2))   => Invalid(e1 ++ e2)
+  object Etl4sExecution {
+    private val logCollector: ThreadLocal[Option[ThreadLocal[List[Any]]]] =
+      new ThreadLocal[Option[ThreadLocal[List[Any]]]] {
+        override def initialValue(): Option[ThreadLocal[List[Any]]] = None
       }
 
-    def ||[B >: A](other: ValidationResult[B]): ValidationResult[B] =
-      (this, other) match {
-        case (Valid(a), _)              => Valid(a)
-        case (_, Valid(b))              => Valid(b)
-        case (Invalid(e1), Invalid(e2)) => Invalid(e1 ++ e2)
+    private val validationCollector: ThreadLocal[Option[ThreadLocal[List[Any]]]] =
+      new ThreadLocal[Option[ThreadLocal[List[Any]]]] {
+        override def initialValue(): Option[ThreadLocal[List[Any]]] = None
       }
 
-    def map[B](f: A => B): ValidationResult[B] = this match {
-      case Valid(a)   => Valid(f(a))
-      case i: Invalid => i.asInstanceOf[ValidationResult[B]]
+    private val startTimeCollector: ThreadLocal[Option[Long]] =
+      new ThreadLocal[Option[Long]] {
+        override def initialValue(): Option[Long] = None
+      }
+
+    def setCollectors(
+      logs: ThreadLocal[List[Any]],
+      validations: ThreadLocal[List[Any]],
+      startTime: Long
+    ): Unit = {
+      logCollector.set(Some(logs))
+      validationCollector.set(Some(validations))
+      startTimeCollector.set(Some(startTime))
     }
 
-    def flatMap[B](f: A => ValidationResult[B]): ValidationResult[B] =
-      this match {
-        case Valid(a)   => f(a)
-        case i: Invalid => i.asInstanceOf[ValidationResult[B]]
+    def clearCollectors(): Unit = {
+      logCollector.set(None)
+      validationCollector.set(None)
+      startTimeCollector.set(None)
+    }
+
+    /**
+     * Get the current execution insights as they're being built.
+     * 
+     * Returns a live view of the execution state including logs, validation errors,
+     * and current execution time.
+     */
+    def current: ExecutionInsights[Any] = {
+      val logs = logCollector.get() match {
+        case Some(collector) => collector.get().reverse
+        case None            => List.empty
       }
-  }
 
-  case class Valid[+A](value: A) extends ValidationResult[A] {
-    def isValid: Boolean     = true
-    def errors: List[String] = Nil
-    def get: A               = value
-  }
+      val validationErrors = validationCollector.get() match {
+        case Some(collector) => collector.get().reverse
+        case None            => List.empty
+      }
 
-  case class Invalid(errors: List[String]) extends ValidationResult[Nothing] {
-    def isValid: Boolean = false
-    def get: Nothing     = throw new NoSuchElementException("Invalid.get")
-  }
+      val timing = startTimeCollector.get() match {
+        case Some(startTime) => Some(System.currentTimeMillis() - startTime)
+        case None            => None
+      }
 
-  /**
-   * Type class for validating values of type T.
-   *
-   * @tparam T the type being validated
-   */
-  trait Validated[T] {
-    def validate(value: T): ValidationResult[T]
+      ExecutionInsights(
+        result = (), // Result not available during execution
+        logs = logs,
+        timing = timing,
+        validationErrors = validationErrors
+      )
+    }
 
-    def &&(other: Validated[T]): Validated[T] = (value: T) => {
-      val result1 = this.validate(value)
-      val result2 = other.validate(value)
-
-      (result1, result2) match {
-        case (Valid(_), Valid(_))         => result2
-        case (Valid(_), invalid: Invalid) => invalid
-        case (invalid: Invalid, Valid(_)) => invalid
-        case (Invalid(e1), Invalid(e2))   => Invalid(e1 ++ e2)
+    /** Add a log value to the current execution (any type) */
+    def log[T](message: T): Unit = {
+      logCollector.get() match {
+        case Some(collector) =>
+          val currentLogs = collector.get()
+          collector.set(message :: currentLogs)
+        case None =>
+        // No collector set, log is ignored
       }
     }
 
-    def ||(other: Validated[T]): Validated[T] = (value: T) => {
-      this.validate(value) match {
-        case v @ Valid(_) => v
-        case Invalid(errors1) =>
-          other.validate(value) match {
-            case v @ Valid(_)     => v
-            case Invalid(errors2) => Invalid(errors1 ++ errors2)
-          }
+    /** Add a validation error to the current execution (any type) */
+    def logValidation[T](error: T): Unit = {
+      validationCollector.get() match {
+        case Some(collector) =>
+          val currentValidations = collector.get()
+          collector.set(error :: currentValidations)
+        case None =>
+        // No collector set, validation error is ignored
       }
     }
 
-    def apply(value: T): ValidationResult[T] = validate(value)
+    /** Check if there are any validation errors so far */
+    def hasValidationErrors: Boolean = current.hasValidationErrors
+
+    /** Get current validation errors (any type) */
+    def validationErrors: List[Any] = current.validationErrors
+
+    /** Get current logs (any type) */
+    def logs: List[Any] = current.logs
+
+    /** Get current execution time in milliseconds */
+    def executionTimeMillis: Option[Long] = current.timing
+
+    /** Get current execution time in seconds */
+    def executionTimeSeconds: Option[Double] = current.timingSeconds
   }
-
-  object Validated {
-    def apply[T](f: T => ValidationResult[T]): Validated[T] = new Validated[T] {
-      def validate(value: T): ValidationResult[T] = f(value)
-    }
-  }
-
-  /** Validation utility functions */
-  def require[T](
-    value: T,
-    condition: => Boolean,
-    message: => String
-  ): ValidationResult[T] =
-    if (condition) Valid(value) else Invalid(List(message))
-
-  def require(
-    condition: => Boolean,
-    message: => String
-  ): ValidationResult[Unit] =
-    if (condition) Valid(()) else Invalid(List(message))
-
-  def success[A](value: A): ValidationResult[A]        = Valid(value)
-  def failure[A](message: String): ValidationResult[A] = Invalid(List(message))
 
   /**
    * Type class for flattening nested tuple structures.
@@ -1067,7 +1140,7 @@ package object etl4s {
    * case class MyConfig(dbUrl: String, timeout: Int)
    * 
    * object MyETL extends Etl4sContext[MyConfig] {
-   *   val saveUser = Etl4sContext.load[User, Unit] { config => user =>
+   *   val saveUser = Etl4sContext.Load[User, Unit] { config => user =>
    *     // use config.dbUrl, config.timeout
    *     saveToDatabase(config, user)
    *   }
@@ -1101,20 +1174,29 @@ package object etl4s {
      * Object providing more natural access to context-wrapped operations.
      *
      * Instead of calling `extractWithContext`, you can use the more natural:
-     * `Etl4sContext.extract[A, B] { ctx => in => out }`
+     * `Etl4sContext.Extract[A, B] { ctx => in => out }`
      */
     object Etl4sContext {
-      def extract[A, B](f: T => A => B): Context[T, Extract[A, B]] =
-        Extract.requires[T, A, B](f)
+      def Extract[A, B](f: T => A => B): Context[T, Extract[A, B]] =
+        etl4s.Extract.requires[T, A, B](f)
 
-      def transform[A, B](f: T => A => B): Context[T, Transform[A, B]] =
-        Transform.requires[T, A, B](f)
+      def Transform[A, B](f: T => A => B): Context[T, Transform[A, B]] =
+        etl4s.Transform.requires[T, A, B](f)
 
-      def load[A, B](f: T => A => B): Context[T, Load[A, B]] =
-        Load.requires[T, A, B](f)
+      def Load[A, B](f: T => A => B): Context[T, Load[A, B]] =
+        etl4s.Load.requires[T, A, B](f)
 
-      def pipeline[A, B](f: T => A => B): Context[T, Pipeline[A, B]] =
-        Pipeline.requires[T, A, B](f)
+      def Pipeline[A, B](f: T => A => B): Context[T, Pipeline[A, B]] =
+        etl4s.Pipeline.requires[T, A, B](f)
+
+      def Tap[A](f: T => A => Any): Context[T, Node[A, A]] =
+        Context { ctx =>
+          Node { a =>
+            f(ctx)(a)
+            a
+          }
+        }
     }
   }
+
 }

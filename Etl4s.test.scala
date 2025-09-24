@@ -197,7 +197,7 @@ class BasicSpecs extends munit.FunSuite {
   }
 
   test("can create and chain effect") {
-    val e           = effect { println("yo"); println("dawg") }
+    val e           = Node.effect { println("yo"); println("dawg") }
     val effectChain = e >> e >> e >> e >> e >> e
   }
 
@@ -212,13 +212,14 @@ class BasicSpecs extends munit.FunSuite {
     assert(p1(()) == p2(()))
   }
 
-  test("unsafeRunTimedMillis measures execution time") {
+  test("unsafeRunTraced measures execution time") {
     // Create a node that sleeps for a specific time
     val sleepDuration = 100
     val sleepNode = Node[Unit, Unit] { _ =>
       Thread.sleep(sleepDuration)
     }
-    val (_, elapsedTime) = sleepNode.unsafeRunTimedMillis(())
+    val insights    = sleepNode.unsafeRunTraced(())
+    val elapsedTime = insights.timing.get
     assert(
       elapsedTime >= sleepDuration,
       s"Elapsed time ($elapsedTime ms) should be at least $sleepDuration ms"
@@ -393,11 +394,11 @@ class ReaderSpecs extends munit.FunSuite {
     case class AppConfig(serviceName: String, timeout: Int)
 
     object TestContext extends Etl4sContext[AppConfig] {
-      val getData = Etl4sContext.extract[String, Int] { config => input =>
+      val getData = Etl4sContext.Extract[String, Int] { config => input =>
         s"${config.serviceName}: $input".length * config.timeout
       }
 
-      val processData = Etl4sContext.transform[Int, String] { config => value =>
+      val processData = Etl4sContext.Transform[Int, String] { config => value =>
         s"Processed by ${config.serviceName} with value $value"
       }
     }
@@ -410,73 +411,84 @@ class ReaderSpecs extends munit.FunSuite {
 
     assertEquals(result, "Processed by DataService with value 34")
   }
-}
 
-class ValidatedSpecs extends munit.FunSuite {
-  test("simple validation with require") {
-    assert(require(10 > 5, "error message").isValid)
-    assert(!require(3 > 5, "error message").isValid)
+  test("basic logging with withLog") {
+    val node = Transform[String, Int](_.length)
+      .withLog("Processing string")
+      .withLog((input: String, output: Int) => s"$input -> $output")
 
-    assert(require(10, 10 > 5, "error message").get == 10)
-    assert(require(3, 3 > 5, "error message").errors.head == "error message")
+    val insights = node.unsafeRunTraced("hello")
+    assertEquals(insights.result, 5)
+    assertEquals(insights.logs, List("Processing string", "hello -> 5"))
   }
 
-  test("validation with pattern matching") {
+  test("validation with Etl4sExecution") {
+    val node = Transform[String, Int](_.length)
+      .validate((input, output) => (output > 0, "Length must be positive"))
+      .validate((input, output) => (input.nonEmpty, "Input cannot be empty"))
 
-    sealed trait UserRole
-    case object Admin  extends UserRole
-    case object Editor extends UserRole
-    case object Viewer extends UserRole
-    case class User(id: String, role: UserRole, active: Boolean)
+    val insights = node.unsafeRunTraced("test")
+    assertEquals(insights.result, 4)
+    assertEquals(insights.validationErrors, List.empty)
+    assert(!insights.hasValidationErrors)
 
-    val validateUser = Validated[User] { user =>
-      val basicChecks = require(user, user.id.nonEmpty, "ID cannot be empty")
-      val roleChecks = user.role match {
-        case Admin =>
-          require(
-            user,
-            user.id.startsWith("A"),
-            "Admin IDs must start with 'A'"
-          )
-        case Editor =>
-          require(
-            user,
-            user.id.startsWith("E"),
-            "Editor IDs must start with 'E'"
-          )
-        case _ => success(user)
+    val failInsights = node.unsafeRunTraced("")
+    assertEquals(failInsights.result, 0)
+    assertEquals(failInsights.validationErrors.size, 2)
+    assert(failInsights.hasValidationErrors)
+  }
+
+  test("nodes can access current execution state") {
+    val upstream = Transform[String, Int] { input =>
+      Etl4sExecution.logValidation("Upstream error")
+      input.length
+    }
+
+    val downstream = Transform[Int, Int] { value =>
+      if (Etl4sExecution.hasValidationErrors) {
+        Etl4sExecution.log("Using fallback due to errors")
+        -999
+      } else {
+        value * 2
       }
-      val statusCheck =
-        if (!user.active) failure("User account is inactive") else success(user)
-      basicChecks && roleChecks && statusCheck
     }
 
-    assert(validateUser(User("A123", Admin, true)).isValid)
-    assert(!validateUser(User("E123", Admin, true)).isValid)
-    assert(
-      validateUser(User("E123", Admin, true)).errors
-        .contains("Admin IDs must start with 'A'")
-    )
-    assert(!validateUser(User("V123", Viewer, false)).isValid)
+    val pipeline = upstream ~> downstream
+    val insights = pipeline.unsafeRunTraced("test")
+
+    assertEquals(insights.result, -999)
+    assertEquals(insights.validationErrors, List("Upstream error"))
+    assertEquals(insights.logs, List("Using fallback due to errors"))
   }
 
-  test("composing validators") {
-    case class Person(name: String, age: Int)
+  test("any-type logging and validation") {
+    case class LogEvent(message: String, timestamp: Long)
+    case class ValidationError(field: String, code: Int)
 
-    val validateName = Validated[Person] { p =>
-      require(p, p.name.nonEmpty, "Name cannot be empty")
-    }
-    val validateAge = Validated[Person] { p =>
-      require(p, p.age >= 0, "Age must be non-negative")
-    }
-    val validatePerson = validateName && validateAge
+    val node = Transform[String, Int](_.length)
+      .withLog(LogEvent("Started processing", System.currentTimeMillis()))
+      .validate((input, output) => (output > 0, ValidationError("length", 404)))
 
-    assert(validatePerson(Person("Jane", 35)).isValid)
-    assert(!validatePerson(Person("", 35)).isValid)
-    assert(!validatePerson(Person("John", -10)).isValid)
-
-    val invalidBoth = validatePerson(Person("", -5))
-    assert(!invalidBoth.isValid)
-    assert(invalidBoth.errors.size == 2)
+    val insights = node.unsafeRunTraced("test")
+    assertEquals(insights.result, 4)
+    assert(insights.logs.head.isInstanceOf[LogEvent])
+    assertEquals(insights.validationErrors, List.empty)
   }
+
+  test("unified access to current execution insights") {
+    val node = Transform[String, String] { input =>
+      Etl4sExecution.log("Step 1")
+      val current = Etl4sExecution.current
+      assertEquals(current.logs, List("Step 1"))
+      assert(current.timing.isDefined)
+
+      input.toUpperCase
+    }
+
+    val insights = node.unsafeRunTraced("hello")
+    assertEquals(insights.result, "HELLO")
+    assertEquals(insights.logs, List("Step 1"))
+    assert(insights.timing.isDefined)
+  }
+
 }
