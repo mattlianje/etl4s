@@ -1,89 +1,61 @@
 
-**etl4s** makes config-aware pipelines dead simple:
-You just write `.requires[Config] { cfg => in => ... }` and later `.provide(config)`
+# Config-Driven Pipelines
 
-## Declaring a config-aware step
+Make your pipelines configurable and reusable. Declare what each step needs, then provide config once.
+
 ```scala
 import etl4s._
 
-/* A config object */
 case class ApiConfig(url: String, key: String)
 
-val fetch = Extract("user123")
-
-/* A config-aware transform step */
+val extract = Extract("user123")
 val enrich = Transform[String, String].requires[ApiConfig] { cfg => user =>
-  s"Processed with ${cfg.key}: $user"
+  s"${cfg.key}: $user"
 }
 
-val pipeline = fetch ~> enrich
+val pipeline = extract ~> enrich
 
-val myApiConfig = ApiConfig("https://api.com", "SECRET")
-
-/* Provide config and run */
-val result = pipeline.provide(myApiConfig).unsafeRun(())
+// Provide config and run
+pipeline.provide(ApiConfig("api.com", "SECRET")).unsafeRun(())
 ```
 
-## Auto-propagated config via traits
-Break your config into capabilities. **etl4s** will automatically infer the combined config
-your pipeline needs.
-```scala
-trait HasBase       { def appName: String }
-trait HasDateRange  extends HasBase { def start: String; def end: String }
-trait HasDb         extends HasDateRange { def dbUrl: String }
-```
-Next, you can build a library of re-usable steps:
-```scala
-object Steps {
-  val log = Transform[String, String].requires[HasBase] { cfg => s =>
-       s"[${cfg.appName}] $s"
-  }
+## Config Inheritance & Propagation
 
-  val tagDate = Transform[String, String].requires[HasDateRange] { cfg => s =>
-       s"$s (${cfg.start} to ${cfg.end})"
-  }
+Build modular configs with traits. **etl4s** automatically infers what your pipeline needs and propagates config through the entire pipeline:
 
-  val save = Load[String, Boolean].requires[HasDb] { cfg => s =>
-       println(s"Saving to ${cfg.dbUrl}: $s"); true
-  }
+```scala
+trait HasDb { def dbUrl: String }
+trait HasAuth { def apiKey: String }
+
+val saveData = Load[String, Unit].requires[HasDb] { cfg => data =>
+  println(s"Saving to ${cfg.dbUrl}")
 }
-```
 
-And run with a config:
-```scala
-import Steps._
-
-case class MyJobConfig(
-  appName: String,
-  start: String,
-  end: String,
-  dbUrl: String
-) extends HasDb
-
-val randomConfig = MyJobConfig("etl4s", "2023-01-01", "2023-01-31", "jdbc:pg")
-
-val fullPipeline = Extract("hello") ~> log ~> tagDate ~> save
-
-fullPipeline.provide(randomConfig).unsafeRun(())
-```
-
-## ✍️ Optional: Use Etl4sContext[Cfg]
-If you're writing a full library of config-aware steps with the same Cfg, extend `Etl4sContext`:
-```scala
-object MyPipeline extends Etl4sContext[ApiConfig] {
-  val step1 = extractWithContext { cfg => _ => fetchUser(cfg.key) }
-  val step2 = transformWithContext { cfg => user => enrichUser(user) }
+val fetchUser = Extract[String, User].requires[HasAuth] { cfg => id =>
+  fetchFromApi(cfg.apiKey, id)
 }
-```
-It saves you from repeated `.requires[ApiConfig]`
 
-## Note for Scala 2.x
-In Scala 2, type inference is a bit stricter. Use:
-```scala
-Transform.requires[Cfg, In, Out](cfg => in => ...)
+// Combined config
+case class AppConfig(dbUrl: String, apiKey: String) extends HasDb with HasAuth
+
+val pipeline = fetchUser ~> process ~> saveData
+// Config flows to all steps that need it automatically
+pipeline.provide(AppConfig("jdbc:pg", "secret")).unsafeRun("user123")
 ```
-Instead of just:
+
+## Scala 2.x Note
+
+Use explicit types for better inference:
+
 ```scala
-Transform.requires[Cfg] { cfg => in => ... }
+// Scala 2.x
+Transform.requires[Config, String, String] { cfg => input => 
+  process(cfg, input)
+}
+
+// Scala 3 (preferred)
+Transform[String, String].requires[Config] { cfg => input => 
+  process(cfg, input)
+}
 ```
 

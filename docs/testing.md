@@ -40,3 +40,18 @@ You will get a response wrapped in a `scala.util.Try`
 Success(20)
 ```
 
+## Testing with Traces
+
+For testing with execution insights, see the [Pipeline Tracing](trace.md) section. You can test traced execution and cross-node communication:
+
+```scala
+import etl4s._
+
+val pipeline = Transform[String, Int](_.length)
+val trace = pipeline.unsafeRunTraced("test")
+
+assert(trace.result == 4)
+assert(trace.timing.isDefined)
+assert(!trace.hasErrors)
+```
+
