@@ -81,7 +81,7 @@ val len: Int = step("HELLO") // 5
 Or explicitly:
 - `.unsafeRun(input)` - runs and throws on failure
 - `.safeRun(input)` - returns a Try
-- `.unsafeRunTraced(input)` - returns Trace with logs, timing, validation errors
+- `.unsafeRunTraced(input)` - returns Trace with logs, timeElapsed, validation errors
 - `.safeRunTraced(input)` - returns Trace with Try result safely
 
 ## Type safety
@@ -196,7 +196,7 @@ pipeline.unsafeRunTraced("")
 // Trace(
 //   result = "FALLBACK", 
 //   validationErrors = List("Empty input"),
-//   timing = Some(2)
+//   timeElapsed = 2
 // )
 ```
 

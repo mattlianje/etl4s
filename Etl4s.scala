@@ -106,7 +106,7 @@ package object etl4s {
         Trace(
           result = result,
           logs = logCollector.get().reverse,
-          timing = Some(duration),
+          timeElapsed = duration,
           validationErrors = validationCollector.get().reverse
         )
       } finally {
@@ -141,7 +141,7 @@ package object etl4s {
         Trace(
           result = result,
           logs = logCollector.get().reverse,
-          timing = Some(duration),
+          timeElapsed = duration,
           validationErrors = validationCollector.get().reverse
         )
       } finally {
@@ -859,13 +859,13 @@ package object etl4s {
    * @tparam A the result type
    * @param result the computation result
    * @param logs collected log values (any type)
-   * @param timing execution duration in milliseconds
+   * @param timeElapsed execution duration in milliseconds
    * @param validationErrors validation errors encountered (any type)
    */
   case class Trace[A](
     result: A,
     logs: List[Any] = List.empty,
-    timing: Option[Long] = None,
+    timeElapsed: Long = 0L,
     validationErrors: List[Any] = List.empty
   ) {
 
@@ -873,7 +873,7 @@ package object etl4s {
     def hasErrors: Boolean = validationErrors.nonEmpty
 
     /** Get timing in seconds */
-    def seconds: Option[Double] = timing.map(_ / 1000.0)
+    def seconds: Double = timeElapsed / 1000.0
 
     /** Get logs as strings */
     def logsAsStrings: List[String] = logs.map(_.toString)
@@ -940,15 +940,15 @@ package object etl4s {
         case None            => List.empty
       }
 
-      val timing = startTimeCollector.get() match {
-        case Some(startTime) => Some(System.currentTimeMillis() - startTime)
-        case None            => None
+      val timeElapsed = startTimeCollector.get() match {
+        case Some(startTime) => System.currentTimeMillis() - startTime
+        case None            => 0L
       }
 
       Trace(
         result = (), // Result not available during execution
         logs = logs,
-        timing = timing,
+        timeElapsed = timeElapsed,
         validationErrors = validationErrors
       )
     }
@@ -985,10 +985,10 @@ package object etl4s {
     def logs: List[Any] = current.logs
 
     /** Get current execution time in milliseconds */
-    def executionTimeMillis: Option[Long] = current.timing
+    def executionTimeMillis: Long = current.timeElapsed
 
     /** Get current execution time in seconds */
-    def executionTimeSeconds: Option[Double] = current.seconds
+    def executionTimeSeconds: Double = current.seconds
   }
 
   /**

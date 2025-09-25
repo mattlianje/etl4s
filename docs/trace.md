@@ -13,8 +13,39 @@ val pipeline = Transform[String, Int](_.length)
 val trace = pipeline.unsafeRunTraced("hello")
 
 trace.result     // 5
-trace.timing     // Some(2) - milliseconds  
+trace.timeElapsed // 2 - milliseconds  
 trace.hasErrors  // false
+```
+
+## Pipeline with Logging & Validation
+
+```scala
+val step1 = Transform[String, String] { input =>
+  Trace.log("Step 1: Converting to uppercase")
+  if (input.isEmpty) Trace.logValidation("Empty input provided")
+  Thread.sleep(10)
+  input.toUpperCase
+}
+
+val step2 = Transform[String, Int] { input =>
+  Trace.log("Step 2: Calculating length")
+  if (input.length < 3) Trace.logValidation("Input too short")
+  
+  /* React to upstream problems */
+  val delay = if (Trace.hasValidationErrors) 1 else 5
+  Thread.sleep(delay)
+  input.length
+}
+
+val pipeline = step1 ~> step2
+
+val trace = pipeline.unsafeRunTraced("hi")
+// Trace(
+//   result = 2,
+//   logs = List("Step 1: Converting to uppercase", "Step 2: Calculating length"),
+//   timeElapsed = 16L,
+//   validationErrors = List("Input too short")
+// )
 ```
 
 ## Safe Traced Execution
@@ -27,7 +58,7 @@ val pipeline = Transform[String, Int] { input =>
 
 val trace = pipeline.safeRunTraced("")
 trace.result.isFailure  // true - Try[Int] 
-trace.timing.isDefined  // true - still get timing
+trace.timeElapsed >= 0  // true - still get timing
 ```
 
 ## Logging During Execution
@@ -83,7 +114,7 @@ pipeline.unsafeRunTraced("")       // "FALLBACK"
 ```scala
 val pipeline = Transform[String, String] { input =>
   val current = Trace.current
-  if (current.timing.exists(_ > 1000)) {
+  if (current.timeElapsed > 1000) {
     "TIMEOUT"  // Fast path for slow executions
   } else {
     input.toUpperCase
@@ -108,9 +139,9 @@ val pipeline = Transform[String, String] { input =>
 |:---------|:-----|:------------|
 | `result` | `A` or `Try[A]` | Execution result |
 | `logs` | `List[Any]` | Collected log values |
-| `timing` | `Option[Long]` | Execution time in ms |
+| `timeElapsed` | `Long` | Execution time in ms |
 | `validationErrors` | `List[Any]` | Validation errors |
 | `hasErrors` | `Boolean` | Quick error check |
-| `seconds` | `Option[Double]` | Timing in seconds |
+| `seconds` | `Double` | Timing in seconds |
 
 This makes **etl4s** pipelines fully observable and self-aware - nodes can communicate, react to problems, and provide rich debugging information automatically.
