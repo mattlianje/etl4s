@@ -81,7 +81,8 @@ val len: Int = step("HELLO") // 5
 Or explicitly:
 - `.unsafeRun(input)` - runs and throws on failure
 - `.safeRun(input)` - returns a Try
-- `.unsafeRunTimedMillis(input)` - returns (result, elapsedTimeMillis)
+- `.unsafeRunTraced(input)` - returns Trace with logs, timing, validation errors
+- `.safeRunTraced(input)` - returns Trace with Try result safely
 
 ## Type safety
 **etl4s** won't let you chain together "blocks" that don't fit together:
@@ -163,62 +164,40 @@ This prints:
 Failed with: Boom! ... firing missile
 ```
 
-## Observation with `tap`
-The `tap` method allows you to observe values flowing through your pipeline without modifying them. 
-This is useful for logging, debugging, or collecting metrics.
+## Side Effects with `tap`
+The `tap` method performs side effects without disrupting pipeline flow:
 
 ```scala
 import etl4s._
 
-val sayHello   = Extract("hello world")
-val splitWords = Transform[String, Array[String]](_.split(" "))
+val fetchData = Extract(_ => List("file1.txt", "file2.txt"))
+val cleanup   = tap[List[String]] { files => cleanupTempFiles(files) }
+val process   = Transform[List[String], Int](_.size)
 
-val pipeline = sayHello ~> 
-               tap(x => println(s"Processing: $x")) ~>
-               splitWords
-
-val result = pipeline.unsafeRun(())
-```
-This gives:
-```
-Processing: hello world
-Array("hello", "world")
+val pipeline = fetchData ~> cleanup ~> process
 ```
 
-## Introspection with `Runtime`
-Nodes can access live execution state with `Runtime`. Calls are no-ops with `.unsafeRun()` but come alive with `.unsafeRunTraced()`:
+## Introspection with `Trace` and `runTraced`
+Nodes can communicate and react to execution state with `Trace`:
 
 ```scala
-val aware = Transform[String, Int] { input =>
-  Runtime.log("Processing")
-  if (input.isEmpty) Runtime.logValidation("Empty input")
-  val current = Runtime.current
-  if (current.hasValidationErrors) 0 else input.length
+val upstream = Transform[String, Int] { input =>
+  if (input.isEmpty) Trace.logValidation("Empty input")
+  input.length
 }
 
-aware.unsafeRun("hello")
-// 5
-aware.unsafeRunTraced("")
-// ExecutionInsights(
-//   result = 0,
-//   logs = List("Processing"),
-//   timing = Some(2),
-//   validationErrors = List("Empty input")
+val downstream = Transform[Int, String] { value =>
+  if (Trace.hasValidationErrors) "FALLBACK" else s"Length: $value"  
+}
+
+val pipeline = upstream ~> downstream
+
+pipeline.unsafeRunTraced("")
+// Trace(
+//   result = "FALLBACK", 
+//   validationErrors = List("Empty input"),
+//   timing = Some(2)
 // )
-```
-
-## Actions with `effect`
-The `effect` method lets you execute code without disrupting the flow of values through your pipeline.
-This is good for performing side effects, closing connections, doing IO's etc...
-
-```scala
-import etl4s._
-
-val fetchData      = Extract(_ => List("file1.txt", "file2.txt")
-val flushTempFiles = effect { println("Cleaning up temporary files...") }
-val processFiles   = Transform[List[String], Int](_.size)
-
-val p = fetchData ~> flushTempFiles ~> processFiles
 ```
 
 ## Parallelizing Tasks

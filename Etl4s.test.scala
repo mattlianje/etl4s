@@ -201,6 +201,42 @@ class BasicSpecs extends munit.FunSuite {
     val effectChain = e >> e >> e >> e >> e >> e
   }
 
+  test("tap preserves data flow while performing side effects") {
+    var processedData: Option[String] = None
+
+    val getData = Extract((unit: Unit) => "test data")
+    val logData = tap[String] { data =>
+      processedData = Some(data)
+      println(s"Processing: $data")
+    }
+    val transform = Transform[String, Int](_.length)
+
+    val pipeline = getData ~> logData ~> transform
+
+    val result = pipeline.unsafeRun(())
+
+    assertEquals(result, 9)
+    assertEquals(processedData, Some("test data"))
+  }
+
+  test("tap can be used for logging in pipeline composition") {
+    var tempFilesCleaned = false
+
+    val fetchData = Extract((unit: Unit) => List("file1.txt", "file2.txt"))
+    val flushTempFiles = tap[List[String]] { files =>
+      tempFilesCleaned = true
+      println(s"Cleaning up ${files.size} temporary files...")
+    }
+    val processFiles = Transform[List[String], Int](_.size)
+
+    val p = fetchData ~> flushTempFiles ~> processFiles
+
+    val result = p.unsafeRun(())
+
+    assertEquals(result, 2)
+    assert(tempFilesCleaned, "Temp files should have been cleaned")
+  }
+
   test("associative property holds") {
     val e1     = Extract(1)
     val plus1  = Transform[Int, Int](x => x + 2)
@@ -228,6 +264,23 @@ class BasicSpecs extends munit.FunSuite {
       elapsedTime < sleepDuration + 50,
       s"Elapsed time ($elapsedTime ms) should not be much longer than $sleepDuration ms"
     )
+  }
+
+  test("safeRunTraced handles failures gracefully") {
+    val failingNode = Node[String, Int] { s =>
+      if (s.isEmpty) throw new RuntimeException("Empty input!")
+      s.length
+    }
+
+    val successTrace = failingNode.safeRunTraced("hello")
+    assert(successTrace.result.isSuccess)
+    assertEquals(successTrace.result.get, 5)
+    assert(successTrace.timing.isDefined)
+
+    val failureTrace = failingNode.safeRunTraced("")
+    assert(failureTrace.result.isFailure)
+    assert(failureTrace.result.failed.get.getMessage.contains("Empty input!"))
+    assert(failureTrace.timing.isDefined) // Still get timing even on failure
   }
 
   test("metadata works") {
@@ -422,7 +475,7 @@ class ReaderSpecs extends munit.FunSuite {
     assertEquals(insights.logs, List("Processing string", "hello -> 5"))
   }
 
-  test("validation with Runtime") {
+  test("validation with Trace") {
     val node = Transform[String, Int](_.length)
       .validate((input, output) => (output > 0, "Length must be positive"))
       .validate((input, output) => (input.nonEmpty, "Input cannot be empty"))
@@ -430,23 +483,23 @@ class ReaderSpecs extends munit.FunSuite {
     val insights = node.unsafeRunTraced("test")
     assertEquals(insights.result, 4)
     assertEquals(insights.validationErrors, List.empty)
-    assert(!insights.hasValidationErrors)
+    assert(!insights.hasErrors)
 
     val failInsights = node.unsafeRunTraced("")
     assertEquals(failInsights.result, 0)
     assertEquals(failInsights.validationErrors.size, 2)
-    assert(failInsights.hasValidationErrors)
+    assert(failInsights.hasErrors)
   }
 
   test("nodes can access current execution state") {
     val upstream = Transform[String, Int] { input =>
-      Runtime.logValidation("Upstream error")
+      Trace.logValidation("Upstream error")
       input.length
     }
 
     val downstream = Transform[Int, Int] { value =>
-      if (Runtime.hasValidationErrors) {
-        Runtime.log("Using fallback due to errors")
+      if (Trace.hasValidationErrors) {
+        Trace.log("Using fallback due to errors")
         -999
       } else {
         value * 2
@@ -477,8 +530,8 @@ class ReaderSpecs extends munit.FunSuite {
 
   test("unified access to current execution insights") {
     val node = Transform[String, String] { input =>
-      Runtime.log("Step 1")
-      val current = Runtime.current
+      Trace.log("Step 1")
+      val current = Trace.current
       assertEquals(current.logs, List("Step 1"))
       assert(current.timing.isDefined)
 

@@ -85,9 +85,9 @@ package object etl4s {
      * Runs the node and collects insights about the execution.
      *
      * @param a the input value
-     * @return ExecutionInsights containing result and collected information
+     * @return Trace containing result and collected information
      */
-    def unsafeRunTraced(a: A): ExecutionInsights[B] = {
+    def unsafeRunTraced(a: A): Trace[B] = {
       val logCollector = new ThreadLocal[List[Any]] {
         override def initialValue(): List[Any] = List.empty
       }
@@ -96,21 +96,56 @@ package object etl4s {
       }
 
       val startTime = System.currentTimeMillis()
-      Runtime.setCollectors(logCollector, validationCollector, startTime)
+      Trace.setCollectors(logCollector, validationCollector, startTime)
 
       try {
         val result   = f(a)
         val endTime  = System.currentTimeMillis()
         val duration = endTime - startTime
 
-        ExecutionInsights(
+        Trace(
           result = result,
           logs = logCollector.get().reverse,
           timing = Some(duration),
           validationErrors = validationCollector.get().reverse
         )
       } finally {
-        Runtime.clearCollectors()
+        Trace.clearCollectors()
+        logCollector.remove()
+        validationCollector.remove()
+      }
+    }
+
+    /**
+     * Runs the node safely and collects insights about the execution.
+     *
+     * @param a the input value
+     * @return Trace with Try[B] as result
+     */
+    def safeRunTraced(a: A): Trace[Try[B]] = {
+      val logCollector = new ThreadLocal[List[Any]] {
+        override def initialValue(): List[Any] = List.empty
+      }
+      val validationCollector = new ThreadLocal[List[Any]] {
+        override def initialValue(): List[Any] = List.empty
+      }
+
+      val startTime = System.currentTimeMillis()
+      Trace.setCollectors(logCollector, validationCollector, startTime)
+
+      try {
+        val result   = Try(f(a))
+        val endTime  = System.currentTimeMillis()
+        val duration = endTime - startTime
+
+        Trace(
+          result = result,
+          logs = logCollector.get().reverse,
+          timing = Some(duration),
+          validationErrors = validationCollector.get().reverse
+        )
+      } finally {
+        Trace.clearCollectors()
         logCollector.remove()
         validationCollector.remove()
       }
@@ -360,7 +395,7 @@ package object etl4s {
      * @return a new Node that logs the message during execution
      */
     def withLog[T](message: T): Node[A, B] = Node { a =>
-      Runtime.log(message)
+      Trace.log(message)
       f(a)
     }
 
@@ -388,7 +423,7 @@ package object etl4s {
      */
     def withLog[T](messageFunc: (A, B) => T): Node[A, B] = Node { a =>
       val result = f(a)
-      Runtime.log(messageFunc(a, result))
+      Trace.log(messageFunc(a, result))
       result
     }
 
@@ -412,7 +447,7 @@ package object etl4s {
       val result             = f(a)
       val (condition, error) = validationFunc(a, result)
       if (!condition) {
-        Runtime.logValidation(error)
+        Trace.logValidation(error)
       }
       result
     }
@@ -819,40 +854,32 @@ package object etl4s {
   }
 
   /**
-   * Comprehensive insights collected during pipeline execution.
+   * Execution trace with result, logs, timing, and validation errors.
    *
    * @tparam A the result type
-   * @param result the actual computation result
-   * @param logs collected log values from withLog calls (any type)
-   * @param timing execution duration in milliseconds (if collected)
+   * @param result the computation result
+   * @param logs collected log values (any type)
+   * @param timing execution duration in milliseconds
    * @param validationErrors validation errors encountered (any type)
    */
-  case class ExecutionInsights[A](
+  case class Trace[A](
     result: A,
     logs: List[Any] = List.empty,
     timing: Option[Long] = None,
     validationErrors: List[Any] = List.empty
   ) {
 
-    /** Convenience method to check if any validation errors occurred */
-    def hasValidationErrors: Boolean = validationErrors.nonEmpty
+    /** Check if any validation errors occurred */
+    def hasErrors: Boolean = validationErrors.nonEmpty
 
-    /** Convenience method to check if any issues (validation errors) occurred */
-    def hasIssues: Boolean = hasValidationErrors
+    /** Get timing in seconds */
+    def seconds: Option[Double] = timing.map(_ / 1000.0)
 
-    /** Get timing in a more readable format */
-    def timingMillis: Option[Long]    = timing
-    def timingSeconds: Option[Double] = timing.map(_ / 1000.0)
-
-    /** Get logs as strings (for display/compatibility) */
+    /** Get logs as strings */
     def logsAsStrings: List[String] = logs.map(_.toString)
 
-    /** Get validation errors as strings (for display/compatibility) */
-    def validationErrorsAsStrings: List[String] = validationErrors.map(_.toString)
-
-    /** Get all messages (logs + validation errors) as strings */
-    def allMessagesAsStrings: List[String] =
-      logsAsStrings ++ validationErrorsAsStrings.map(e => s"[VALIDATION] $e")
+    /** Get validation errors as strings */
+    def errorsAsStrings: List[String] = validationErrors.map(_.toString)
   }
 
   /** Utility functions */
@@ -864,7 +891,7 @@ package object etl4s {
    * Provides unified access to the currently executing pipeline's runtime state,
    * including logs, validation errors, and execution timing.
    */
-  object Runtime {
+  object Trace {
     private val logCollector: ThreadLocal[Option[ThreadLocal[List[Any]]]] =
       new ThreadLocal[Option[ThreadLocal[List[Any]]]] {
         override def initialValue(): Option[ThreadLocal[List[Any]]] = None
@@ -897,12 +924,12 @@ package object etl4s {
     }
 
     /**
-     * Get the current execution insights as they're being built.
+     * Get the current execution trace as it's being built.
      * 
      * Returns a live view of the execution state including logs, validation errors,
      * and current execution time.
      */
-    def current: ExecutionInsights[Any] = {
+    def current: Trace[Any] = {
       val logs = logCollector.get() match {
         case Some(collector) => collector.get().reverse
         case None            => List.empty
@@ -918,7 +945,7 @@ package object etl4s {
         case None            => None
       }
 
-      ExecutionInsights(
+      Trace(
         result = (), // Result not available during execution
         logs = logs,
         timing = timing,
@@ -949,7 +976,7 @@ package object etl4s {
     }
 
     /** Check if there are any validation errors so far */
-    def hasValidationErrors: Boolean = current.hasValidationErrors
+    def hasValidationErrors: Boolean = current.hasErrors
 
     /** Get current validation errors (any type) */
     def validationErrors: List[Any] = current.validationErrors
@@ -961,7 +988,7 @@ package object etl4s {
     def executionTimeMillis: Option[Long] = current.timing
 
     /** Get current execution time in seconds */
-    def executionTimeSeconds: Option[Double] = current.timingSeconds
+    def executionTimeSeconds: Option[Double] = current.seconds
   }
 
   /**
