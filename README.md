@@ -79,8 +79,8 @@ You can run nodes like plain functions:
 val len: Int = step("HELLO") // 5
 ```
 Or explicitly:
-- `.unsafeRun(input)` - runs and throws on failure
-- `.safeRun(input)` - returns a Try
+- `.unsafeRun(input)` - runs and throws on failure (trace collected internally)
+- `.safeRun(input)` - returns a Try (trace collected internally) 
 - `.unsafeRunTraced(input)` - returns Trace with logs, timeElapsed, validation errors
 - `.safeRunTraced(input)` - returns Trace with Try result safely
 
@@ -177,8 +177,9 @@ val process   = Transform[List[String], Int](_.size)
 val pipeline = fetchData ~> cleanup ~> process
 ```
 
-## Introspection with `Trace` and `runTraced`
-Nodes can communicate and react to execution state with `Trace`:
+## Introspection with `Trace` 
+Nodes can communicate and react to execution state with `Trace` during any run method.
+**Trace information is collected automatically** - use `runTraced` methods to get the full details:
 
 ```scala
 val upstream = Transform[String, Int] { input =>
@@ -192,6 +193,10 @@ val downstream = Transform[Int, String] { value =>
 
 val pipeline = upstream ~> downstream
 
+// Regular run - trace works but only returns result
+pipeline.unsafeRun("")  // "FALLBACK"
+
+// Traced run - returns full execution details  
 pipeline.unsafeRunTraced("")
 // Trace(
 //   result = "FALLBACK", 

@@ -296,11 +296,11 @@ class ReaderSpecs extends munit.FunSuite {
   test("reader/context functionality") {
     case class Config(prefix: String, multiplier: Int)
 
-    val contextNode = Context[Config, Node[String, String]] { ctx =>
+    val contextNode = Reader[Config, Node[String, String]] { ctx =>
       Node(input => s"${ctx.prefix}: $input")
     }
 
-    val processNode = Context[Config, Node[String, Int]] { ctx =>
+    val processNode = Reader[Config, Node[String, Int]] { ctx =>
       Node(str => str.length * ctx.multiplier)
     }
 
@@ -317,7 +317,7 @@ class ReaderSpecs extends munit.FunSuite {
 
     val stringToLength = Node[String, Int](str => str.length)
 
-    val lengthProcessor = Context[Config, Node[Int, String]] { ctx =>
+    val lengthProcessor = Reader[Config, Node[Int, String]] { ctx =>
       Node(length => s"Length after processing: ${length * ctx.multiplier}")
     }
 
@@ -359,13 +359,13 @@ class ReaderSpecs extends munit.FunSuite {
       dateFormat: String
     ) extends HasExtendedDateConfig
 
-    val formatTimestamp = Context[HasExtendedDateConfig, Node[String, String]] { ctx =>
+    val formatTimestamp = Reader[HasExtendedDateConfig, Node[String, String]] { ctx =>
       Node { timestamp =>
         s"Formatted with ${ctx.dateFormat}: $timestamp (from ${ctx.appName})"
       }
     }
 
-    val checkDateRange = Context[HasDateConfig, Node[String, String]] { ctx =>
+    val checkDateRange = Reader[HasDateConfig, Node[String, String]] { ctx =>
       Node { formatted =>
         s"$formatted - Range check: ${ctx.startDate} to ${ctx.endDate}"
       }
@@ -392,21 +392,21 @@ class ReaderSpecs extends munit.FunSuite {
 
     object TestContext extends Etl4sContext[AppConfig] {
 
-      val extractWithContext: ExtractWithContext[String, Int] =
-        Context { ctx =>
+      val extractWithContext: Reader[AppConfig, Extract[String, Int]] =
+        Reader { ctx =>
           Extract { input =>
             s"${ctx.serviceName}: $input".length * ctx.timeout
           }
         }
 
-      val transformWithContext: TransformWithContext[Int, String] =
-        Context { ctx =>
+      val transformWithContext: Reader[AppConfig, Transform[Int, String]] =
+        Reader { ctx =>
           Transform { value =>
             s"Processed by ${ctx.serviceName} with value $value"
           }
         }
 
-      val testC = extractWithContext[Int, Int] { ctx => x =>
+      val testC = Etl4sContext.Extract[Int, Int] { ctx => x =>
         println(s"Yo ${ctx.serviceName}"); x * 2
       }
     }
@@ -419,10 +419,10 @@ class ReaderSpecs extends munit.FunSuite {
   }
 
   test("reader(node) all operators compat") {
-    val r1    = Context[Int, Transform[Int, Int]] { ctx => Transform(_ * 2) }
+    val r1    = Reader[Int, Transform[Int, Int]] { ctx => Transform(_ * 2) }
     val t1    = Transform[Int, Int](_ * 2)
     val tUnit = Transform[Unit, Unit](_ => ())
-    val unitR = Context[Int, Transform[Unit, Unit]] { ctx => Transform(_ => ()) }
+    val unitR = Reader[Int, Transform[Unit, Unit]] { ctx => Transform(_ => ()) }
 
     val test1 = r1 & r1 & r1 & t1
     val test2 = r1 &> r1 &> r1 &> t1
@@ -542,6 +542,62 @@ class ReaderSpecs extends munit.FunSuite {
     assertEquals(insights.result, "HELLO")
     assertEquals(insights.logs, List("Step 1"))
     assert(insights.timeElapsed >= 0)
+  }
+
+  test("unsafeRun collects trace internally") {
+    val node = Transform[String, String] { input =>
+      Trace.log("Processing in unsafeRun")
+      if (input.isEmpty) Trace.logValidation("Empty input")
+      input.toUpperCase
+    }
+
+    // Regular run should work and trace should be available during execution
+    val result = node.unsafeRun("hello")
+    assertEquals(result, "HELLO")
+
+    // Verify trace was accessible during execution by testing a node that uses trace info
+    val reactivePipeline = Transform[String, String] { input =>
+      Trace.log("Starting processing")
+      if (input.isEmpty) Trace.logValidation("Empty input")
+      input.toUpperCase
+    } ~> Transform[String, String] { input =>
+      // This node reacts to trace state
+      if (Trace.hasValidationErrors) "ERROR_DETECTED" else input + "!"
+    }
+
+    assertEquals(reactivePipeline.unsafeRun("hello"), "HELLO!")
+    assertEquals(reactivePipeline.unsafeRun(""), "ERROR_DETECTED")
+  }
+
+  test("safeRun collects trace internally") {
+    val node = Transform[String, String] { input =>
+      Trace.log("Processing in safeRun")
+      if (input.isEmpty) Trace.logValidation("Empty input")
+      input.toUpperCase
+    }
+
+    // Regular safe run should work and trace should be available during execution
+    val result = node.safeRun("hello")
+    assert(result.isSuccess)
+    assertEquals(result.get, "HELLO")
+
+    // Verify trace was accessible during execution with reactive pipeline
+    val reactivePipeline = Transform[String, String] { input =>
+      Trace.log("Starting processing")
+      if (input.isEmpty) Trace.logValidation("Empty input")
+      input.toUpperCase
+    } ~> Transform[String, String] { input =>
+      // This node reacts to trace state
+      if (Trace.hasValidationErrors) "ERROR_DETECTED" else input + "!"
+    }
+
+    val successResult = reactivePipeline.safeRun("hello")
+    assert(successResult.isSuccess)
+    assertEquals(successResult.get, "HELLO!")
+
+    val errorResult = reactivePipeline.safeRun("")
+    assert(errorResult.isSuccess)
+    assertEquals(errorResult.get, "ERROR_DETECTED")
   }
 
 }

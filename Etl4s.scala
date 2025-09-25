@@ -44,6 +44,29 @@ package object etl4s {
      */
     val f: A => B
 
+    /** Sets up trace collectors, executes block, cleans up. */
+    private def withTraceSetup[T](
+      block: (ThreadLocal[List[Any]], ThreadLocal[List[Any]], Long) => T
+    ): T = {
+      val logCollector = new ThreadLocal[List[Any]] {
+        override def initialValue(): List[Any] = List.empty
+      }
+      val validationCollector = new ThreadLocal[List[Any]] {
+        override def initialValue(): List[Any] = List.empty
+      }
+
+      val startTime = System.currentTimeMillis()
+      Trace.setCollectors(logCollector, validationCollector, startTime)
+
+      try {
+        block(logCollector, validationCollector, startTime)
+      } finally {
+        Trace.clearCollectors()
+        logCollector.remove()
+        validationCollector.remove()
+      }
+    }
+
     /**
      * Optional metadata that can be attached to a Node at compile time.
      * Useful for debugging, documentation, or runtime introspection.
@@ -66,20 +89,26 @@ package object etl4s {
 
     /**
      * Runs the node without any error handling.
+     * Trace information is collected internally but only accessible via unsafeRunTraced.
      *
      * @param a the input value
      * @return the transformed output
      * @throws any exception thrown by the underlying function
      */
-    def unsafeRun(a: A): B = f(a)
+    def unsafeRun(a: A): B = withTraceSetup { (_, _, _) =>
+      f(a)
+    }
 
     /**
      * Runs the node with error handling, wrapping the result in a Try.
+     * Trace information is collected internally but only accessible via safeRunTraced.
      *
      * @param a the input value
      * @return Success(result) or Failure(exception)
      */
-    def safeRun(a: A): Try[B] = Try(f(a))
+    def safeRun(a: A): Try[B] = withTraceSetup { (_, _, _) =>
+      Try(f(a))
+    }
 
     /**
      * Runs the node and collects insights about the execution.
@@ -87,18 +116,8 @@ package object etl4s {
      * @param a the input value
      * @return Trace containing result and collected information
      */
-    def unsafeRunTraced(a: A): Trace[B] = {
-      val logCollector = new ThreadLocal[List[Any]] {
-        override def initialValue(): List[Any] = List.empty
-      }
-      val validationCollector = new ThreadLocal[List[Any]] {
-        override def initialValue(): List[Any] = List.empty
-      }
-
-      val startTime = System.currentTimeMillis()
-      Trace.setCollectors(logCollector, validationCollector, startTime)
-
-      try {
+    def unsafeRunTraced(a: A): Trace[B] = withTraceSetup {
+      (logCollector, validationCollector, startTime) =>
         val result   = f(a)
         val endTime  = System.currentTimeMillis()
         val duration = endTime - startTime
@@ -109,11 +128,6 @@ package object etl4s {
           timeElapsed = duration,
           validationErrors = validationCollector.get().reverse
         )
-      } finally {
-        Trace.clearCollectors()
-        logCollector.remove()
-        validationCollector.remove()
-      }
     }
 
     /**
@@ -122,18 +136,8 @@ package object etl4s {
      * @param a the input value
      * @return Trace with Try[B] as result
      */
-    def safeRunTraced(a: A): Trace[Try[B]] = {
-      val logCollector = new ThreadLocal[List[Any]] {
-        override def initialValue(): List[Any] = List.empty
-      }
-      val validationCollector = new ThreadLocal[List[Any]] {
-        override def initialValue(): List[Any] = List.empty
-      }
-
-      val startTime = System.currentTimeMillis()
-      Trace.setCollectors(logCollector, validationCollector, startTime)
-
-      try {
+    def safeRunTraced(a: A): Trace[Try[B]] = withTraceSetup {
+      (logCollector, validationCollector, startTime) =>
         val result   = Try(f(a))
         val endTime  = System.currentTimeMillis()
         val duration = endTime - startTime
@@ -144,11 +148,6 @@ package object etl4s {
           timeElapsed = duration,
           validationErrors = validationCollector.get().reverse
         )
-      } finally {
-        Trace.clearCollectors()
-        logCollector.remove()
-        validationCollector.remove()
-      }
     }
 
     /**
@@ -710,14 +709,6 @@ package object etl4s {
     def ask[R]: Reader[R, R]           = Reader(identity)
   }
 
-  type Context[T, A] = Reader[T, A]
-
-  object Context {
-    def apply[T, A](f: T => A): Reader[T, A] = Reader(f)
-    def pure[T, A](a: A): Reader[T, A]       = Reader.pure(a)
-    def ask[T]: Reader[T, T]                 = Reader.ask
-  }
-
   /**
    * Extension methods for composing Reader-wrapped Nodes.
    *
@@ -1182,42 +1173,26 @@ package object etl4s {
    * @tparam T the configuration/context type
    */
   trait Etl4sContext[T] {
-    type ExtractWithContext[A, B]   = Context[T, Extract[A, B]]
-    type TransformWithContext[A, B] = Context[T, Transform[A, B]]
-    type LoadWithContext[A, B]      = Context[T, Load[A, B]]
-    type NodeWithContext[A, B]      = Context[T, Node[A, B]]
-    type PipelineWithContext[A, B]  = Context[T, Pipeline[A, B]]
-
-    def extractWithContext[A, B](f: T => A => B): ExtractWithContext[A, B] =
-      Extract.requires[T, A, B](f)
-    def transformWithContext[A, B](f: T => A => B): TransformWithContext[A, B] =
-      Transform.requires[T, A, B](f)
-    def loadWithContext[A, B](f: T => A => B): LoadWithContext[A, B] = Load.requires[T, A, B](f)
-    def nodeWithContext[A, B](f: T => A => B): NodeWithContext[A, B] = Node.requires[T, A, B](f)
-    def pipelineWithContext[A, B](f: T => A => B): PipelineWithContext[A, B] =
-      Pipeline.requires[T, A, B](f)
 
     /**
-     * Object providing more natural access to context-wrapped operations.
-     *
-     * Instead of calling `extractWithContext`, you can use the more natural:
-     * `Etl4sContext.Extract[A, B] { ctx => in => out }`
+     * Provides natural access to context-wrapped operations.
+     * Use as: `Etl4sContext.Extract[A, B] { ctx => in => out }`
      */
     object Etl4sContext {
-      def Extract[A, B](f: T => A => B): Context[T, Extract[A, B]] =
+      def Extract[A, B](f: T => A => B): Reader[T, Extract[A, B]] =
         etl4s.Extract.requires[T, A, B](f)
 
-      def Transform[A, B](f: T => A => B): Context[T, Transform[A, B]] =
+      def Transform[A, B](f: T => A => B): Reader[T, Transform[A, B]] =
         etl4s.Transform.requires[T, A, B](f)
 
-      def Load[A, B](f: T => A => B): Context[T, Load[A, B]] =
+      def Load[A, B](f: T => A => B): Reader[T, Load[A, B]] =
         etl4s.Load.requires[T, A, B](f)
 
-      def Pipeline[A, B](f: T => A => B): Context[T, Pipeline[A, B]] =
+      def Pipeline[A, B](f: T => A => B): Reader[T, Pipeline[A, B]] =
         etl4s.Pipeline.requires[T, A, B](f)
 
-      def Tap[A](f: T => A => Any): Context[T, Node[A, A]] =
-        Context { ctx =>
+      def Tap[A](f: T => A => Any): Reader[T, Node[A, A]] =
+        Reader { ctx =>
           Node { a =>
             f(ctx)(a)
             a

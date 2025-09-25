@@ -1,20 +1,30 @@
 # Pipeline Tracing with `Trace`
 
-Transform your nodes from blind boxes into aware, living components. With `Trace` and `runTraced`, nodes can access their execution context, react to upstream problems, and adapt their behavior dynamically.
+Transform your nodes from blind boxes into aware, living components. With `Trace`, nodes can access their execution context, react to upstream problems, and adapt their behavior dynamically.
 
-`Trace` calls are no-ops with regular `.unsafeRun()` - zero overhead until you need insights.
+**Trace information is collected during all runs.** Use `runTraced` methods to get the full execution details.
 
-## Basic Traced Execution
+## Regular Runs vs Traced Runs
+
+All run methods collect trace information internally:
 
 ```scala
 import etl4s._
 
-val pipeline = Transform[String, Int](_.length)
-val trace = pipeline.unsafeRunTraced("hello")
+val pipeline = Transform[String, Int] { input =>
+  Trace.log("Processing input")
+  input.length
+}
 
-trace.result     // 5
+// Regular run - trace collected but not returned
+val result: Int = pipeline.unsafeRun("hello")  // 5
+
+// Traced run - full trace returned with result
+val trace = pipeline.unsafeRunTraced("hello")
+trace.result      // 5
 trace.timeElapsed // 2 - milliseconds  
-trace.hasErrors  // false
+trace.hasErrors   // false
+trace.logs        // List("Processing input")
 ```
 
 ## Pipeline with Logging & Validation

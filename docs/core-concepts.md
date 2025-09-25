@@ -56,19 +56,29 @@ shout("hi")         // => "HI"
 ```
 
 ### 2) Use `.unsafeRun(...)`
-To run with error surfacing
+To run with error surfacing (trace information collected internally):
 ```scala
 pipeline.unsafeRun(())
 ```
 
 ### 3) Use `.safeRun(...)`
-To catch exceptions:
+To catch exceptions (trace information collected internally):
 ```scala
 val risky = Pipeline[String, Int](_.toInt)
 val result = risky.safeRun("oops")  // => Failure(...)
 ```
 
-### 4) Run and measure time
+### 4) Use traced execution
+To get full execution details including logs, timing, and validation errors:
+```scala
+val trace = pipeline.unsafeRunTraced(())
+// trace.result, trace.logs, trace.timeElapsed, trace.validationErrors
+
+val safeTrace = pipeline.safeRunTraced(())  
+// safeTrace.result is a Try[B]
+```
+
+### 5) Run and measure time
 Run your pipeline:
 ```scala
 val slow = Node[Unit, Unit](_ => Thread.sleep(100))
