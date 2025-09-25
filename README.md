@@ -194,15 +194,17 @@ val downstream = Transform[Int, String] { value =>
 val pipeline = upstream ~> downstream
 
 /* Regular run - trace works but only returns result */
-pipeline.unsafeRun("")  /* "FALLBACK" */
+pipeline.unsafeRun("")  // "FALLBACK"
 
 /* Traced run - returns full execution details */  
 pipeline.unsafeRunTraced("")
-/* Trace(
-     result = "FALLBACK", 
-     validationErrors = List("Empty input"),
-     timeElapsed = 2
-   ) */
+```
+```
+Trace(
+  result = "FALLBACK", 
+  validationErrors = List("Empty input"),
+  timeElapsed = 2
+)
 ```
 
 ## Parallelizing Tasks
