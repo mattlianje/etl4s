@@ -185,6 +185,28 @@ Processing: hello world
 Array("hello", "world")
 ```
 
+## Introspection with `Runtime`
+Nodes can access live execution state with `Runtime`. Calls are no-ops with `.unsafeRun()` but come alive with `.unsafeRunTraced()`:
+
+```scala
+val aware = Transform[String, Int] { input =>
+  Runtime.log("Processing")
+  if (input.isEmpty) Runtime.logValidation("Empty input")
+  val current = Runtime.current
+  if (current.hasValidationErrors) 0 else input.length
+}
+
+aware.unsafeRun("hello")
+// 5
+aware.unsafeRunTraced("")
+// ExecutionInsights(
+//   result = 0,
+//   logs = List("Processing"),
+//   timing = Some(2),
+//   validationErrors = List("Empty input")
+// )
+```
+
 ## Actions with `effect`
 The `effect` method lets you execute code without disrupting the flow of values through your pipeline.
 This is good for performing side effects, closing connections, doing IO's etc...

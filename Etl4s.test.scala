@@ -422,7 +422,7 @@ class ReaderSpecs extends munit.FunSuite {
     assertEquals(insights.logs, List("Processing string", "hello -> 5"))
   }
 
-  test("validation with Etl4sExecution") {
+  test("validation with Runtime") {
     val node = Transform[String, Int](_.length)
       .validate((input, output) => (output > 0, "Length must be positive"))
       .validate((input, output) => (input.nonEmpty, "Input cannot be empty"))
@@ -440,13 +440,13 @@ class ReaderSpecs extends munit.FunSuite {
 
   test("nodes can access current execution state") {
     val upstream = Transform[String, Int] { input =>
-      Etl4sExecution.logValidation("Upstream error")
+      Runtime.logValidation("Upstream error")
       input.length
     }
 
     val downstream = Transform[Int, Int] { value =>
-      if (Etl4sExecution.hasValidationErrors) {
-        Etl4sExecution.log("Using fallback due to errors")
+      if (Runtime.hasValidationErrors) {
+        Runtime.log("Using fallback due to errors")
         -999
       } else {
         value * 2
@@ -477,8 +477,8 @@ class ReaderSpecs extends munit.FunSuite {
 
   test("unified access to current execution insights") {
     val node = Transform[String, String] { input =>
-      Etl4sExecution.log("Step 1")
-      val current = Etl4sExecution.current
+      Runtime.log("Step 1")
+      val current = Runtime.current
       assertEquals(current.logs, List("Step 1"))
       assert(current.timing.isDefined)
 

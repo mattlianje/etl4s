@@ -96,7 +96,7 @@ package object etl4s {
       }
 
       val startTime = System.currentTimeMillis()
-      Etl4sExecution.setCollectors(logCollector, validationCollector, startTime)
+      Runtime.setCollectors(logCollector, validationCollector, startTime)
 
       try {
         val result   = f(a)
@@ -110,7 +110,7 @@ package object etl4s {
           validationErrors = validationCollector.get().reverse
         )
       } finally {
-        Etl4sExecution.clearCollectors()
+        Runtime.clearCollectors()
         logCollector.remove()
         validationCollector.remove()
       }
@@ -360,7 +360,7 @@ package object etl4s {
      * @return a new Node that logs the message during execution
      */
     def withLog[T](message: T): Node[A, B] = Node { a =>
-      Etl4sExecution.log(message)
+      Runtime.log(message)
       f(a)
     }
 
@@ -388,7 +388,7 @@ package object etl4s {
      */
     def withLog[T](messageFunc: (A, B) => T): Node[A, B] = Node { a =>
       val result = f(a)
-      Etl4sExecution.log(messageFunc(a, result))
+      Runtime.log(messageFunc(a, result))
       result
     }
 
@@ -412,7 +412,7 @@ package object etl4s {
       val result             = f(a)
       val (condition, error) = validationFunc(a, result)
       if (!condition) {
-        Etl4sExecution.logValidation(error)
+        Runtime.logValidation(error)
       }
       result
     }
@@ -859,12 +859,12 @@ package object etl4s {
   def tap[A](f: A => Any): Node[A, A] = Node[A, A](a => { f(a); a })
 
   /**
-   * Access to current pipeline execution insights and state.
+   * Access to current pipeline execution state.
    * 
-   * Provides unified access to the currently executing pipeline's insights,
+   * Provides unified access to the currently executing pipeline's runtime state,
    * including logs, validation errors, and execution timing.
    */
-  object Etl4sExecution {
+  object Runtime {
     private val logCollector: ThreadLocal[Option[ThreadLocal[List[Any]]]] =
       new ThreadLocal[Option[ThreadLocal[List[Any]]]] {
         override def initialValue(): Option[ThreadLocal[List[Any]]] = None
