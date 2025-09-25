@@ -51,8 +51,8 @@ val shout = Pipeline[String, String](_.toUpperCase)
 ### 1) Call them like functions
 All pipelines are just values of type `In => Out`, so you can run them like this:
 ```scala
-pipeline(())        // => "Length: 5"
-shout("hi")         // => "HI"
+pipeline(())        /* => "Length: 5" */
+shout("hi")         /* => "HI" */
 ```
 
 ### 2) Use `.unsafeRun(...)`

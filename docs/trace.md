@@ -16,10 +16,10 @@ val pipeline = Transform[String, Int] { input =>
   input.length
 }
 
-// Regular run - trace collected but not returned
+/* Regular run - trace collected but not returned */
 val result: Int = pipeline.unsafeRun("hello")  // 5
 
-// Traced run - full trace returned with result
+/* Traced run - full trace returned with result */
 val trace = pipeline.unsafeRunTraced("hello")
 ```
 
@@ -91,7 +91,7 @@ val pipeline = Transform[String, Int] { input =>
 
 val trace = pipeline.unsafeRunTraced("test")
 trace.result  // 8
-trace.logs    // List("Processing started", "Result: 8")
+trace.logs    /* List("Processing started", "Result: 8") */
 ```
 
 ## Validation Errors
@@ -104,7 +104,7 @@ val pipeline = Transform[String, Int] { input =>
 
 val trace = pipeline.unsafeRunTraced("")
 trace.hasErrors        // true
-trace.validationErrors // List("Empty input")
+trace.validationErrors /* List("Empty input") */
 ```
 
 ## Cross-Node Communication
@@ -123,8 +123,8 @@ val downstream = Transform[Int, String] { value =>
 
 val pipeline = upstream ~> downstream
 
-pipeline.unsafeRunTraced("hello")  // "Length: 5"
-pipeline.unsafeRunTraced("")       // "FALLBACK"
+pipeline.unsafeRunTraced("hello")  /* "Length: 5" */
+pipeline.unsafeRunTraced("")       /* "FALLBACK" */
 ```
 
 ## Live Execution State

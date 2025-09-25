@@ -70,5 +70,5 @@ val summarize = Transform[(List[User], List[User]), String] {
 }
 
 val pipeline = extract ~> split ~> summarize
-pipeline.unsafeRun(())  // "1 valid / 1 invalid"
+pipeline.unsafeRun(())  /* "1 valid / 1 invalid" */
 ```
