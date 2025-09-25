@@ -1,6 +1,6 @@
 # Pipeline Tracing with `Trace`
 
-Transform your nodes from blind boxes into aware, living components. With `Trace`, nodes can access their execution context, react to upstream problems, and adapt their behavior dynamically.
+Build aware, living components with `Trace`. Nodes can access their execution context, react to upstream problems, and adapt their behavior dynamically.
 
 **Trace information is collected during all runs.** Use `runTraced` methods to get the full execution details.
 
@@ -21,10 +21,15 @@ val result: Int = pipeline.unsafeRun("hello")  // 5
 
 // Traced run - full trace returned with result
 val trace = pipeline.unsafeRunTraced("hello")
-trace.result      // 5
-trace.timeElapsed // 2 - milliseconds  
-trace.hasErrors   // false
-trace.logs        // List("Processing input")
+```
+
+```
+Trace(
+  result = 5,
+  logs = List("Processing input"),
+  timeElapsed = 2L,
+  validationErrors = List()
+)
 ```
 
 ## Pipeline with Logging & Validation
