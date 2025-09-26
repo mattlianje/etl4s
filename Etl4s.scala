@@ -902,20 +902,44 @@ package object etl4s {
       }
     }
 
-    /** Check if there are any errors so far */
+    /** Get the current trace state */
+    def getCurrent: Trace[Any] = current
+
+    /** Get current logs */
+    def getLogs: List[Any] = current.logs
+
+    /** Get current errors */
+    def getErrors: List[Any] = current.errors
+
+    /** Get elapsed time in milliseconds */
+    def getElapsedTimeMillis: Long = current.timeElapsedMillis
+
+    /** Get elapsed time in seconds */
+    def getElapsedTimeSeconds: Double = current.seconds
+
+    /** Get logs as strings */
+    def getLogsAsStrings: List[String] = current.logsAsStrings
+
+    /** Get errors as strings */
+    def getErrorsAsStrings: List[String] = current.errorsAsStrings
+
+    /** Check if there are any errors */
     def hasErrors: Boolean = current.hasErrors
 
-    /** Get current errors (any type) */
-    def errors: List[Any] = current.errors
+    /** Check if there are any logs */
+    def hasLogs: Boolean = current.logs.nonEmpty
 
-    /** Get current logs (any type) */
-    def logs: List[Any] = current.logs
+    /** Get the number of logs */
+    def getLogCount: Int = current.logs.size
 
-    /** Get current execution time in milliseconds */
-    def executionTimeMillis: Long = current.timeElapsedMillis
+    /** Get the number of errors */
+    def getErrorCount: Int = current.errors.size
 
-    /** Get current execution time in seconds */
-    def executionTimeSeconds: Double = current.seconds
+    /** Get the last log (most recent) */
+    def getLastLog: Option[Any] = current.logs.headOption
+
+    /** Get the last error (most recent) */
+    def getLastError: Option[Any] = current.errors.headOption
   }
 
   /**

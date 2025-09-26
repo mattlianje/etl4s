@@ -75,12 +75,23 @@ Trace(
 
 ## Live Pipeline State
 
-In any `Node` you can check what is happening right now with `Trace.current`
+In any `Node` you can check what is happening right now with `Trace.getCurrent`
 
 ```scala
 val p = Transform[String, String] { input =>
-  val current = Trace.current
+  val current = Trace.getCurrent
   if (current.timeElapsedMillis > 1000) {
+    "TIMEOUT"  /* Fast path for slow executions */
+  } else {
+    input.toUpperCase
+  }
+}
+```
+
+**Or use the direct getters:**
+```scala
+val p = Transform[String, String] { input =>
+  if (Trace.getElapsedTimeMillis > 1000) {
     "TIMEOUT"  /* Fast path for slow executions */
   } else {
     input.toUpperCase
@@ -99,15 +110,40 @@ if (Trace.hasErrors) {
 
 ## Quick Reference
 
-
+### Logging and Error Reporting
 | Method | Description | Example |
 |:-------|:------------|:--------|
 | `Trace.log(message)` | Log any value | `Trace.log("Processing started")` |
-| `Trace.error(err)` | Log error | `Trace.error("Invalid format")` |  
+| `Trace.error(err)` | Log error | `Trace.error("Invalid format")` |
+
+### State Checking
+| Method | Description | Example |
+|:-------|:------------|:--------|
 | `Trace.hasErrors` | Check for errors | `if (Trace.hasErrors) ...` |
-| `Trace.current` | Get live execution state | `val state = Trace.current` |
-| `Trace.logs` | Current logs | `val logs = Trace.logs` |
-| `Trace.errors` | Current errors | `val errors = Trace.errors` |
+| `Trace.hasLogs` | Check for logs | `if (Trace.hasLogs) ...` |
+
+### Getting Current State
+| Method | Description | Example |
+|:-------|:------------|:--------|
+| `Trace.getCurrent` | Get live execution state | `val state = Trace.getCurrent` |
+| `Trace.getLogs` | Current logs | `val logs = Trace.getLogs` |
+| `Trace.getErrors` | Current errors | `val errors = Trace.getErrors` |
+| `Trace.getLogsAsStrings` | Logs as strings | `val logStrings = Trace.getLogsAsStrings` |
+| `Trace.getErrorsAsStrings` | Errors as strings | `val errorStrings = Trace.getErrorsAsStrings` |
+
+### Timing Information
+| Method | Description | Example |
+|:-------|:------------|:--------|
+| `Trace.getElapsedTimeMillis` | Time in milliseconds | `val ms = Trace.getElapsedTimeMillis` |
+| `Trace.getElapsedTimeSeconds` | Time in seconds | `val secs = Trace.getElapsedTimeSeconds` |
+
+### Counts and Recent Items
+| Method | Description | Example |
+|:-------|:------------|:--------|
+| `Trace.getLogCount` | Number of logs | `val count = Trace.getLogCount` |
+| `Trace.getErrorCount` | Number of errors | `val count = Trace.getErrorCount` |
+| `Trace.getLastLog` | Most recent log | `val last = Trace.getLastLog` |
+| `Trace.getLastError` | Most recent error | `val last = Trace.getLastError` |
 
 ## Trace Result Properties
 
