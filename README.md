@@ -253,16 +253,6 @@ val pipeline =
   (e1 &> e2 &> e3).zip ~> merge ~> (consoleLoad &> dbLoad)
 ```
 
-## Built-in Tools
-**etl4s** comes with 3 extra abstractions to make your pipelines hard like iron, and flexible like bamboo.
-
-- `Reader[R, A]` Config-driven pipelines
-- `Writer[W, A]`: Log accumulating pipelines
-- `Validated[T]` A lightweight, powerful validation stacking subsystem
-
-With `Reader` (aliased `Context`), you can chain context-aware Nodes using `~>` - no flatMaps, no monadic
-stack or transformers. [More on etl4s config...](https://mattlianje.github.io/etl4s/config/)
-
 ## Configuration
 
 Some steps need config. Some don’t.
