@@ -248,13 +248,13 @@ class BasicSpecs extends munit.FunSuite {
     assert(p1(()) == p2(()))
   }
 
-  test("unsafeRunTraced measures execution time") {
+  test("unsafeRunTrace measures execution time") {
     // Create a node that sleeps for a specific time
     val sleepDuration = 100
     val sleepNode = Node[Unit, Unit] { _ =>
       Thread.sleep(sleepDuration)
     }
-    val insights    = sleepNode.unsafeRunTraced(())
+    val insights    = sleepNode.unsafeRunTrace(())
     val elapsedTime = insights.timeElapsed
     assert(
       elapsedTime >= sleepDuration,
@@ -266,18 +266,18 @@ class BasicSpecs extends munit.FunSuite {
     )
   }
 
-  test("safeRunTraced handles failures gracefully") {
+  test("safeRunTrace handles failures gracefully") {
     val failingNode = Node[String, Int] { s =>
       if (s.isEmpty) throw new RuntimeException("Empty input!")
       s.length
     }
 
-    val successTrace = failingNode.safeRunTraced("hello")
+    val successTrace = failingNode.safeRunTrace("hello")
     assert(successTrace.result.isSuccess)
     assertEquals(successTrace.result.get, 5)
     assert(successTrace.timeElapsed >= 0)
 
-    val failureTrace = failingNode.safeRunTraced("")
+    val failureTrace = failingNode.safeRunTrace("")
     assert(failureTrace.result.isFailure)
     assert(failureTrace.result.failed.get.getMessage.contains("Empty input!"))
     assert(failureTrace.timeElapsed >= 0) // Still get timing even on failure
@@ -465,40 +465,46 @@ class ReaderSpecs extends munit.FunSuite {
     assertEquals(result, "Processed by DataService with value 34")
   }
 
-  test("basic logging with withLog") {
-    val node = Transform[String, Int](_.length)
-      .withLog("Processing string")
-      .withLog((input: String, output: Int) => s"$input -> $output")
+  test("basic logging with Trace.log") {
+    val node = Transform[String, Int] { input =>
+      Trace.log("Processing string")
+      val result = input.length
+      Trace.log(s"$input -> $result")
+      result
+    }
 
-    val insights = node.unsafeRunTraced("hello")
+    val insights = node.unsafeRunTrace("hello")
     assertEquals(insights.result, 5)
     assertEquals(insights.logs, List("Processing string", "hello -> 5"))
   }
 
   test("validation with Trace") {
-    val node = Transform[String, Int](_.length)
-      .validate((input, output) => (output > 0, "Length must be positive"))
-      .validate((input, output) => (input.nonEmpty, "Input cannot be empty"))
+    val node = Transform[String, Int] { input =>
+      val result = input.length
+      if (result <= 0) Trace.error("Length must be positive")
+      if (input.isEmpty) Trace.error("Input cannot be empty")
+      result
+    }
 
-    val insights = node.unsafeRunTraced("test")
+    val insights = node.unsafeRunTrace("test")
     assertEquals(insights.result, 4)
-    assertEquals(insights.validationErrors, List.empty)
+    assertEquals(insights.errors, List.empty)
     assert(!insights.hasErrors)
 
-    val failInsights = node.unsafeRunTraced("")
+    val failInsights = node.unsafeRunTrace("")
     assertEquals(failInsights.result, 0)
-    assertEquals(failInsights.validationErrors.size, 2)
+    assertEquals(failInsights.errors.size, 2)
     assert(failInsights.hasErrors)
   }
 
   test("nodes can access current execution state") {
     val upstream = Transform[String, Int] { input =>
-      Trace.logValidation("Upstream error")
+      Trace.error("Upstream error")
       input.length
     }
 
     val downstream = Transform[Int, Int] { value =>
-      if (Trace.hasValidationErrors) {
+      if (Trace.hasErrors) {
         Trace.log("Using fallback due to errors")
         -999
       } else {
@@ -507,10 +513,10 @@ class ReaderSpecs extends munit.FunSuite {
     }
 
     val pipeline = upstream ~> downstream
-    val insights = pipeline.unsafeRunTraced("test")
+    val insights = pipeline.unsafeRunTrace("test")
 
     assertEquals(insights.result, -999)
-    assertEquals(insights.validationErrors, List("Upstream error"))
+    assertEquals(insights.errors, List("Upstream error"))
     assertEquals(insights.logs, List("Using fallback due to errors"))
   }
 
@@ -518,14 +524,17 @@ class ReaderSpecs extends munit.FunSuite {
     case class LogEvent(message: String, timestamp: Long)
     case class ValidationError(field: String, code: Int)
 
-    val node = Transform[String, Int](_.length)
-      .withLog(LogEvent("Started processing", System.currentTimeMillis()))
-      .validate((input, output) => (output > 0, ValidationError("length", 404)))
+    val node = Transform[String, Int] { input =>
+      Trace.log(LogEvent("Started processing", System.currentTimeMillis()))
+      val result = input.length
+      if (result <= 0) Trace.error(ValidationError("length", 404))
+      result
+    }
 
-    val insights = node.unsafeRunTraced("test")
+    val insights = node.unsafeRunTrace("test")
     assertEquals(insights.result, 4)
     assert(insights.logs.head.isInstanceOf[LogEvent])
-    assertEquals(insights.validationErrors, List.empty)
+    assertEquals(insights.errors, List.empty)
   }
 
   test("unified access to current execution insights") {
@@ -538,7 +547,7 @@ class ReaderSpecs extends munit.FunSuite {
       input.toUpperCase
     }
 
-    val insights = node.unsafeRunTraced("hello")
+    val insights = node.unsafeRunTrace("hello")
     assertEquals(insights.result, "HELLO")
     assertEquals(insights.logs, List("Step 1"))
     assert(insights.timeElapsed >= 0)
@@ -547,7 +556,7 @@ class ReaderSpecs extends munit.FunSuite {
   test("unsafeRun collects trace internally") {
     val node = Transform[String, String] { input =>
       Trace.log("Processing in unsafeRun")
-      if (input.isEmpty) Trace.logValidation("Empty input")
+      if (input.isEmpty) Trace.error("Empty input")
       input.toUpperCase
     }
 
@@ -558,11 +567,11 @@ class ReaderSpecs extends munit.FunSuite {
     // Verify trace was accessible during execution by testing a node that uses trace info
     val reactivePipeline = Transform[String, String] { input =>
       Trace.log("Starting processing")
-      if (input.isEmpty) Trace.logValidation("Empty input")
+      if (input.isEmpty) Trace.error("Empty input")
       input.toUpperCase
     } ~> Transform[String, String] { input =>
       // This node reacts to trace state
-      if (Trace.hasValidationErrors) "ERROR_DETECTED" else input + "!"
+      if (Trace.hasErrors) "ERROR_DETECTED" else input + "!"
     }
 
     assertEquals(reactivePipeline.unsafeRun("hello"), "HELLO!")
@@ -572,7 +581,7 @@ class ReaderSpecs extends munit.FunSuite {
   test("safeRun collects trace internally") {
     val node = Transform[String, String] { input =>
       Trace.log("Processing in safeRun")
-      if (input.isEmpty) Trace.logValidation("Empty input")
+      if (input.isEmpty) Trace.error("Empty input")
       input.toUpperCase
     }
 
@@ -584,11 +593,11 @@ class ReaderSpecs extends munit.FunSuite {
     // Verify trace was accessible during execution with reactive pipeline
     val reactivePipeline = Transform[String, String] { input =>
       Trace.log("Starting processing")
-      if (input.isEmpty) Trace.logValidation("Empty input")
+      if (input.isEmpty) Trace.error("Empty input")
       input.toUpperCase
     } ~> Transform[String, String] { input =>
       // This node reacts to trace state
-      if (Trace.hasValidationErrors) "ERROR_DETECTED" else input + "!"
+      if (Trace.hasErrors) "ERROR_DETECTED" else input + "!"
     }
 
     val successResult = reactivePipeline.safeRun("hello")

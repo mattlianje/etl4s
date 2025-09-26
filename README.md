@@ -17,9 +17,10 @@ Battle-tested at [Instacart](https://www.instacart.com/). Part of [d4](https://g
 - Declarative, typed pipeline endpoints
 - Use **Etl4s.scala** like a header file
 - Type-safe, compile-time checked
-- Config-driven by design
+- [Config-driven](#configuration) by design
 - Easy, monadic composition of pipelines
 - Built-in retry/failure handling
+- Automatic [trace collection](#pipeline-tracing-with-trace) with cross-node communication
 
 ## Installation
 
@@ -81,8 +82,8 @@ val len: Int = step("HELLO") // 5
 Or explicitly:
 - `.unsafeRun(input)` - runs and throws on failure (trace collected internally)
 - `.safeRun(input)` - returns a Try (trace collected internally) 
-- `.unsafeRunTraced(input)` - returns Trace with logs, timeElapsed, validation errors
-- `.safeRunTraced(input)` - returns Trace with Try result safely
+- `.unsafeRunTrace(input)` - returns Trace with logs, timeElapsed, validation errors
+- `.safeRunTrace(input)` - returns Trace with Try result safely
 
 ## Type safety
 **etl4s** won't let you chain together "blocks" that don't fit together:
@@ -177,33 +178,31 @@ val process   = Transform[List[String], Int](_.size)
 val pipeline = fetchData ~> cleanup ~> process
 ```
 
-## Introspection with `Trace` 
-Nodes can communicate and react to execution state with `Trace` during any run method.
-**Trace information is collected automatically** - use `runTraced` methods to get the full details:
+## Pipeline Tracing with `Trace` 
+Your nodes can record messages, report errors, and check execution timing - all automatically collected across your entire pipeline. Use `runTrace` methods to get full execution details:
 
 ```scala
 val upstream = Transform[String, Int] { input =>
-  if (input.isEmpty) Trace.logValidation("Empty input")
+  if (input.isEmpty) Trace.error("Empty input")
   input.length
 }
 
 val downstream = Transform[Int, String] { value =>
-  if (Trace.hasValidationErrors) "FALLBACK" else s"Length: $value"  
+  if (Trace.hasErrors) "FALLBACK" else s"Length: $value"  
 }
 
-val pipeline = upstream ~> downstream
+val p = upstream ~> downstream
 
-/* Regular run - trace works but only returns result */
-pipeline.unsafeRun("")  // "FALLBACK"
-
-/* Traced run - returns full execution details */  
-pipeline.unsafeRunTraced("")
+p.unsafeRun("")        /* "FALLBACK" */
+p.unsafeRunTrace("")   /* Full trace with execution details */
 ```
+
 ```
 Trace(
   result = "FALLBACK", 
-  validationErrors = List("Empty input"),
-  timeElapsed = 2
+  errors = List("Empty input"),
+  logs = List(),
+  timeElapsed = 2L
 )
 ```
 

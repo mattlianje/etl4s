@@ -48,7 +48,7 @@ For testing with execution insights, see the [Pipeline Tracing](trace.md) sectio
 import etl4s._
 
 val pipeline = Transform[String, Int](_.length)
-val trace = pipeline.unsafeRunTraced("test")
+val trace = pipeline.unsafeRunTrace("test")
 
 assert(trace.result == 4)
 assert(trace.timeElapsed >= 0)

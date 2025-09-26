@@ -1,155 +1,110 @@
 # Pipeline Tracing with `Trace`
 
-Build aware, living components with `Trace`. Nodes can access their execution context, react to upstream problems, and adapt their behavior dynamically.
+Your nodes can record messages, report errors, and check execution timing - all automatically collected across your entire pipeline.
 
-**Trace information is collected during all runs.** Use `runTraced` methods to get the full execution details.
 
-## Regular Runs vs Traced Runs
+**How to start:** Call `Trace.log()` and `Trace.error()` inside any node. Use `runTrace` to get full execution details, or regular `run` methods for just results.
 
-All run methods collect trace information internally:
+**How it works:** Trace uses two ThreadLocal channels (like Unix stdout/stderr) that automatically accumulate across your pipeline - thread-safe with minimal overhead:
 
 ```scala
-import etl4s._
-
-val pipeline = Transform[String, Int] { input =>
+val p = Transform[String, Int] { input =>
   Trace.log("Processing input")
   input.length
 }
 
-/* Regular run - trace collected but not returned */
-val result: Int = pipeline.unsafeRun("hello")  // 5
-
-/* Traced run - full trace returned with result */
-val trace = pipeline.unsafeRunTraced("hello")
+val res: Int = p.unsafeRun("hello")  // 5
+val resTrace: Trace[Int] = p.unsafeRunTrace("hello")
 ```
 
 ```
 Trace(
   result = 5,
   logs = List("Processing input"),
-  timeElapsed = 2L,
-  validationErrors = List()
+  errors = List(),
+  timeElapsed = 2L
 )
 ```
 
-## Pipeline with Logging & Validation
+## Nodes That React to Each Other
 
-```scala
-val toUpper = Transform[String, String] { input =>
-  Trace.log("Converting to uppercase")
-  if (input.isEmpty) Trace.logValidation("Empty input provided")
-  Thread.sleep(10)
-  input.toUpperCase
-}
-
-val getLength = Transform[String, Int] { input =>
-  Trace.log("Calculating length")
-  if (input.length < 3) Trace.logValidation("Input too short")
-  
-  /* React to upstream problems */
-  val delay = if (Trace.hasValidationErrors) 1 else 5
-  Thread.sleep(delay)
-  input.length
-}
-
-val pipeline = toUpper ~> getLength
-
-val trace = pipeline.unsafeRunTraced("hi")
-```
-
-```
-Trace(
-  result = 2,
-  logs = List("Converting to uppercase", "Calculating length"),
-  timeElapsed = 16L,
-  validationErrors = List("Input too short")
-)
-```
-
-## Safe Traced Execution
-
-```scala
-val pipeline = Transform[String, Int] { input =>
-  if (input.isEmpty) throw new RuntimeException("Empty!")
-  input.length
-}
-
-val trace = pipeline.safeRunTraced("")
-trace.result.isFailure  // true - Try[Int] 
-trace.timeElapsed >= 0  // true - still get timing
-```
-
-## Logging During Execution
-
-```scala
-val pipeline = Transform[String, Int] { input =>
-  Trace.log("Processing started")
-  val result = input.length * 2
-  Trace.log(s"Result: $result")
-  result
-}
-
-val trace = pipeline.unsafeRunTraced("test")
-trace.result  // 8
-trace.logs    /* List("Processing started", "Result: 8") */
-```
-
-## Validation Errors
-
-```scala
-val pipeline = Transform[String, Int] { input =>
-  if (input.isEmpty) Trace.logValidation("Empty input")
-  input.length
-}
-
-val trace = pipeline.unsafeRunTraced("")
-trace.hasErrors        // true
-trace.validationErrors /* List("Empty input") */
-```
-
-## Cross-Node Communication
-
-Nodes can react to upstream validation errors:
+Downstream nodes can instantly see what happened upstream and adapt their behavior.
 
 ```scala
 val upstream = Transform[String, Int] { input =>
-  if (input.isEmpty) Trace.logValidation("Empty input")
+  if (input.isEmpty) Trace.error("Empty input")
   input.length
 }
 
 val downstream = Transform[Int, String] { value =>
-  if (Trace.hasValidationErrors) "FALLBACK" else s"Length: $value"
+  if (Trace.hasErrors) "FALLBACK" else s"Length: $value"  
 }
 
-val pipeline = upstream ~> downstream
+val p = upstream ~> downstream
 
-pipeline.unsafeRunTraced("hello")  /* "Length: 5" */
-pipeline.unsafeRunTraced("")       /* "FALLBACK" */
+p.unsafeRun("hello")  /* "Length: 5" */
+p.unsafeRun("")       /* "FALLBACK" */
 ```
 
-## Live Execution State
+**No wiring required.** The downstream node automatically knows about upstream problems and switches to fallback mode since it can access the run's `Trace`
+
+## Debug Any Pipeline Instantly
 
 ```scala
-val pipeline = Transform[String, String] { input =>
+val p = Transform[String, Int] { input =>
+  Trace.log("Processing started")
+  if (input.isEmpty) Trace.error("Empty input!")
+  input.length * 2
+}
+
+val trace = p.unsafeRunTrace("test")
+```
+
+**Get everything in one shot:**
+```
+Trace(
+  result = 8,
+  logs = List("Processing started"),
+  errors = List(),
+  timeElapsed = 2L
+)
+```
+
+## Live Pipeline State
+
+In any `Node` you can check what is happening right now with `Trace.current`
+
+```scala
+val p = Transform[String, String] { input =>
   val current = Trace.current
   if (current.timeElapsed > 1000) {
-    "TIMEOUT"  // Fast path for slow executions
+    "TIMEOUT"  /* Fast path for slow executions */
   } else {
     input.toUpperCase
   }
 }
 ```
 
-## Trace Object Methods
+**React to problems instantly:**
+```scala
+if (Trace.hasErrors) {
+  /* Switch to fallback mode */
+} else {
+  /* Continue normal processing */
+}
+```
+
+## Quick Reference
+
 
 | Method | Description | Example |
 |:-------|:------------|:--------|
 | `Trace.log(message)` | Log any value | `Trace.log("Processing started")` |
-| `Trace.logValidation(error)` | Log validation error | `Trace.logValidation("Invalid format")` |  
-| `Trace.hasValidationErrors` | Check for errors | `if (Trace.hasValidationErrors) ...` |
+| `Trace.error(err)` | Log error | `Trace.error("Invalid format")` |  
+| `Trace.hasErrors` | Check for errors | `if (Trace.hasErrors) ...` |
 | `Trace.current` | Get live execution state | `val state = Trace.current` |
 | `Trace.logs` | Current logs | `val logs = Trace.logs` |
-| `Trace.validationErrors` | Current errors | `val errors = Trace.validationErrors` |
+| `Trace.errors` | Current errors | `val errors = Trace.errors` |
 
 ## Trace Result Properties
 
@@ -158,7 +113,7 @@ val pipeline = Transform[String, String] { input =>
 | `result` | `A` or `Try[A]` | Execution result |
 | `logs` | `List[Any]` | Collected log values |
 | `timeElapsed` | `Long` | Execution time in ms |
-| `validationErrors` | `List[Any]` | Validation errors |
+| `errors` | `List[Any]` | Errors |
 | `hasErrors` | `Boolean` | Quick error check |
 | `seconds` | `Double` | Timing in seconds |
 
