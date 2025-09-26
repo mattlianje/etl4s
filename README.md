@@ -20,7 +20,7 @@ Battle-tested at [Instacart](https://www.instacart.com/). Part of [d4](https://g
 - [Config-driven](#configuration) by design
 - Easy, monadic composition of pipelines
 - Built-in retry/failure handling
-- Automatic [trace collection](#pipeline-tracing-with-trace)
+- Automatic [trace collection](#accessing-runtime-state-with-trace)
 
 ## Installation
 
@@ -172,14 +172,14 @@ The `tap` method performs side effects without disrupting pipeline flow:
 import etl4s._
 
 val fetchData = Extract(_ => List("file1.txt", "file2.txt"))
-val cleanup   = tap[List[String]] { files => cleanupTempFiles(files) }
+val cleanup   = tap { (files: List[String]) => cleanupTempFiles(files) }
 val process   = Transform[List[String], Int](_.size)
 
 val pipeline = fetchData ~> cleanup ~> process
 ```
 
 ## Accessing runtime state with `Trace` 
-Nodes can access and update their runtime state - recording messages, reporting errors, and checking execution timing. All state is automatically shared across your entire pipeline. Read more [here](https://mattlianje.github.io/etl4s/trace/)
+Nodes can access and update their runtime state. All state is automatically shared across your entire pipeline. Read more [here](https://mattlianje.github.io/etl4s/trace/)
 
 ```scala
 val upstream = Transform[String, Int] { input =>
@@ -252,16 +252,6 @@ val merge = Transform[(Int, String, Boolean), String] { t =>
 val pipeline =
   (e1 &> e2 &> e3).zip ~> merge ~> (consoleLoad &> dbLoad)
 ```
-
-## Built-in Tools
-**etl4s** comes with 3 extra abstractions to make your pipelines hard like iron, and flexible like bamboo.
-
-- `Reader[R, A]` Config-driven pipelines
-- `Writer[W, A]`: Log accumulating pipelines
-- `Validated[T]` A lightweight, powerful validation stacking subsystem
-
-With `Reader` (aliased `Context`), you can chain context-aware Nodes using `~>` - no flatMaps, no monadic
-stack or transformers. [More on etl4s config...](https://mattlianje.github.io/etl4s/config/)
 
 ## Configuration
 
