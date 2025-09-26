@@ -178,7 +178,7 @@ val process   = Transform[List[String], Int](_.size)
 val pipeline = fetchData ~> cleanup ~> process
 ```
 
-## Pipeline Tracing with `Trace` 
+## Accessing runtime state with `Trace` 
 Your nodes can record messages, report errors, and check execution timing - all automatically collected across your entire pipeline. Read more [here](https://mattlianje.github.io/etl4s/trace/)
 
 ```scala
