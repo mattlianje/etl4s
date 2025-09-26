@@ -20,7 +20,7 @@ Battle-tested at [Instacart](https://www.instacart.com/). Part of [d4](https://g
 - [Config-driven](#configuration) by design
 - Easy, monadic composition of pipelines
 - Built-in retry/failure handling
-- Automatic [trace collection](#pipeline-tracing-with-trace) with cross-node communication
+- Automatic [trace collection](#pipeline-tracing-with-trace)
 
 ## Installation
 
@@ -179,7 +179,7 @@ val pipeline = fetchData ~> cleanup ~> process
 ```
 
 ## Pipeline Tracing with `Trace` 
-Your nodes can record messages, report errors, and check execution timing - all automatically collected across your entire pipeline. Use `runTrace` methods to get full execution details:
+Your nodes can record messages, report errors, and check execution timing - all automatically collected across your entire pipeline. Read more [here](https://mattlianje.github.io/etl4s/trace/)
 
 ```scala
 val upstream = Transform[String, Int] { input =>
