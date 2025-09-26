@@ -172,7 +172,7 @@ The `tap` method performs side effects without disrupting pipeline flow:
 import etl4s._
 
 val fetchData = Extract(_ => List("file1.txt", "file2.txt"))
-val cleanup   = tap[List[String]] { files => cleanupTempFiles(files) }
+val cleanup   = tap { (files: List[String]) => cleanupTempFiles(files) }
 val process   = Transform[List[String], Int](_.size)
 
 val pipeline = fetchData ~> cleanup ~> process
