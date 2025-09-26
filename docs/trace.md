@@ -1,11 +1,14 @@
 # Pipeline Tracing with `Trace`
 
-Your nodes can record messages, report errors, and check execution timing - all automatically collected across your entire pipeline.
+Nodes can access and update their runtime state:
 
+- **Access** current execution state (`Trace.current`, `Trace.hasErrors`, etc)
+- **Update** runtime state (`Trace.log()`, `Trace.error()`). Thread-safe and append only
+- **Share** state automatically across the entire pipeline. All your Nodes "know" what happened before them and can act with this knowledge
 
-**How to start:** Call `Trace.log()` and `Trace.error()` inside any node. Use `runTrace` to get full execution details, or regular `run` methods for just results.
+Use `runTrace` to get all your logs and errors cleanly after you've run your pipeline.
 
-**How it works:** Trace uses two ThreadLocal channels (like Unix stdout/stderr) that automatically accumulate across your pipeline - thread-safe with minimal overhead:
+**How it works:** Trace uses two [ThreadLocal](https://docs.oracle.com/javase/8/docs/api/java/lang/ThreadLocal.html) channels (like Unix stdout/stderr) that automatically accumulate across your pipeline - thread-safe with minimal overhead:
 
 ```scala
 val p = Transform[String, Int] { input =>
