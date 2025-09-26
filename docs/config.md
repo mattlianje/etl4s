@@ -43,6 +43,30 @@ val pipeline = fetchUser ~> process ~> saveData
 pipeline.provide(AppConfig("jdbc:pg", "secret")).unsafeRun("user123")
 ```
 
+## Etl4sContext
+
+`Etl4sContext[T]` is a trait that provides organized factory methods for config-driven operations. For larger applications, extend it to keep your context-aware pipelines organized:
+
+```scala
+case class DbConfig(url: String, timeout: Int)
+
+object DataPipeline extends Etl4sContext[DbConfig] {
+  
+  val fetch = Etl4sContext.Extract[String, List[User]] { cfg => query =>
+    connectAndFetch(cfg.url, query)
+  }
+  
+  val save = Etl4sContext.Load[List[User], Unit] { cfg => users =>
+    Database.connect(cfg.url).save(users)
+  }
+  
+  val pipeline = fetch ~> save
+}
+
+// Provide config once
+DataPipeline.pipeline.provide(DbConfig("jdbc:pg", 5000)).unsafeRun("query")
+```
+
 ## Scala 2.x Note
 
 Use explicit types for better inference:
