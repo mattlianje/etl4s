@@ -255,7 +255,7 @@ class BasicSpecs extends munit.FunSuite {
       Thread.sleep(sleepDuration)
     }
     val insights    = sleepNode.unsafeRunTrace(())
-    val elapsedTime = insights.timeElapsed
+    val elapsedTime = insights.timeElapsedMillis
     assert(
       elapsedTime >= sleepDuration,
       s"Elapsed time ($elapsedTime ms) should be at least $sleepDuration ms"
@@ -275,12 +275,12 @@ class BasicSpecs extends munit.FunSuite {
     val successTrace = failingNode.safeRunTrace("hello")
     assert(successTrace.result.isSuccess)
     assertEquals(successTrace.result.get, 5)
-    assert(successTrace.timeElapsed >= 0)
+    assert(successTrace.timeElapsedMillis >= 0)
 
     val failureTrace = failingNode.safeRunTrace("")
     assert(failureTrace.result.isFailure)
     assert(failureTrace.result.failed.get.getMessage.contains("Empty input!"))
-    assert(failureTrace.timeElapsed >= 0) // Still get timing even on failure
+    assert(failureTrace.timeElapsedMillis >= 0) // Still get timing even on failure
   }
 
   test("metadata works") {
@@ -542,7 +542,7 @@ class ReaderSpecs extends munit.FunSuite {
       Trace.log("Step 1")
       val current = Trace.current
       assertEquals(current.logs, List("Step 1"))
-      assert(current.timeElapsed >= 0)
+      assert(current.timeElapsedMillis >= 0)
 
       input.toUpperCase
     }
@@ -550,7 +550,7 @@ class ReaderSpecs extends munit.FunSuite {
     val insights = node.unsafeRunTrace("hello")
     assertEquals(insights.result, "HELLO")
     assertEquals(insights.logs, List("Step 1"))
-    assert(insights.timeElapsed >= 0)
+    assert(insights.timeElapsedMillis >= 0)
   }
 
   test("unsafeRun collects trace internally") {

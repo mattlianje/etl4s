@@ -25,7 +25,7 @@ Trace(
   result = 5,
   logs = List("Processing input"),
   errors = List(),
-  timeElapsed = 2L
+  timeElapsedMillis = 2L
 )
 ```
 
@@ -69,7 +69,7 @@ Trace(
   result = 8,
   logs = List("Processing started"),
   errors = List(),
-  timeElapsed = 2L
+  timeElapsedMillis = 2L
 )
 ```
 
@@ -80,7 +80,7 @@ In any `Node` you can check what is happening right now with `Trace.current`
 ```scala
 val p = Transform[String, String] { input =>
   val current = Trace.current
-  if (current.timeElapsed > 1000) {
+  if (current.timeElapsedMillis > 1000) {
     "TIMEOUT"  /* Fast path for slow executions */
   } else {
     input.toUpperCase
@@ -115,7 +115,7 @@ if (Trace.hasErrors) {
 |:---------|:-----|:------------|
 | `result` | `A` or `Try[A]` | Execution result |
 | `logs` | `List[Any]` | Collected log values |
-| `timeElapsed` | `Long` | Execution time in ms |
+| `timeElapsedMillis` | `Long` | Execution time in ms |
 | `errors` | `List[Any]` | Errors |
 | `hasErrors` | `Boolean` | Quick error check |
 | `seconds` | `Double` | Timing in seconds |

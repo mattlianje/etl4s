@@ -51,7 +51,7 @@ val pipeline = Transform[String, Int](_.length)
 val trace = pipeline.unsafeRunTrace("test")
 
 assert(trace.result == 4)
-assert(trace.timeElapsed >= 0)
+assert(trace.timeElapsedMillis >= 0)
 assert(!trace.hasErrors)
 ```
 

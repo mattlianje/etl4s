@@ -72,7 +72,7 @@ val result = risky.safeRun("oops")  // => Failure(...)
 To get full execution details including logs, timing, and validation errors:
 ```scala
 val trace = pipeline.unsafeRunTrace(())
-// trace.result, trace.logs, trace.timeElapsed, trace.errors
+// trace.result, trace.logs, trace.timeElapsedMillis, trace.errors
 
 val safeTrace = pipeline.safeRunTrace(())  
 // safeTrace.result is a Try[B]

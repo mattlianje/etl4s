@@ -82,7 +82,7 @@ val len: Int = step("HELLO") // 5
 Or explicitly:
 - `.unsafeRun(input)` - runs and throws on failure (trace collected internally)
 - `.safeRun(input)` - returns a Try (trace collected internally) 
-- `.unsafeRunTrace(input)` - returns Trace with logs, timeElapsed, validation errors
+- `.unsafeRunTrace(input)` - returns Trace with logs, timeElapsedMillis, validation errors
 - `.safeRunTrace(input)` - returns Trace with Try result safely
 
 ## Type safety
@@ -202,7 +202,7 @@ Trace(
   result = "FALLBACK", 
   errors = List("Empty input"),
   logs = List(),
-  timeElapsed = 2L
+  timeElapsedMillis = 2L
 )
 ```
 
