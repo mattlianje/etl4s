@@ -1,0 +1,39 @@
+/* Code snippets will use the page's natural color scheme */
+
+/* Ensure code font is applied */
+.highlight code,
+.codehilite code,
+pre code {
+  font-family: 'JetBrains Mono', 'Fira Code', 'Consolas', 'Monaco', monospace !important;
+  font-size: 0.85em;
+  line-height: 1.4;
+  text-decoration: none !important;
+}
+
+/* Remove any unwanted text decorations from code elements */
+.highlight *,
+.codehilite * {
+  text-decoration: none !important;
+}
+
+/* Use default table styling */
+.md-typeset table code {
+  font-size: 0.75em;
+}
+
+/* Remove double boxing - let Material Design handle the container */
+.highlight,
+.codehilite {
+  background: transparent !important;
+  border: none !important;
+  padding: 0 !important;
+  margin: 0 !important;
+}
+
+/* Ensure the outer code block container has proper styling */
+.md-typeset .highlight pre,
+.md-typeset .codehilite pre {
+  background-color: var(--md-code-bg-color);
+  border-radius: 0.2rem;
+  padding: 0.75rem;
+}
