@@ -178,7 +178,7 @@ val process   = Transform[List[String], Int](_.size)
 val pipeline = fetchData ~> cleanup ~> process
 ```
 
-## Accessing runtime state with `etl4s.Trace` 
+## Introspection with `etl4s.Trace` 
 Nodes can access and update their runtime state. All state is automatically shared across your entire pipeline. Read more [here](https://mattlianje.github.io/etl4s/trace/)
 
 ```scala
