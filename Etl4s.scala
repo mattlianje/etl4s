@@ -46,24 +46,20 @@ package object etl4s {
 
     /** Sets up trace collectors, executes block, cleans up. */
     private def withTraceSetup[T](
-      block: (ThreadLocal[List[Any]], ThreadLocal[List[Any]], Long) => T
+      block: (ThreadLocal[(List[Any], List[Any])], Long) => T
     ): T = {
-      val logCollector = new ThreadLocal[List[Any]] {
-        override def initialValue(): List[Any] = List.empty
-      }
-      val errorCollector = new ThreadLocal[List[Any]] {
-        override def initialValue(): List[Any] = List.empty
+      val traceCollector = new ThreadLocal[(List[Any], List[Any])] {
+        override def initialValue(): (List[Any], List[Any]) = (List.empty, List.empty)
       }
 
       val startTime = System.currentTimeMillis()
-      Trace.setCollectors(logCollector, errorCollector, startTime)
+      Trace.setCollector(traceCollector, startTime)
 
       try {
-        block(logCollector, errorCollector, startTime)
+        block(traceCollector, startTime)
       } finally {
-        Trace.clearCollectors()
-        logCollector.remove()
-        errorCollector.remove()
+        Trace.clearCollector()
+        traceCollector.remove()
       }
     }
 
@@ -95,7 +91,7 @@ package object etl4s {
      * @return the transformed output
      * @throws any exception thrown by the underlying function
      */
-    def unsafeRun(a: A): B = withTraceSetup { (_, _, _) =>
+    def unsafeRun(a: A): B = withTraceSetup { (_, _) =>
       f(a)
     }
 
@@ -106,7 +102,7 @@ package object etl4s {
      * @param a the input value
      * @return Success(result) or Failure(exception)
      */
-    def safeRun(a: A): Try[B] = withTraceSetup { (_, _, _) =>
+    def safeRun(a: A): Try[B] = withTraceSetup { (_, _) =>
       Try(f(a))
     }
 
@@ -116,18 +112,18 @@ package object etl4s {
      * @param a the input value
      * @return Trace containing result and collected information
      */
-    def unsafeRunTrace(a: A): Trace[B] = withTraceSetup {
-      (logCollector, errorCollector, startTime) =>
-        val result   = f(a)
-        val endTime  = System.currentTimeMillis()
-        val duration = endTime - startTime
+    def unsafeRunTrace(a: A): Trace[B] = withTraceSetup { (traceCollector, startTime) =>
+      val result         = f(a)
+      val endTime        = System.currentTimeMillis()
+      val duration       = endTime - startTime
+      val (logs, errors) = traceCollector.get()
 
-        Trace(
-          result = result,
-          logs = logCollector.get().reverse,
-          timeElapsedMillis = duration,
-          errors = errorCollector.get().reverse
-        )
+      Trace(
+        result = result,
+        logs = logs.reverse,
+        timeElapsedMillis = duration,
+        errors = errors.reverse
+      )
     }
 
     /**
@@ -136,18 +132,18 @@ package object etl4s {
      * @param a the input value
      * @return Trace with Try[B] as result
      */
-    def safeRunTrace(a: A): Trace[Try[B]] = withTraceSetup {
-      (logCollector, errorCollector, startTime) =>
-        val result   = Try(f(a))
-        val endTime  = System.currentTimeMillis()
-        val duration = endTime - startTime
+    def safeRunTrace(a: A): Trace[Try[B]] = withTraceSetup { (traceCollector, startTime) =>
+      val result         = Try(f(a))
+      val endTime        = System.currentTimeMillis()
+      val duration       = endTime - startTime
+      val (logs, errors) = traceCollector.get()
 
-        Trace(
-          result = result,
-          logs = logCollector.get().reverse,
-          timeElapsedMillis = duration,
-          errors = errorCollector.get().reverse
-        )
+      Trace(
+        result = result,
+        logs = logs.reverse,
+        timeElapsedMillis = duration,
+        errors = errors.reverse
+      )
     }
 
     /**
@@ -764,7 +760,7 @@ package object etl4s {
      *
      * @example
      * {{{
-     * val contextExtract = Etl4sContext.Extract[Config, String, Int] { config => input =>
+     * val contextExtract = Context.Extract[Config, String, Int] { config => input =>
      *   process(input, config)
      * }
      * 
@@ -819,14 +815,9 @@ package object etl4s {
    * including logs, validation errors, and execution timing.
    */
   object Trace {
-    private val logCollector: ThreadLocal[Option[ThreadLocal[List[Any]]]] =
-      new ThreadLocal[Option[ThreadLocal[List[Any]]]] {
-        override def initialValue(): Option[ThreadLocal[List[Any]]] = None
-      }
-
-    private val errorCollector: ThreadLocal[Option[ThreadLocal[List[Any]]]] =
-      new ThreadLocal[Option[ThreadLocal[List[Any]]]] {
-        override def initialValue(): Option[ThreadLocal[List[Any]]] = None
+    private val traceCollector: ThreadLocal[Option[ThreadLocal[(List[Any], List[Any])]]] =
+      new ThreadLocal[Option[ThreadLocal[(List[Any], List[Any])]]] {
+        override def initialValue(): Option[ThreadLocal[(List[Any], List[Any])]] = None
       }
 
     private val startTimeCollector: ThreadLocal[Option[Long]] =
@@ -834,19 +825,16 @@ package object etl4s {
         override def initialValue(): Option[Long] = None
       }
 
-    def setCollectors(
-      logs: ThreadLocal[List[Any]],
-      errors: ThreadLocal[List[Any]],
+    def setCollector(
+      collector: ThreadLocal[(List[Any], List[Any])],
       startTime: Long
     ): Unit = {
-      logCollector.set(Some(logs))
-      errorCollector.set(Some(errors))
+      traceCollector.set(Some(collector))
       startTimeCollector.set(Some(startTime))
     }
 
-    def clearCollectors(): Unit = {
-      logCollector.set(None)
-      errorCollector.set(None)
+    def clearCollector(): Unit = {
+      traceCollector.set(None)
       startTimeCollector.set(None)
     }
 
@@ -857,14 +845,9 @@ package object etl4s {
      * and current execution time.
      */
     def current: Trace[Any] = {
-      val logs = logCollector.get() match {
-        case Some(collector) => collector.get().reverse
-        case None            => List.empty
-      }
-
-      val errors = errorCollector.get() match {
-        case Some(collector) => collector.get().reverse
-        case None            => List.empty
+      val (logs, errors) = traceCollector.get() match {
+        case Some(collector) => collector.get()
+        case None            => (List.empty, List.empty)
       }
 
       val timeElapsedMillis = startTimeCollector.get() match {
@@ -874,18 +857,18 @@ package object etl4s {
 
       Trace(
         result = (), // Result not available during execution
-        logs = logs,
+        logs = logs.reverse,
         timeElapsedMillis = timeElapsedMillis,
-        errors = errors
+        errors = errors.reverse
       )
     }
 
     /** Add a log value to the current execution (any type) */
     def log[T](message: T): Unit = {
-      logCollector.get() match {
+      traceCollector.get() match {
         case Some(collector) =>
-          val currentLogs = collector.get()
-          collector.set(message :: currentLogs)
+          val (currentLogs, currentErrors) = collector.get()
+          collector.set((message :: currentLogs, currentErrors))
         case None =>
         // No collector set, log is ignored
       }
@@ -893,10 +876,10 @@ package object etl4s {
 
     /** Add an error to the current execution (any type) */
     def error[T](err: T): Unit = {
-      errorCollector.get() match {
+      traceCollector.get() match {
         case Some(collector) =>
-          val currentErrors = collector.get()
-          collector.set(err :: currentErrors)
+          val (currentLogs, currentErrors) = collector.get()
+          collector.set((currentLogs, err :: currentErrors))
         case None =>
         // No collector set, error is ignored
       }
@@ -1117,8 +1100,8 @@ package object etl4s {
    * {{{
    * case class MyConfig(dbUrl: String, timeout: Int)
    * 
-   * object MyETL extends Etl4sContext[MyConfig] {
-   *   val saveUser = Etl4sContext.Load[User, Unit] { config => user =>
+   * object MyETL extends Context[MyConfig] {
+   *   val saveUser = Context.Load[User, Unit] { config => user =>
    *     // use config.dbUrl, config.timeout
    *     saveToDatabase(config, user)
    *   }
@@ -1132,13 +1115,13 @@ package object etl4s {
    *
    * @tparam T the configuration/context type
    */
-  trait Etl4sContext[T] {
+  trait Context[T] {
 
     /**
      * Provides natural access to context-wrapped operations.
-     * Use as: `Etl4sContext.Extract[A, B] { ctx => in => out }`
+     * Use as: `Context.Extract[A, B] { ctx => in => out }`
      */
-    object Etl4sContext {
+    object Context {
       def Extract[A, B](f: T => A => B): Reader[T, Extract[A, B]] =
         etl4s.Extract.requires[T, A, B](f)
 

@@ -390,7 +390,7 @@ class ReaderSpecs extends munit.FunSuite {
   test("etl4sContext and WithContext aliases") {
     case class AppConfig(serviceName: String, timeout: Int)
 
-    object TestContext extends Etl4sContext[AppConfig] {
+    object TestContext extends Context[AppConfig] {
 
       val extractWithContext: Reader[AppConfig, Extract[String, Int]] =
         Reader { ctx =>
@@ -406,7 +406,7 @@ class ReaderSpecs extends munit.FunSuite {
           }
         }
 
-      val testC = Etl4sContext.Extract[Int, Int] { ctx => x =>
+      val testC = Context.Extract[Int, Int] { ctx => x =>
         println(s"Yo ${ctx.serviceName}"); x * 2
       }
     }
@@ -446,12 +446,12 @@ class ReaderSpecs extends munit.FunSuite {
   test("Etl4sContext companion object methods") {
     case class AppConfig(serviceName: String, timeout: Int)
 
-    object TestContext extends Etl4sContext[AppConfig] {
-      val getData = Etl4sContext.Extract[String, Int] { config => input =>
+    object TestContext extends Context[AppConfig] {
+      val getData = Context.Extract[String, Int] { config => input =>
         s"${config.serviceName}: $input".length * config.timeout
       }
 
-      val processData = Etl4sContext.Transform[Int, String] { config => value =>
+      val processData = Context.Transform[Int, String] { config => value =>
         s"Processed by ${config.serviceName} with value $value"
       }
     }
