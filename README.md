@@ -293,12 +293,12 @@ val process = Transform[List[String], Int] { data =>
   }
 }
 
-// No-ops during development
+/* No-ops during development */
 process.unsafeRun(data)
 
-// Full telemetry in production  
+/* Bring your custom telemetry to prod */
 implicit val otel = ConsoleOTelProvider()
-process.unsafeRun(data) // → spans, metrics, dashboards
+process.unsafeRun(data)
 ```
 
 ## Examples
