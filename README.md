@@ -21,6 +21,7 @@ Battle-tested at [Instacart](https://www.instacart.com/). Part of [d4](https://g
 - Easy, monadic composition of pipelines
 - Built-in retry/failure handling
 - Automatic [trace collection](#accessing-runtime-state-with-trace)
+- Zero-dependency [OpenTelemetry integration](#opentelemetry)
 
 ## Installation
 
@@ -279,6 +280,26 @@ val pipeline = fetchData ~> enrichData
 **etl4s** automatically infers the smallest shared config needed for your whole pipeline.
 Just `.provide` once.
 
+## Observability with OpenTelemetry
+Add spans, metrics, and events to your pipelines. Read more in the [OpenTelemetry guide](https://mattlianje.github.io/etl4s/opentelemetry/).
+
+```scala
+val process = Transform[List[String], Int] { data =>
+  OTel.span("batch-processing", "batch.size" -> data.size) {
+    OTel.counter("records.processed", data.size)
+    val result = data.map(_.length).sum
+    OTel.histogram("processing.time", elapsedMs)
+    result
+  }
+}
+
+// No-ops during development
+process.unsafeRun(data)
+
+// Full telemetry in production  
+implicit val otel = ConsoleOTelProvider()
+process.unsafeRun(data) // → spans, metrics, dashboards
+```
 
 ## Examples
 

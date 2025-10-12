@@ -610,3 +610,381 @@ class ReaderSpecs extends munit.FunSuite {
   }
 
 }
+
+class OTelSpecs extends munit.FunSuite {
+
+  test("OTel calls are no-ops without provider") {
+    val node = Transform[String, String] { input =>
+      OTel.span("test-span") {
+        Trace.log("Processing")
+        OTel.counter("test.counter", 1)
+        OTel.gauge("test.gauge", 42.0)
+        OTel.histogram("test.histogram", 100.0)
+        input.toUpperCase
+      }
+    }
+
+    // Should work fine without any OTel provider
+    val result = node.unsafeRun("hello")
+    assertEquals(result, "HELLO")
+  }
+
+  test("ConsoleOTelProvider prints telemetry") {
+    implicit val otel: OTelProvider = ConsoleOTelProvider("[TEST]")
+
+    val node = Transform[String, String] { input =>
+      OTel.span("string-processing") {
+        OTel.counter("strings.processed", 1)
+        OTel.gauge("string.length", input.length.toDouble)
+        OTel.histogram("processing.time", 50.0)
+        input.toUpperCase
+      }
+    }
+
+    val result = node.unsafeRun("hello")
+    assertEquals(result, "HELLO")
+  }
+
+  test("nested spans") {
+    implicit val otel: OTelProvider = ConsoleOTelProvider()
+
+    val node = Transform[String, Int] { input =>
+      OTel.span("outer") {
+        OTel.counter("outer.ops", 1)
+
+        val length = OTel.span("inner") {
+          OTel.counter("inner.ops", 1)
+          input.length
+        }
+
+        OTel.histogram("result.value", length.toDouble)
+        length
+      }
+    }
+
+    val result = node.unsafeRun("test")
+    assertEquals(result, 4)
+  }
+
+  test("OTel integrates with Trace system") {
+    implicit val otel: OTelProvider = ConsoleOTelProvider("[INTEGRATION]")
+
+    val pipeline = Transform[String, String] { input =>
+      OTel.span("validation") {
+        if (input.isEmpty) {
+          Trace.error("Empty input detected")
+          OTel.counter("validation.errors", 1)
+        } else {
+          Trace.log("Input validated successfully")
+          OTel.counter("validation.success", 1)
+        }
+        input
+      }
+    } ~> Transform[String, String] { input =>
+      OTel.span("processing") {
+        if (Trace.hasErrors) {
+          OTel.counter("processing.skipped", 1)
+          "FALLBACK"
+        } else {
+          OTel.counter("processing.completed", 1)
+          OTel.histogram("input.length", input.length.toDouble)
+          input.toUpperCase
+        }
+      }
+    }
+
+    assertEquals(pipeline.unsafeRun("hello"), "HELLO")
+    assertEquals(pipeline.unsafeRun(""), "FALLBACK")
+  }
+
+  test("Custom OTelProvider can be implemented") {
+    // In-memory provider for testing
+    class TestOTelProvider extends OTelProvider {
+      var spans: List[(String, Long)]        = List.empty
+      var counters: Map[String, Long]        = Map.empty
+      var gauges: Map[String, Double]        = Map.empty
+      var histograms: List[(String, Double)] = List.empty
+
+      def withSpan[T](name: String, attributes: (String, Any)*)(block: => T): T = {
+        val start    = System.currentTimeMillis()
+        val result   = block
+        val duration = System.currentTimeMillis() - start
+        spans = (name, duration) :: spans
+        result
+      }
+
+      def addCounter(name: String, value: Long): Unit = {
+        counters = counters.updated(name, counters.getOrElse(name, 0L) + value)
+      }
+
+      def setGauge(name: String, value: Double): Unit = {
+        gauges = gauges.updated(name, value)
+      }
+
+      def recordHistogram(name: String, value: Double): Unit = {
+        histograms = (name, value) :: histograms
+      }
+    }
+
+    val testProvider                = new TestOTelProvider()
+    implicit val otel: OTelProvider = testProvider
+
+    val node = Transform[List[String], Int] { strings =>
+      OTel.span("list-processing") {
+        OTel.counter("items.received", strings.size.toLong)
+        OTel.gauge("batch.size", strings.size.toDouble)
+
+        val totalLength = strings.map(_.length).sum
+        OTel.histogram("total.length", totalLength.toDouble)
+        totalLength
+      }
+    }
+
+    val result = node.unsafeRun(List("hello", "world"))
+    assertEquals(result, 10)
+
+    // Verify telemetry was collected
+    assertEquals(testProvider.spans.size, 1)
+    assertEquals(testProvider.spans.head._1, "list-processing")
+    assertEquals(testProvider.counters("items.received"), 2L)
+    assertEquals(testProvider.gauges("batch.size"), 2.0)
+    assertEquals(testProvider.histograms.head, ("total.length", 10.0))
+  }
+
+  test("span attributes are no-ops without provider") {
+    val node = Transform[String, String] { input =>
+      OTel.span("processing", "input.length" -> input.length, "type" -> "uppercase") {
+        OTel.addEvent("started")
+        val result = input.toUpperCase
+        OTel.addEvent("completed")
+        result
+      }
+    }
+
+    val result = node.unsafeRun("hello world")
+    assertEquals(result, "HELLO WORLD")
+  }
+
+  test("span attributes work with console provider") {
+    implicit val otel: OTelProvider = ConsoleOTelProvider()
+
+    val node = Transform[String, String] { input =>
+      OTel.span("processing", "input.length" -> input.length, "type" -> "uppercase") {
+        OTel.addEvent("started")
+        val result = input.toUpperCase
+        OTel.addEvent("completed", "output.length" -> result.length)
+        result
+      }
+    }
+
+    val result = node.unsafeRun("hello world")
+    assertEquals(result, "HELLO WORLD")
+  }
+
+  test("Real OpenTelemetry SDK integration example") {
+    // Demonstrates how to integrate with actual OTel SDK
+
+    import io.opentelemetry.api.OpenTelemetry
+    import io.opentelemetry.api.common.{Attributes, AttributeKey}
+    import io.opentelemetry.api.metrics.Meter
+    import io.opentelemetry.api.trace.{Tracer, StatusCode}
+    import io.opentelemetry.sdk.OpenTelemetrySdk
+    import io.opentelemetry.sdk.metrics.SdkMeterProvider
+    import io.opentelemetry.sdk.trace.SdkTracerProvider
+    import io.opentelemetry.exporter.logging.{LoggingSpanExporter, LoggingMetricExporter}
+    import io.opentelemetry.sdk.trace.`export`.BatchSpanProcessor
+    import io.opentelemetry.sdk.metrics.`export`.PeriodicMetricReader
+    import java.time.Duration
+
+    class RealOTelProvider extends OTelProvider {
+      private val sdk: OpenTelemetry = OpenTelemetrySdk
+        .builder()
+        .setTracerProvider(
+          SdkTracerProvider
+            .builder()
+            .addSpanProcessor(
+              BatchSpanProcessor.builder(LoggingSpanExporter.create()).build()
+            )
+            .build()
+        )
+        .setMeterProvider(
+          SdkMeterProvider
+            .builder()
+            .registerMetricReader(
+              PeriodicMetricReader
+                .builder(LoggingMetricExporter.create())
+                .setInterval(Duration.ofSeconds(1))
+                .build()
+            )
+            .build()
+        )
+        .build()
+
+      private val tracer: Tracer = sdk.getTracer("etl4s-test")
+      private val meter: Meter   = sdk.getMeter("etl4s-test")
+
+      def withSpan[T](name: String, attributes: (String, Any)*)(block: => T): T = {
+        val spanBuilder = tracer
+          .spanBuilder(name)
+          .setAttribute("service.name", "etl4s-test")
+          .setAttribute("service.version", "1.0.0")
+
+        // Add user-provided attributes
+        attributes.foreach { case (key, value) =>
+          value match {
+            case s: String  => spanBuilder.setAttribute(key, s)
+            case l: Long    => spanBuilder.setAttribute(key, l)
+            case i: Int     => spanBuilder.setAttribute(key, i.toLong)
+            case d: Double  => spanBuilder.setAttribute(key, d)
+            case b: Boolean => spanBuilder.setAttribute(key, b)
+            case other      => spanBuilder.setAttribute(key, other.toString)
+          }
+        }
+
+        val span = spanBuilder.startSpan()
+
+        try {
+          span.addEvent("span.started")
+          val result = block
+          span.setStatus(StatusCode.OK)
+          result
+        } catch {
+          case e: Throwable =>
+            span.recordException(e)
+            span.setStatus(StatusCode.ERROR, e.getMessage)
+            throw e
+        } finally {
+          span.end()
+        }
+      }
+
+      def addCounter(name: String, value: Long): Unit = {
+        val otelCounter = meter
+          .counterBuilder(name)
+          .setDescription(s"Counter for $name")
+          .build()
+
+        otelCounter.add(
+          value,
+          Attributes.of(
+            AttributeKey.stringKey("component"),
+            "etl4s"
+          )
+        )
+      }
+
+      def setGauge(name: String, value: Double): Unit = {
+        // TODO implement as callbacks
+        val otelGauge = meter
+          .upDownCounterBuilder(name)
+          .setDescription(s"Gauge for $name")
+          .build()
+
+        otelGauge.add(
+          value.toLong,
+          Attributes.of(
+            AttributeKey.stringKey("component"),
+            "etl4s"
+          )
+        )
+      }
+
+      def recordHistogram(name: String, value: Double): Unit = {
+        val otelHistogram = meter
+          .histogramBuilder(name)
+          .setDescription(s"Histogram for $name")
+          .setUnit("ms")
+          .build()
+
+        otelHistogram.record(
+          value,
+          Attributes.of(
+            AttributeKey.stringKey("component"),
+            "etl4s"
+          )
+        )
+      }
+    }
+
+    // Usage example with real OTel SDK:
+    implicit val otel: OTelProvider = new RealOTelProvider()
+
+    val pipeline = Extract[String, List[String]](_.split(",").toList) ~>
+      Transform[List[String], List[String]] { items =>
+        OTel.span("data-transformation") {
+          Trace.log(s"Transforming ${items.size} items")
+          OTel.counter("items.received", items.size.toLong)
+          val transformed = items.map(_.trim.toUpperCase)
+          OTel.histogram("transformation.time", 25.0)
+          transformed
+        }
+      } ~>
+      Load[List[String], Int] { items =>
+        OTel.span("data-persistence") {
+          Trace.log(s"Persisting ${items.size} items")
+          OTel.counter("items.saved", items.size.toLong)
+          OTel.histogram("batch.processing.time", 150.0)
+          OTel.gauge("current.batch.size", items.size.toDouble)
+          items.size
+        }
+      }
+
+    val result = pipeline.unsafeRun("hello,world,test")
+    assertEquals(result, 3)
+
+    Thread.sleep(100)
+  }
+
+  test("counter accumulation") {
+    class TestOTelProvider extends OTelProvider {
+      var spans: List[(String, Long)]        = List.empty
+      var counters: Map[String, Long]        = Map.empty
+      var gauges: Map[String, Double]        = Map.empty
+      var histograms: List[(String, Double)] = List.empty
+
+      def withSpan[T](name: String, attributes: (String, Any)*)(block: => T): T = {
+        val start    = System.currentTimeMillis()
+        val result   = block
+        val duration = System.currentTimeMillis() - start
+        spans = (name, duration) :: spans
+        result
+      }
+
+      def addCounter(name: String, value: Long): Unit = {
+        counters = counters.updated(name, counters.getOrElse(name, 0L) + value)
+      }
+
+      def setGauge(name: String, value: Double): Unit = {
+        gauges = gauges.updated(name, value)
+      }
+
+      def recordHistogram(name: String, value: Double): Unit = {
+        histograms = (name, value) :: histograms
+      }
+    }
+
+    val testProvider                = new TestOTelProvider()
+    implicit val otel: OTelProvider = testProvider
+
+    val node = Transform[List[String], Int] { strings =>
+      OTel.span("processing") {
+        OTel.counter("items.processed", 5L)
+        OTel.counter("items.processed", 3L)
+        OTel.counter("items.processed", 2L)
+
+        OTel.counter("batches.completed", 1L)
+        OTel.counter("batches.completed", 1L)
+
+        strings.size
+      }
+    }
+
+    val result = node.unsafeRun(List("a", "b", "c"))
+    assertEquals(result, 3)
+
+    assertEquals(testProvider.counters("items.processed"), 10L)
+    assertEquals(testProvider.counters("batches.completed"), 2L)
+    assertEquals(testProvider.spans.size, 1)
+  }
+
+}

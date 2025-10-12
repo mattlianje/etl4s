@@ -46,20 +46,15 @@ package object etl4s {
 
     /** Sets up trace collectors, executes block, cleans up. */
     private def withTraceSetup[T](
-      block: (ThreadLocal[(List[Any], List[Any])], Long) => T
+      block: Long => T
     ): T = {
-      val traceCollector = new ThreadLocal[(List[Any], List[Any])] {
-        override def initialValue(): (List[Any], List[Any]) = (List.empty, List.empty)
-      }
-
       val startTime = System.currentTimeMillis()
-      Trace.setCollector(traceCollector, startTime)
+      Trace.setCollector(startTime)
 
       try {
-        block(traceCollector, startTime)
+        block(startTime)
       } finally {
         Trace.clearCollector()
-        traceCollector.remove()
       }
     }
 
@@ -88,62 +83,92 @@ package object etl4s {
      * Trace information is collected internally but only accessible via unsafeRunTraced.
      *
      * @param a the input value
+     * @param otelProvider optional OTel provider for observability (defaults to NoOpOtel)
      * @return the transformed output
      * @throws any exception thrown by the underlying function
      */
-    def unsafeRun(a: A): B = withTraceSetup { (_, _) =>
-      f(a)
-    }
+    def unsafeRun(a: A)(implicit otelProvider: OtelProvider = NoOpOtel): B =
+      withOtelSetup(otelProvider) {
+        withTraceSetup { _ =>
+          f(a)
+        }
+      }
 
     /**
      * Runs the node with error handling, wrapping the result in a Try.
      * Trace information is collected internally but only accessible via safeRunTraced.
      *
      * @param a the input value
+     * @param otelProvider optional OTel provider for observability (defaults to NoOpOtel)
      * @return Success(result) or Failure(exception)
      */
-    def safeRun(a: A): Try[B] = withTraceSetup { (_, _) =>
-      Try(f(a))
-    }
+    def safeRun(a: A)(implicit otelProvider: OtelProvider = NoOpOtel): Try[B] =
+      withOtelSetup(otelProvider) {
+        withTraceSetup { _ =>
+          Try(f(a))
+        }
+      }
 
     /**
      * Runs the node and collects insights about the execution.
      *
      * @param a the input value
+     * @param otelProvider optional OTel provider for observability (defaults to NoOpOtel)
      * @return Trace containing result and collected information
      */
-    def unsafeRunTrace(a: A): Trace[B] = withTraceSetup { (traceCollector, startTime) =>
-      val result         = f(a)
-      val endTime        = System.currentTimeMillis()
-      val duration       = endTime - startTime
-      val (logs, errors) = traceCollector.get()
+    def unsafeRunTrace(a: A)(implicit otelProvider: OtelProvider = NoOpOtel): Trace[B] =
+      withOtelSetup(otelProvider) {
+        withTraceSetup { startTime =>
+          val result       = f(a)
+          val endTime      = System.currentTimeMillis()
+          val duration     = endTime - startTime
+          val currentTrace = Trace.current
 
-      Trace(
-        result = result,
-        logs = logs.reverse,
-        timeElapsedMillis = duration,
-        errors = errors.reverse
-      )
-    }
+          Trace(
+            result = result,
+            logs = currentTrace.logs,
+            timeElapsedMillis = duration,
+            errors = currentTrace.errors
+          )
+        }
+      }
 
     /**
      * Runs the node safely and collects insights about the execution.
      *
      * @param a the input value
+     * @param otelProvider optional OTel provider for observability (defaults to NoOpOtel)
      * @return Trace with Try[B] as result
      */
-    def safeRunTrace(a: A): Trace[Try[B]] = withTraceSetup { (traceCollector, startTime) =>
-      val result         = Try(f(a))
-      val endTime        = System.currentTimeMillis()
-      val duration       = endTime - startTime
-      val (logs, errors) = traceCollector.get()
+    def safeRunTrace(a: A)(implicit otelProvider: OtelProvider = NoOpOtel): Trace[Try[B]] =
+      withOtelSetup(otelProvider) {
+        withTraceSetup { startTime =>
+          val result       = Try(f(a))
+          val endTime      = System.currentTimeMillis()
+          val duration     = endTime - startTime
+          val currentTrace = Trace.current
 
-      Trace(
-        result = result,
-        logs = logs.reverse,
-        timeElapsedMillis = duration,
-        errors = errors.reverse
-      )
+          Trace(
+            result = result,
+            logs = currentTrace.logs,
+            timeElapsedMillis = duration,
+            errors = currentTrace.errors
+          )
+        }
+      }
+
+    /** Sets up OTel provider, executes block, cleans up. */
+    private def withOtelSetup[T](otelProvider: OtelProvider)(block: => T): T = {
+      if (otelProvider != NoOpOtel) {
+        OTel.setProvider(otelProvider)
+      }
+      try {
+        block
+      } finally {
+        if (otelProvider != NoOpOtel) {
+          OTel.clearProvider()
+        }
+      }
     }
 
     /**
@@ -815,27 +840,18 @@ package object etl4s {
    * including logs, validation errors, and execution timing.
    */
   object Trace {
-    private val traceCollector: ThreadLocal[Option[ThreadLocal[(List[Any], List[Any])]]] =
-      new ThreadLocal[Option[ThreadLocal[(List[Any], List[Any])]]] {
-        override def initialValue(): Option[ThreadLocal[(List[Any], List[Any])]] = None
+    // ThreadLocal that holds all trace state: (logs, errors, startTime)
+    private val traceCollector: ThreadLocal[Option[(List[Any], List[Any], Long)]] =
+      new ThreadLocal[Option[(List[Any], List[Any], Long)]] {
+        override def initialValue(): Option[(List[Any], List[Any], Long)] = None
       }
 
-    private val startTimeCollector: ThreadLocal[Option[Long]] =
-      new ThreadLocal[Option[Long]] {
-        override def initialValue(): Option[Long] = None
-      }
-
-    def setCollector(
-      collector: ThreadLocal[(List[Any], List[Any])],
-      startTime: Long
-    ): Unit = {
-      traceCollector.set(Some(collector))
-      startTimeCollector.set(Some(startTime))
+    def setCollector(startTime: Long): Unit = {
+      traceCollector.set(Some((List.empty, List.empty, startTime)))
     }
 
     def clearCollector(): Unit = {
       traceCollector.set(None)
-      startTimeCollector.set(None)
     }
 
     /**
@@ -845,30 +861,30 @@ package object etl4s {
      * and current execution time.
      */
     def current: Trace[Any] = {
-      val (logs, errors) = traceCollector.get() match {
-        case Some(collector) => collector.get()
-        case None            => (List.empty, List.empty)
+      traceCollector.get() match {
+        case Some((logs, errors, startTime)) =>
+          val timeElapsedMillis = System.currentTimeMillis() - startTime
+          Trace(
+            result = (), // Result not available during execution
+            logs = logs.reverse,
+            timeElapsedMillis = timeElapsedMillis,
+            errors = errors.reverse
+          )
+        case None =>
+          Trace(
+            result = (),
+            logs = List.empty,
+            timeElapsedMillis = 0L,
+            errors = List.empty
+          )
       }
-
-      val timeElapsedMillis = startTimeCollector.get() match {
-        case Some(startTime) => System.currentTimeMillis() - startTime
-        case None            => 0L
-      }
-
-      Trace(
-        result = (), // Result not available during execution
-        logs = logs.reverse,
-        timeElapsedMillis = timeElapsedMillis,
-        errors = errors.reverse
-      )
     }
 
     /** Add a log value to the current execution (any type) */
     def log[T](message: T): Unit = {
       traceCollector.get() match {
-        case Some(collector) =>
-          val (currentLogs, currentErrors) = collector.get()
-          collector.set((message :: currentLogs, currentErrors))
+        case Some((currentLogs, currentErrors, startTime)) =>
+          traceCollector.set(Some((message :: currentLogs, currentErrors, startTime)))
         case None =>
         // No collector set, log is ignored
       }
@@ -877,9 +893,8 @@ package object etl4s {
     /** Add an error to the current execution (any type) */
     def error[T](err: T): Unit = {
       traceCollector.get() match {
-        case Some(collector) =>
-          val (currentLogs, currentErrors) = collector.get()
-          collector.set((currentLogs, err :: currentErrors))
+        case Some((currentLogs, currentErrors, startTime)) =>
+          traceCollector.set(Some((currentLogs, err :: currentErrors, startTime)))
         case None =>
         // No collector set, error is ignored
       }
@@ -1141,6 +1156,189 @@ package object etl4s {
             a
           }
         }
+    }
+  }
+
+  /**
+   * OpenTelemetry integration for etl4s pipelines.
+   * 
+   * Provides span, counter, gauge, and histogram recording within pipeline execution.
+   * Uses ThreadLocal to automatically work when OtelProvider is set via implicit parameter
+   * to run methods.
+   * 
+   * @example
+   * {{{
+   * val extract = Extract[String, List[User]] { input =>
+   *   OTel.span("user-parsing") {
+   *     Trace.log("Starting extraction")
+   *     val users = parseUsers(input)
+   *     OTel.counter("users.extracted", users.size.toLong)
+   *     OTel.histogram("batch.size", users.size.toDouble)
+   *     users
+   *   }
+   * }
+   * 
+   * // With OTel provider
+   * implicit val otel: OtelProvider = ConsoleOtelProvider()
+   * pipeline.unsafeRun(data)
+   * 
+   * // Without OTel provider - all calls are no-ops
+   * pipeline.unsafeRun(data)
+   * }}}
+   */
+  object OTel {
+    private val otelProvider: ThreadLocal[Option[OtelProvider]] =
+      new ThreadLocal[Option[OtelProvider]] {
+        override def initialValue(): Option[OtelProvider] = None
+      }
+
+    private[etl4s] def setProvider(provider: OtelProvider): Unit = {
+      otelProvider.set(Some(provider))
+    }
+
+    private[etl4s] def clearProvider(): Unit = {
+      otelProvider.set(None)
+    }
+
+    /**
+     * Execute block within a named span.
+     * No-op if no OtelProvider is set.
+     */
+    /**
+     * Create a span with optional attributes.
+     */
+    def span[T](name: String, attributes: (String, Any)*)(block: => T): T = {
+      otelProvider.get() match {
+        case Some(provider) => provider.withSpan(name, attributes: _*)(block)
+        case None           => block
+      }
+    }
+
+    /**
+     * Add an event to the current span.
+     */
+    def addEvent(name: String, attributes: (String, Any)*): Unit = {
+      // No-op by default - only works when real OTel provider is active
+      // Implementation provided by actual OTel integration
+    }
+
+    /**
+     * Record a counter metric.
+     * No-op if no OtelProvider is set.
+     */
+    def counter(name: String, value: Long): Unit = {
+      otelProvider.get().foreach(_.addCounter(name, value))
+    }
+
+    /**
+     * Record a gauge metric.
+     * No-op if no OtelProvider is set.
+     */
+    def gauge(name: String, value: Double): Unit = {
+      otelProvider.get().foreach(_.setGauge(name, value))
+    }
+
+    /**
+     * Record a histogram metric.
+     * No-op if no OtelProvider is set.
+     */
+    def histogram(name: String, value: Double): Unit = {
+      otelProvider.get().foreach(_.recordHistogram(name, value))
+    }
+  }
+
+  /**
+   * Minimal interface for OpenTelemetry integration.
+   * Direct method calls avoid intermediate object creation.
+   * 
+   * @example
+   * {{{
+   * class MyOtelProvider extends OtelProvider {
+   *   private val tracer = GlobalOpenTelemetry.getTracer("my-app")
+   *   private val meter = GlobalOpenTelemetry.getMeter("my-app")
+   *   
+   *   def withSpan[T](name: String, attributes: (String, Any)*)(block: => T): T = {
+   *     val span = tracer.spanBuilder(name).startSpan()
+   *     try block finally span.end()
+   *   }
+   *   
+   *   def addCounter(name: String, value: Long): Unit = {
+   *     meter.counterBuilder(name).build().add(value)
+   *   }
+   *   
+   *   def setGauge(name: String, value: Double): Unit = {
+   *     meter.gaugeBuilder(name).build().set(value)
+   *   }
+   *   
+   *   def recordHistogram(name: String, value: Double): Unit = {
+   *     meter.histogramBuilder(name).build().record(value)
+   *   }
+   * }
+   * }}}
+   */
+  trait OtelProvider {
+    def withSpan[T](name: String, attributes: (String, Any)*)(block: => T): T
+    def addCounter(name: String, value: Long): Unit
+    def setGauge(name: String, value: Double): Unit
+    def recordHistogram(name: String, value: Double): Unit
+  }
+
+  /**
+   * No-op implementation for when OTel is not needed.
+   * This is the default when no implicit OtelProvider is provided.
+   */
+  object NoOpOtel extends OtelProvider {
+    def withSpan[T](name: String, attributes: (String, Any)*)(block: => T): T = block
+    def addCounter(name: String, value: Long): Unit                           = ()
+    def setGauge(name: String, value: Double): Unit                           = ()
+    def recordHistogram(name: String, value: Double): Unit                    = ()
+  }
+
+  /**
+   * Console-based OTel provider for development and testing.
+   * Prints telemetry data to stdout with timestamps.
+   * 
+   * @example
+   * {{{
+   * implicit val otel: OtelProvider = ConsoleOtelProvider()
+   * pipeline.unsafeRun(data) // Prints spans and metrics to console
+   * }}}
+   */
+  case class ConsoleOtelProvider(prefix: String = "[OTEL]") extends OtelProvider {
+
+    def withSpan[T](name: String, attributes: (String, Any)*)(block: => T): T = {
+      val startTime = System.currentTimeMillis()
+      println(s"$prefix [SPAN START] $name")
+
+      if (attributes.nonEmpty) {
+        println(
+          s"$prefix [ATTRIBUTES] ${attributes.map { case (k, v) => s"$k=$v" }.mkString(", ")}"
+        )
+      }
+
+      try {
+        val result   = block
+        val duration = System.currentTimeMillis() - startTime
+        println(s"$prefix [SPAN END] $name (${duration}ms)")
+        result
+      } catch {
+        case e: Throwable =>
+          val duration = System.currentTimeMillis() - startTime
+          println(s"$prefix [SPAN ERROR] $name (${duration}ms): ${e.getMessage}")
+          throw e
+      }
+    }
+
+    def addCounter(name: String, value: Long): Unit = {
+      println(s"$prefix [COUNTER] $name: +$value")
+    }
+
+    def setGauge(name: String, value: Double): Unit = {
+      println(s"$prefix [GAUGE] $name: $value")
+    }
+
+    def recordHistogram(name: String, value: Double): Unit = {
+      println(s"$prefix [HISTOGRAM] $name: $value")
     }
   }
 
