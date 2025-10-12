@@ -20,8 +20,8 @@ Battle-tested at [Instacart](https://www.instacart.com/). Part of [d4](https://g
 - [Config-driven](#configuration) by design
 - Easy, monadic composition of pipelines
 - Built-in retry/failure handling
-- Automatic [trace collection](#accessing-runtime-state-with-trace)
-- Zero-dependency [OpenTelemetry integration](#opentelemetry)
+- Automatic [trace collection](#introspection-with-etl4strace)
+- Zero-dependency [OpenTelemetry integration](#observability-with-opentelemetry)
 
 ## Installation
 
