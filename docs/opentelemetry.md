@@ -36,6 +36,7 @@ process.unsafeRun(data)
 ```
 
 **Key benefits:**
+
 - Write business critical telemetry in business logic, not infrastructure code
 - Zero performance cost until enabled  
 - Works on any platform: local JVM, Spark, Kubernetes, Lambda
@@ -65,7 +66,8 @@ val processUsers = Transform[List[RawUser], List[ValidUser]] { rawUsers =>
 }
 ```
 
-In the above example - these aren't just "monitoring metrics" - they're business KPIs:
+**In the above example - these aren't just "monitoring metrics" - they're business KPIs:**
+
 - Record counts determine billing and SLAs
 - Processing times affect customer experience  
 - Data quality ratios trigger business alerts
