@@ -261,8 +261,9 @@ Just declare what each step `.requires`, then `.provide` it later.
 
 ```scala
 Node[In, Out].requires[Config](cfg => in => out)
-// Scala 2.x:
-// Node.requires[Config, In, Out](cfg => in => out)
+/** Scala 2.x:
+  * Node.requires[Config, In, Out](cfg => in => out)
+  */
 ```
 Like this, every Node step can declare the exact config it needs (just Reader monads under the hood):
 ```scala
