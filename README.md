@@ -281,7 +281,7 @@ val pipeline = fetchData ~> enrichData
 Just `.provide` once.
 
 ## Telemetry
-etl4s provides a minimal `Etl4sTelemetry` interface for observability. All pipeline run methods automatically look for this interface in implicit scope. **Write telemetry once, choose backend later.**
+etl4s provides a minimal `Etl4sTelemetry` interface for observability. All pipeline run methods automatically look for this interface in implicit scope.
 
 All `Tel` calls are no-ops by default - zero overhead until you provide an implementation. No threading context through layers. No framework lock-in.
 
@@ -293,12 +293,12 @@ val process = Transform[List[String], Int] { data =>
   }
 }
 
-// Development: Tel calls are no-ops (zero cost)
+/* By default Tel calls are no-ops (zero cost) */
 process.unsafeRun(data)
 
-// Production: implement Etl4sTelemetry for your backend
+/* Implement Etl4sTelemetry for your backend */
 implicit val telemetry: Etl4sTelemetry = MyPrometheusProvider()
-process.unsafeRun(data) // metrics flow to Prometheus
+process.unsafeRun(data) /* metrics flow to Prometheus */
 ```
 
 The `Etl4sTelemetry` interface has just 4 methods: `withSpan`, `addCounter`, `setGauge`, `recordHistogram`
