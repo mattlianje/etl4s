@@ -611,32 +611,32 @@ class ReaderSpecs extends munit.FunSuite {
 
 }
 
-class OTelSpecs extends munit.FunSuite {
+class TelSpecs extends munit.FunSuite {
 
-  test("OTel calls are no-ops without provider") {
+  test("Tel calls are no-ops without provider") {
     val node = Transform[String, String] { input =>
-      OTel.span("test-span") {
+      Tel.span("test-span") {
         Trace.log("Processing")
-        OTel.counter("test.counter", 1)
-        OTel.gauge("test.gauge", 42.0)
-        OTel.histogram("test.histogram", 100.0)
+        Tel.counter("test.counter", 1)
+        Tel.gauge("test.gauge", 42.0)
+        Tel.histogram("test.histogram", 100.0)
         input.toUpperCase
       }
     }
 
-    // Should work fine without any OTel provider
+    // Should work fine without any Tel provider
     val result = node.unsafeRun("hello")
     assertEquals(result, "HELLO")
   }
 
-  test("ConsoleOTelProvider prints telemetry") {
-    implicit val otel: OTelProvider = ConsoleOTelProvider("[TEST]")
+  test("Etl4sConsoleTelemetry prints telemetry") {
+    implicit val otel: Etl4sTelemetry = Etl4sConsoleTelemetry("[TEST]")
 
     val node = Transform[String, String] { input =>
-      OTel.span("string-processing") {
-        OTel.counter("strings.processed", 1)
-        OTel.gauge("string.length", input.length.toDouble)
-        OTel.histogram("processing.time", 50.0)
+      Tel.span("string-processing") {
+        Tel.counter("strings.processed", 1)
+        Tel.gauge("string.length", input.length.toDouble)
+        Tel.histogram("processing.time", 50.0)
         input.toUpperCase
       }
     }
@@ -646,18 +646,18 @@ class OTelSpecs extends munit.FunSuite {
   }
 
   test("nested spans") {
-    implicit val otel: OTelProvider = ConsoleOTelProvider()
+    implicit val otel: Etl4sTelemetry = Etl4sConsoleTelemetry()
 
     val node = Transform[String, Int] { input =>
-      OTel.span("outer") {
-        OTel.counter("outer.ops", 1)
+      Tel.span("outer") {
+        Tel.counter("outer.ops", 1)
 
-        val length = OTel.span("inner") {
-          OTel.counter("inner.ops", 1)
+        val length = Tel.span("inner") {
+          Tel.counter("inner.ops", 1)
           input.length
         }
 
-        OTel.histogram("result.value", length.toDouble)
+        Tel.histogram("result.value", length.toDouble)
         length
       }
     }
@@ -666,28 +666,28 @@ class OTelSpecs extends munit.FunSuite {
     assertEquals(result, 4)
   }
 
-  test("OTel integrates with Trace system") {
-    implicit val otel: OTelProvider = ConsoleOTelProvider("[INTEGRATION]")
+  test("Tel integrates with Trace system") {
+    implicit val otel: Etl4sTelemetry = Etl4sConsoleTelemetry("[INTEGRATION]")
 
     val pipeline = Transform[String, String] { input =>
-      OTel.span("validation") {
+      Tel.span("validation") {
         if (input.isEmpty) {
           Trace.error("Empty input detected")
-          OTel.counter("validation.errors", 1)
+          Tel.counter("validation.errors", 1)
         } else {
           Trace.log("Input validated successfully")
-          OTel.counter("validation.success", 1)
+          Tel.counter("validation.success", 1)
         }
         input
       }
     } ~> Transform[String, String] { input =>
-      OTel.span("processing") {
+      Tel.span("processing") {
         if (Trace.hasErrors) {
-          OTel.counter("processing.skipped", 1)
+          Tel.counter("processing.skipped", 1)
           "FALLBACK"
         } else {
-          OTel.counter("processing.completed", 1)
-          OTel.histogram("input.length", input.length.toDouble)
+          Tel.counter("processing.completed", 1)
+          Tel.histogram("input.length", input.length.toDouble)
           input.toUpperCase
         }
       }
@@ -697,9 +697,9 @@ class OTelSpecs extends munit.FunSuite {
     assertEquals(pipeline.unsafeRun(""), "FALLBACK")
   }
 
-  test("Custom OTelProvider can be implemented") {
+  test("Custom Etl4sTelemetry can be implemented") {
     // In-memory provider for testing
-    class TestOTelProvider extends OTelProvider {
+    class TestEtl4sTelemetry extends Etl4sTelemetry {
       var spans: List[(String, Long)]        = List.empty
       var counters: Map[String, Long]        = Map.empty
       var gauges: Map[String, Double]        = Map.empty
@@ -726,16 +726,16 @@ class OTelSpecs extends munit.FunSuite {
       }
     }
 
-    val testProvider                = new TestOTelProvider()
-    implicit val otel: OTelProvider = testProvider
+    val testProvider                  = new TestEtl4sTelemetry()
+    implicit val otel: Etl4sTelemetry = testProvider
 
     val node = Transform[List[String], Int] { strings =>
-      OTel.span("list-processing") {
-        OTel.counter("items.received", strings.size.toLong)
-        OTel.gauge("batch.size", strings.size.toDouble)
+      Tel.span("list-processing") {
+        Tel.counter("items.received", strings.size.toLong)
+        Tel.gauge("batch.size", strings.size.toDouble)
 
         val totalLength = strings.map(_.length).sum
-        OTel.histogram("total.length", totalLength.toDouble)
+        Tel.histogram("total.length", totalLength.toDouble)
         totalLength
       }
     }
@@ -753,10 +753,10 @@ class OTelSpecs extends munit.FunSuite {
 
   test("span attributes are no-ops without provider") {
     val node = Transform[String, String] { input =>
-      OTel.span("processing", "input.length" -> input.length, "type" -> "uppercase") {
-        OTel.addEvent("started")
+      Tel.span("processing", "input.length" -> input.length, "type" -> "uppercase") {
+        Tel.addEvent("started")
         val result = input.toUpperCase
-        OTel.addEvent("completed")
+        Tel.addEvent("completed")
         result
       }
     }
@@ -766,13 +766,13 @@ class OTelSpecs extends munit.FunSuite {
   }
 
   test("span attributes work with console provider") {
-    implicit val otel: OTelProvider = ConsoleOTelProvider()
+    implicit val otel: Etl4sTelemetry = Etl4sConsoleTelemetry()
 
     val node = Transform[String, String] { input =>
-      OTel.span("processing", "input.length" -> input.length, "type" -> "uppercase") {
-        OTel.addEvent("started")
+      Tel.span("processing", "input.length" -> input.length, "type" -> "uppercase") {
+        Tel.addEvent("started")
         val result = input.toUpperCase
-        OTel.addEvent("completed", "output.length" -> result.length)
+        Tel.addEvent("completed", "output.length" -> result.length)
         result
       }
     }
@@ -782,7 +782,7 @@ class OTelSpecs extends munit.FunSuite {
   }
 
   test("Real OpenTelemetry SDK integration example") {
-    // Demonstrates how to integrate with actual OTel SDK
+    // Demonstrates how to integrate with actual Tel SDK
 
     import io.opentelemetry.api.OpenTelemetry
     import io.opentelemetry.api.common.{Attributes, AttributeKey}
@@ -796,7 +796,7 @@ class OTelSpecs extends munit.FunSuite {
     import io.opentelemetry.sdk.metrics.`export`.PeriodicMetricReader
     import java.time.Duration
 
-    class RealOTelProvider extends OTelProvider {
+    class RealEtl4sTelemetry extends Etl4sTelemetry {
       private val sdk: OpenTelemetry = OpenTelemetrySdk
         .builder()
         .setTracerProvider(
@@ -906,25 +906,25 @@ class OTelSpecs extends munit.FunSuite {
       }
     }
 
-    // Usage example with real OTel SDK:
-    implicit val otel: OTelProvider = new RealOTelProvider()
+    // Usage example with real Tel SDK:
+    implicit val otel: Etl4sTelemetry = new RealEtl4sTelemetry()
 
     val pipeline = Extract[String, List[String]](_.split(",").toList) ~>
       Transform[List[String], List[String]] { items =>
-        OTel.span("data-transformation") {
+        Tel.span("data-transformation") {
           Trace.log(s"Transforming ${items.size} items")
-          OTel.counter("items.received", items.size.toLong)
+          Tel.counter("items.received", items.size.toLong)
           val transformed = items.map(_.trim.toUpperCase)
-          OTel.histogram("transformation.time", 25.0)
+          Tel.histogram("transformation.time", 25.0)
           transformed
         }
       } ~>
       Load[List[String], Int] { items =>
-        OTel.span("data-persistence") {
+        Tel.span("data-persistence") {
           Trace.log(s"Persisting ${items.size} items")
-          OTel.counter("items.saved", items.size.toLong)
-          OTel.histogram("batch.processing.time", 150.0)
-          OTel.gauge("current.batch.size", items.size.toDouble)
+          Tel.counter("items.saved", items.size.toLong)
+          Tel.histogram("batch.processing.time", 150.0)
+          Tel.gauge("current.batch.size", items.size.toDouble)
           items.size
         }
       }
@@ -936,7 +936,7 @@ class OTelSpecs extends munit.FunSuite {
   }
 
   test("counter accumulation") {
-    class TestOTelProvider extends OTelProvider {
+    class TestEtl4sTelemetry extends Etl4sTelemetry {
       var spans: List[(String, Long)]        = List.empty
       var counters: Map[String, Long]        = Map.empty
       var gauges: Map[String, Double]        = Map.empty
@@ -963,17 +963,17 @@ class OTelSpecs extends munit.FunSuite {
       }
     }
 
-    val testProvider                = new TestOTelProvider()
-    implicit val otel: OTelProvider = testProvider
+    val testProvider                  = new TestEtl4sTelemetry()
+    implicit val otel: Etl4sTelemetry = testProvider
 
     val node = Transform[List[String], Int] { strings =>
-      OTel.span("processing") {
-        OTel.counter("items.processed", 5L)
-        OTel.counter("items.processed", 3L)
-        OTel.counter("items.processed", 2L)
+      Tel.span("processing") {
+        Tel.counter("items.processed", 5L)
+        Tel.counter("items.processed", 3L)
+        Tel.counter("items.processed", 2L)
 
-        OTel.counter("batches.completed", 1L)
-        OTel.counter("batches.completed", 1L)
+        Tel.counter("batches.completed", 1L)
+        Tel.counter("batches.completed", 1L)
 
         strings.size
       }

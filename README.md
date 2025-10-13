@@ -280,26 +280,29 @@ val pipeline = fetchData ~> enrichData
 **etl4s** automatically infers the smallest shared config needed for your whole pipeline.
 Just `.provide` once.
 
-## Observability with OpenTelemetry
-Add spans, metrics, and events to your pipelines. Read more in the [OpenTelemetry guide](https://mattlianje.github.io/etl4s/opentelemetry/).
+## Telemetry
+etl4s provides a minimal `Etl4sTelemetry` interface for observability. All pipeline run methods automatically look for this interface in implicit scope. **Write telemetry once, choose backend later.**
+
+All `Tel` calls are no-ops by default - zero overhead until you provide an implementation. No threading context through layers. No framework lock-in.
 
 ```scala
 val process = Transform[List[String], Int] { data =>
-  OTel.span("batch-processing", "batch.size" -> data.size) {
-    OTel.counter("records.processed", data.size)
-    val result = data.map(_.length).sum
-    OTel.histogram("processing.time", elapsedMs)
-    result
+  Tel.span("batch-processing") {
+    Tel.counter("records.processed", data.size)
+    data.map(_.length).sum
   }
 }
 
-/* No-ops during development */
+// Development: Tel calls are no-ops (zero cost)
 process.unsafeRun(data)
 
-/* Bring your custom telemetry to prod */
-implicit val otel = ConsoleOTelProvider()
-process.unsafeRun(data)
+// Production: implement Etl4sTelemetry for your backend
+implicit val telemetry: Etl4sTelemetry = MyPrometheusProvider()
+process.unsafeRun(data) // metrics flow to Prometheus
 ```
+
+The `Etl4sTelemetry` interface has just 4 methods: `withSpan`, `addCounter`, `setGauge`, `recordHistogram`
+which cover 95% of observability needs. Read more in the [Telemetry guide](https://mattlianje.github.io/etl4s/opentelemetry/).
 
 ## Examples
 

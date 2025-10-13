@@ -1,79 +1,85 @@
-# OpenTelemetry Integration
+# Telemetry
 
-Add distributed tracing to etl4s pipelines.
+etl4s provides a minimal telemetry interface.
 
-## Philosophy
-
-**etl4s** gives you one clean, OpenTelemetry-compatible way to think about telemetry in ETL. The idea is "constraints liberate" - `etl4s.OTel` provides the simplest, most constraining interface covering 95% of telemetry needs:
-
-- **Spans** for tracing execution flow
-- **Metrics** (counters, gauges, histograms) for measurement  
-- **Events and attributes** for context
-- **Nothing more**
-
-This tiny interface forces clarity and prevents bloat. You sprinkle telemetry calls throughout your ETL code - they're silent no-ops until you bring your own OpenTelemetry provider into scope. You control the complexity.
-
-During development and testing, telemetry calls are complete no-ops with zero overhead. In production, drop in any OpenTelemetry provider for spans, metrics, and dashboards.
-
-## Basic Usage
+## How It Works
 
 ```scala
-import etl4s._
-
-// Console provider for development
-implicit val otel: OTelProvider = ConsoleOTelProvider()
-
-val pipeline = Transform[String, Int] { input =>
-  OTel.span("processing") {
-    OTel.counter("items.processed", 1)
-    OTel.gauge("input.length", input.length.toDouble)
-    input.length
-  }
-}
-
-pipeline.unsafeRun("hello")  // Prints telemetry to console
-```
-
-## Custom Provider
-
-Implement `OTelProvider` to connect to your observability backend:
-
-```scala
-class MyOTelProvider extends OTelProvider {
-  def withSpan[T](name: String, attributes: (String, Any)*)(block: => T): T = {
-    // Your span implementation
-    block
-  }
-  
-  def addCounter(name: String, value: Long): Unit = {
-    // Your counter implementation
-  }
-  
-  def setGauge(name: String, value: Double): Unit = {
-    // Your gauge implementation  
-  }
-  
-  def recordHistogram(name: String, value: Double): Unit = {
-    // Your histogram implementation
-  }
+trait Etl4sTelemetry {
+  def withSpan[T](name: String, attributes: (String, Any)*)(block: => T): T
+  def addCounter(name: String, value: Long): Unit
+  def setGauge(name: String, value: Double): Unit  
+  def recordHistogram(name: String, value: Double): Unit
 }
 ```
 
-## Real OpenTelemetry SDK
+All etl4s pipeline run methods automatically look for `Etl4sTelemetry` in implicit scope. By default, `Tel` calls are no-ops with zero overhead.
+
+**Your implementation connects to:** OpenTelemetry SDK, Prometheus, DataDog, New Relic, CloudWatch, or custom logging.
+
+## Usage
 
 ```scala
-import io.opentelemetry.api.OpenTelemetry
-import io.opentelemetry.sdk.OpenTelemetrySdk
-// ... other imports
+val process = Transform[List[String], Int] { data =>
+  Tel.span("processing") {
+    Tel.counter("items", data.size)
+    data.map(_.length).sum
+  }
+}
 
-class RealOTelProvider extends OTelProvider {
-  private val sdk: OpenTelemetry = OpenTelemetrySdk.builder()
-    .setTracerProvider(/* your tracer config */)
-    .setMeterProvider(/* your meter config */)
-    .build()
-    
-  private val tracer = sdk.getTracer("my-app")
-  private val meter = sdk.getMeter("my-app")
+// Development: no-ops (zero cost)
+process.unsafeRun(data)
+
+// Production: your backend
+implicit val telemetry: Etl4sTelemetry = MyPrometheusProvider()
+process.unsafeRun(data)
+```
+
+**Key benefits:**
+- Write business critical telemetry in business logic, not infrastructure code
+- Zero performance cost until enabled  
+- Works on any platform: local JVM, Spark, Kubernetes, Lambda
+- No framework lock-in or context threading
+
+## Why Telemetry (sometimes) belongs in ETL Business Logic
+
+In many web and OLTP programs, telemetry is often a cross-cutting concern separate from business logic. **ETL is different.** In OLAP processes, observability metrics are frequently business-critical (especially at the peripheries in Extractors and Loaders):
+
+```scala
+val processUsers = Transform[List[RawUser], List[ValidUser]] { rawUsers =>
+  val validated = rawUsers.filter(isValid)
+  val invalidCount = rawUsers.size - validated.size
+  
+  // This IS business logic - the business needs these metrics
+  Tel.counter("users.processed", rawUsers.size) 
+  Tel.counter("users.invalid", invalidCount)
+  Tel.gauge("data.quality.ratio", validated.size.toDouble / rawUsers.size)
+  
+  // Business decision based on data quality
+  if (invalidCount > threshold) {
+    Tel.counter("pipeline.quality.failures", 1)
+    throw new DataQualityException("Too many invalid records")
+  }
+  
+  validated
+}
+```
+
+In the above example - these aren't just "monitoring metrics" - they're business KPIs:
+- Record counts determine billing and SLAs
+- Processing times affect customer experience  
+- Data quality ratios trigger business alerts
+- Throughput metrics inform capacity planning
+
+etl4s makes it safe to instrument business logic directly because `Tel` calls are zero-cost no-ops by default. You get the observability where it matters most - in the business context - without infrastructure coupling.
+
+## Implementation Examples
+
+### OpenTelemetry SDK
+```scala
+class OpenTelemetryProvider extends Etl4sTelemetry {
+  private val tracer = GlobalOpenTelemetry.getTracer("my-app")
+  private val meter = GlobalOpenTelemetry.getMeter("my-app")
   
   def withSpan[T](name: String, attributes: (String, Any)*)(block: => T): T = {
     val span = tracer.spanBuilder(name).startSpan()
@@ -83,73 +89,73 @@ class RealOTelProvider extends OTelProvider {
   def addCounter(name: String, value: Long): Unit = {
     meter.counterBuilder(name).build().add(value)
   }
+  // ... implement setGauge, recordHistogram
+}
+```
+
+### Prometheus
+```scala
+class PrometheusProvider extends Etl4sTelemetry {
+  def withSpan[T](name: String, attributes: (String, Any)*)(block: => T): T = {
+    val timer = Timer.start()
+    try block finally histogram.labels(name).observe(timer.observeDuration())
+  }
   
-  // ... implement other methods
+  def addCounter(name: String, value: Long): Unit = {
+    Counter.build().name(name).register().inc(value)
+  }
+  // ... implement setGauge, recordHistogram
 }
 ```
 
-## Nested Spans
+### Console (Built-in)
+```scala
+// Development telemetry - prints to stdout
+implicit val telemetry: Etl4sTelemetry = Etl4sConsoleTelemetry()
+```
 
+## Advanced Features
+
+### Span Attributes
+```scala
+Tel.span("processing",
+  "input.size" -> data.size,
+  "batch.id" -> batchId
+) {
+  // processing logic
+}
+```
+
+### Nested Spans
 Spans automatically nest when called within each other:
-
 ```scala
-val node = Transform[String, Int] { input =>
-  OTel.span("outer") {
-    OTel.counter("outer.ops", 1)
-    
-    val length = OTel.span("inner") {
-      OTel.counter("inner.ops", 1)
-      input.length
-    }
-    
-    length
+Tel.span("outer") {
+  val result = Tel.span("inner") {
+    // nested processing
+    computeResult()
   }
+  result
 }
 ```
 
-## Span Attributes
-
-Add metadata to spans:
-
+### No-Op by Default
+Without an `Etl4sTelemetry`, all calls are no-ops with zero overhead:
 ```scala
-val node = Transform[String, String] { input =>
-  OTel.span("processing",
-    "input.length" -> input.length,
-    "type" -> "uppercase"
-  ) {
-    input.toUpperCase
-  }
-}
-```
-
-## No-Op by Default
-
-Without an `OTelProvider`, all calls are no-ops with zero overhead:
-
-```scala
-// No implicit provider - all OTel calls do nothing
-val node = Transform[String, String] { input =>
-  OTel.span("processing") {
-    OTel.counter("processed", 1)
-    input.toUpperCase
-  }
-}
+// No implicit provider - all Tel calls do nothing
+Tel.span("processing") { Tel.counter("processed", 1) }
 ```
 
 ## API Reference
 
-### OTel Object
-
+### Tel Object
 | Method | Description |
 |:-------|:------------|
-| `OTel.span(name)(block)` | Execute block in named span |
-| `OTel.counter(name, value)` | Increment counter |
-| `OTel.gauge(name, value)` | Set gauge value |
-| `OTel.histogram(name, value)` | Record histogram value |
-| `OTel.addEvent(name, attrs*)` | Add span event (no-op in base) |
+| `Tel.span(name)(block)` | Execute block in named span |
+| `Tel.counter(name, value)` | Increment counter |
+| `Tel.gauge(name, value)` | Set gauge value |
+| `Tel.histogram(name, value)` | Record histogram value |
 
-### OTelProvider Interface
-
+### Etl4sTelemetry Interface
 | Method | Description |
 |:-------|:------------|
 | `withSpan(name, attrs*)(block)` | Create span around block |
@@ -157,11 +163,8 @@ val node = Transform[String, String] { input =>
 | `setGauge(name, value)` | Set gauge to value |
 | `recordHistogram(name, value)` | Record histogram measurement |
 
-### Built-in Providers
-
-| Provider | Description |
+### Built-in Implementations
+| Implementation | Description |
 |:---------|:------------|
-| `ConsoleOTelProvider()` | Prints to stdout |
-| `NoOpOTel` | Silent no-op implementation |
-
-The OpenTelemetry integration follows the same principle as the rest of etl4s: simple, composable, and zero overhead when not used.
+| `Etl4sConsoleTelemetry()` | Prints to stdout |
+| `Etl4sNoOpTelemetry` | Silent no-op (default) |

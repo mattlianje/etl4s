@@ -83,11 +83,11 @@ package object etl4s {
      * Trace information is collected internally but only accessible via unsafeRunTraced.
      *
      * @param a the input value
-     * @param otelProvider optional OTel provider for observability (defaults to NoOpOtel)
+     * @param otelProvider optional OTel provider for observability (defaults to Etl4sNoOpTelemetry)
      * @return the transformed output
      * @throws any exception thrown by the underlying function
      */
-    def unsafeRun(a: A)(implicit otelProvider: OtelProvider = NoOpOtel): B =
+    def unsafeRun(a: A)(implicit otelProvider: Etl4sTelemetry = Etl4sNoOpTelemetry): B =
       withOtelSetup(otelProvider) {
         withTraceSetup { _ =>
           f(a)
@@ -99,10 +99,10 @@ package object etl4s {
      * Trace information is collected internally but only accessible via safeRunTraced.
      *
      * @param a the input value
-     * @param otelProvider optional OTel provider for observability (defaults to NoOpOtel)
+     * @param otelProvider optional OTel provider for observability (defaults to Etl4sNoOpTelemetry)
      * @return Success(result) or Failure(exception)
      */
-    def safeRun(a: A)(implicit otelProvider: OtelProvider = NoOpOtel): Try[B] =
+    def safeRun(a: A)(implicit otelProvider: Etl4sTelemetry = Etl4sNoOpTelemetry): Try[B] =
       withOtelSetup(otelProvider) {
         withTraceSetup { _ =>
           Try(f(a))
@@ -113,10 +113,10 @@ package object etl4s {
      * Runs the node and collects insights about the execution.
      *
      * @param a the input value
-     * @param otelProvider optional OTel provider for observability (defaults to NoOpOtel)
+     * @param otelProvider optional OTel provider for observability (defaults to Etl4sNoOpTelemetry)
      * @return Trace containing result and collected information
      */
-    def unsafeRunTrace(a: A)(implicit otelProvider: OtelProvider = NoOpOtel): Trace[B] =
+    def unsafeRunTrace(a: A)(implicit otelProvider: Etl4sTelemetry = Etl4sNoOpTelemetry): Trace[B] =
       withOtelSetup(otelProvider) {
         withTraceSetup { startTime =>
           val result       = f(a)
@@ -137,10 +137,12 @@ package object etl4s {
      * Runs the node safely and collects insights about the execution.
      *
      * @param a the input value
-     * @param otelProvider optional OTel provider for observability (defaults to NoOpOtel)
+     * @param otelProvider optional OTel provider for observability (defaults to Etl4sNoOpTelemetry)
      * @return Trace with Try[B] as result
      */
-    def safeRunTrace(a: A)(implicit otelProvider: OtelProvider = NoOpOtel): Trace[Try[B]] =
+    def safeRunTrace(
+      a: A
+    )(implicit otelProvider: Etl4sTelemetry = Etl4sNoOpTelemetry): Trace[Try[B]] =
       withOtelSetup(otelProvider) {
         withTraceSetup { startTime =>
           val result       = Try(f(a))
@@ -158,15 +160,15 @@ package object etl4s {
       }
 
     /** Sets up OTel provider, executes block, cleans up. */
-    private def withOtelSetup[T](otelProvider: OtelProvider)(block: => T): T = {
-      if (otelProvider != NoOpOtel) {
-        OTel.setProvider(otelProvider)
+    private def withOtelSetup[T](otelProvider: Etl4sTelemetry)(block: => T): T = {
+      if (otelProvider != Etl4sNoOpTelemetry) {
+        Tel.setProvider(otelProvider)
       }
       try {
         block
       } finally {
-        if (otelProvider != NoOpOtel) {
-          OTel.clearProvider()
+        if (otelProvider != Etl4sNoOpTelemetry) {
+          Tel.clearProvider()
         }
       }
     }
@@ -1163,52 +1165,52 @@ package object etl4s {
    * OpenTelemetry integration for etl4s pipelines.
    * 
    * Provides span, counter, gauge, and histogram recording within pipeline execution.
-   * Uses ThreadLocal to automatically work when OtelProvider is set via implicit parameter
+   * Uses ThreadLocal to automatically work when Etl4sTelemetry is set via implicit parameter
    * to run methods.
    * 
    * @example
    * {{{
    * val extract = Extract[String, List[User]] { input =>
-   *   OTel.span("user-parsing") {
+   *   Tel.span("user-parsing") {
    *     Trace.log("Starting extraction")
    *     val users = parseUsers(input)
-   *     OTel.counter("users.extracted", users.size.toLong)
-   *     OTel.histogram("batch.size", users.size.toDouble)
+   *     Tel.counter("users.extracted", users.size.toLong)
+   *     Tel.histogram("batch.size", users.size.toDouble)
    *     users
    *   }
    * }
    * 
    * // With OTel provider
-   * implicit val otel: OtelProvider = ConsoleOtelProvider()
+   * implicit val otel: Etl4sTelemetry = ConsoleEtl4sTelemetry()
    * pipeline.unsafeRun(data)
    * 
    * // Without OTel provider - all calls are no-ops
    * pipeline.unsafeRun(data)
    * }}}
    */
-  object OTel {
-    private val otelProvider: ThreadLocal[Option[OtelProvider]] =
-      new ThreadLocal[Option[OtelProvider]] {
-        override def initialValue(): Option[OtelProvider] = None
+  object Tel {
+    private val observabilityProvider: ThreadLocal[Option[Etl4sTelemetry]] =
+      new ThreadLocal[Option[Etl4sTelemetry]] {
+        override def initialValue(): Option[Etl4sTelemetry] = None
       }
 
-    private[etl4s] def setProvider(provider: OtelProvider): Unit = {
-      otelProvider.set(Some(provider))
+    private[etl4s] def setProvider(provider: Etl4sTelemetry): Unit = {
+      observabilityProvider.set(Some(provider))
     }
 
     private[etl4s] def clearProvider(): Unit = {
-      otelProvider.set(None)
+      observabilityProvider.set(None)
     }
 
     /**
      * Execute block within a named span.
-     * No-op if no OtelProvider is set.
+     * No-op if no Etl4sTelemetry is set.
      */
     /**
      * Create a span with optional attributes.
      */
     def span[T](name: String, attributes: (String, Any)*)(block: => T): T = {
-      otelProvider.get() match {
+      observabilityProvider.get() match {
         case Some(provider) => provider.withSpan(name, attributes: _*)(block)
         case None           => block
       }
@@ -1224,26 +1226,26 @@ package object etl4s {
 
     /**
      * Record a counter metric.
-     * No-op if no OtelProvider is set.
+     * No-op if no Etl4sTelemetry is set.
      */
     def counter(name: String, value: Long): Unit = {
-      otelProvider.get().foreach(_.addCounter(name, value))
+      observabilityProvider.get().foreach(_.addCounter(name, value))
     }
 
     /**
      * Record a gauge metric.
-     * No-op if no OtelProvider is set.
+     * No-op if no Etl4sTelemetry is set.
      */
     def gauge(name: String, value: Double): Unit = {
-      otelProvider.get().foreach(_.setGauge(name, value))
+      observabilityProvider.get().foreach(_.setGauge(name, value))
     }
 
     /**
      * Record a histogram metric.
-     * No-op if no OtelProvider is set.
+     * No-op if no Etl4sTelemetry is set.
      */
     def histogram(name: String, value: Double): Unit = {
-      otelProvider.get().foreach(_.recordHistogram(name, value))
+      observabilityProvider.get().foreach(_.recordHistogram(name, value))
     }
   }
 
@@ -1253,7 +1255,7 @@ package object etl4s {
    * 
    * @example
    * {{{
-   * class MyOtelProvider extends OtelProvider {
+   * class MyEtl4sTelemetry extends Etl4sTelemetry {
    *   private val tracer = GlobalOpenTelemetry.getTracer("my-app")
    *   private val meter = GlobalOpenTelemetry.getMeter("my-app")
    *   
@@ -1276,7 +1278,7 @@ package object etl4s {
    * }
    * }}}
    */
-  trait OtelProvider {
+  trait Etl4sTelemetry {
     def withSpan[T](name: String, attributes: (String, Any)*)(block: => T): T
     def addCounter(name: String, value: Long): Unit
     def setGauge(name: String, value: Double): Unit
@@ -1284,10 +1286,10 @@ package object etl4s {
   }
 
   /**
-   * No-op implementation for when OTel is not needed.
-   * This is the default when no implicit OtelProvider is provided.
+   * No-op implementation for when observability is not needed.
+   * This is the default when no implicit Etl4sTelemetry is provided.
    */
-  object NoOpOtel extends OtelProvider {
+  object Etl4sNoOpTelemetry extends Etl4sTelemetry {
     def withSpan[T](name: String, attributes: (String, Any)*)(block: => T): T = block
     def addCounter(name: String, value: Long): Unit                           = ()
     def setGauge(name: String, value: Double): Unit                           = ()
@@ -1295,16 +1297,16 @@ package object etl4s {
   }
 
   /**
-   * Console-based OTel provider for development and testing.
+   * Console-based observability provider for development and testing.
    * Prints telemetry data to stdout with timestamps.
    * 
    * @example
    * {{{
-   * implicit val otel: OtelProvider = ConsoleOtelProvider()
+   * implicit val observability: Etl4sTelemetry = Etl4sConsole()
    * pipeline.unsafeRun(data) // Prints spans and metrics to console
    * }}}
    */
-  case class ConsoleOtelProvider(prefix: String = "[OTEL]") extends OtelProvider {
+  case class Etl4sConsoleTelemetry(prefix: String = "[ETL4S]") extends Etl4sTelemetry {
 
     def withSpan[T](name: String, attributes: (String, Any)*)(block: => T): T = {
       val startTime = System.currentTimeMillis()
