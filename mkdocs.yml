@@ -37,7 +37,7 @@ nav:
   - Parallel Execution: tasks.md
   - Handling failures: failures.md
   - Side Effects with `tap`: logs.md
-  - Pipeline Tracing: trace.md
+  - Tracing: trace.md
   - Telemetry: opentelemetry.md
   - Config-Driven Pipelines: config.md
   - Testing: testing.md
