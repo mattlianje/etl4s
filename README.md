@@ -20,8 +20,8 @@ Battle-tested at [Instacart](https://www.instacart.com/). Part of [d4](https://g
 - [Config-driven](#configuration) by design
 - Easy, monadic composition of pipelines
 - Built-in retry/failure handling
-- Automatic [trace collection](#introspection-with-etl4strace)
-- Zero-dependency [OpenTelemetry integration](#observability-with-opentelemetry)
+- Automatic [tracing](#introspection-with-etl4strace)
+- Drop-in [telemetry integration](#observability-with-opentelemetry)
 
 ## Installation
 
@@ -261,8 +261,9 @@ Just declare what each step `.requires`, then `.provide` it later.
 
 ```scala
 Node[In, Out].requires[Config](cfg => in => out)
-// Scala 2.x:
-// Node.requires[Config, In, Out](cfg => in => out)
+/** Scala 2.x:
+  * Node.requires[Config, In, Out](cfg => in => out)
+  */
 ```
 Like this, every Node step can declare the exact config it needs (just Reader monads under the hood):
 ```scala
@@ -281,7 +282,7 @@ val pipeline = fetchData ~> enrichData
 Just `.provide` once.
 
 ## Telemetry
-etl4s provides a minimal `Etl4sTelemetry` interface for observability. All pipeline run methods automatically look for this interface in implicit scope. **Write telemetry once, choose backend later.**
+etl4s provides a minimal `Etl4sTelemetry` interface for observability. All pipeline run methods automatically look for this interface in implicit scope.
 
 `Tel` is etl4s's telemetry API object with the same method names as the trait for consistency. All `Tel` calls are no-ops by default - zero overhead until you provide an implementation.
 
@@ -293,12 +294,12 @@ val process = Transform[List[String], Int] { data =>
   }
 }
 
-// Development: Tel calls are no-ops (zero cost)
+/* By default Tel calls are no-ops (zero cost) */
 process.unsafeRun(data)
 
-// Production: implement Etl4sTelemetry for your backend
+/* Implement Etl4sTelemetry for your backend */
 implicit val telemetry: Etl4sTelemetry = MyPrometheusProvider()
-process.unsafeRun(data) // metrics flow to Prometheus
+process.unsafeRun(data) /* metrics flow to Prometheus */
 ```
 
 The `Etl4sTelemetry` interface has just 4 methods: `withSpan`, `addCounter`, `setGauge`, `recordHistogram`
