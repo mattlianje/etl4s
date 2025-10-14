@@ -1,6 +1,6 @@
 # Telemetry
 
-etl4s provides a minimal telemetry interface. This interface exists to decouple telemetry from specific backends - write once, backend anywhere.
+etl4s provides a minimal telemetry interface. This interface exists to decouple telemetry from specific backends.
 
 ## How It Works
 
