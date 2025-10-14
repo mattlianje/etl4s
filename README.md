@@ -283,12 +283,12 @@ Just `.provide` once.
 ## Telemetry
 etl4s provides a minimal `Etl4sTelemetry` interface for observability. All pipeline run methods automatically look for this interface in implicit scope. **Write telemetry once, choose backend later.**
 
-All `Tel` calls are no-ops by default - zero overhead until you provide an implementation. No threading context through layers. No framework lock-in.
+`Tel` is etl4s's telemetry API object with the same method names as the trait for consistency. All `Tel` calls are no-ops by default - zero overhead until you provide an implementation.
 
 ```scala
 val process = Transform[List[String], Int] { data =>
-  Tel.span("batch-processing") {
-    Tel.counter("records.processed", data.size)
+  Tel.withSpan("batch-processing") {
+    Tel.addCounter("records.processed", data.size)
     data.map(_.length).sum
   }
 }

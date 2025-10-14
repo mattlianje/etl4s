@@ -1171,11 +1171,11 @@ package object etl4s {
    * @example
    * {{{
    * val extract = Extract[String, List[User]] { input =>
-   *   Tel.span("user-parsing") {
+   *   Tel.withSpan("user-parsing") {
    *     Trace.log("Starting extraction")
    *     val users = parseUsers(input)
-   *     Tel.counter("users.extracted", users.size.toLong)
-   *     Tel.histogram("batch.size", users.size.toDouble)
+   *     Tel.addCounter("users.extracted", users.size.toLong)
+   *     Tel.recordHistogram("batch.size", users.size.toDouble)
    *     users
    *   }
    * }
@@ -1209,10 +1209,11 @@ package object etl4s {
     /**
      * Create a span with optional attributes.
      */
-    def span[T](name: String, attributes: (String, Any)*)(block: => T): T = {
-      observabilityProvider.get() match {
-        case Some(provider) => provider.withSpan(name, attributes: _*)(block)
-        case None           => block
+    def withSpan[T](name: String, attributes: (String, Any)*)(block: => T): T = {
+      val provider = observabilityProvider.get()
+      provider match {
+        case Some(p) => p.withSpan(name, attributes: _*)(block)
+        case None    => block
       }
     }
 
@@ -1220,32 +1221,35 @@ package object etl4s {
      * Add an event to the current span.
      */
     def addEvent(name: String, attributes: (String, Any)*): Unit = {
-      // No-op by default - only works when real OTel provider is active
-      // Implementation provided by actual OTel integration
+      // No-op by default - only works when real telemetry provider is active
+      // Implementation provided by actual telemetry integration
     }
 
     /**
      * Record a counter metric.
      * No-op if no Etl4sTelemetry is set.
      */
-    def counter(name: String, value: Long): Unit = {
-      observabilityProvider.get().foreach(_.addCounter(name, value))
+    def addCounter(name: String, value: Long): Unit = {
+      val provider = observabilityProvider.get()
+      provider.foreach(_.addCounter(name, value))
     }
 
     /**
      * Record a gauge metric.
      * No-op if no Etl4sTelemetry is set.
      */
-    def gauge(name: String, value: Double): Unit = {
-      observabilityProvider.get().foreach(_.setGauge(name, value))
+    def setGauge(name: String, value: Double): Unit = {
+      val provider = observabilityProvider.get()
+      provider.foreach(_.setGauge(name, value))
     }
 
     /**
      * Record a histogram metric.
      * No-op if no Etl4sTelemetry is set.
      */
-    def histogram(name: String, value: Double): Unit = {
-      observabilityProvider.get().foreach(_.recordHistogram(name, value))
+    def recordHistogram(name: String, value: Double): Unit = {
+      val provider = observabilityProvider.get()
+      provider.foreach(_.recordHistogram(name, value))
     }
   }
 

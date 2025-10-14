@@ -15,14 +15,16 @@ trait Etl4sTelemetry {
 
 All etl4s pipeline run methods automatically look for `Etl4sTelemetry` in implicit scope. By default, `Tel` calls are no-ops with zero overhead.
 
-**Your implementation connects to:** OpenTelemetry SDK, Prometheus, DataDog, New Relic, CloudWatch, or custom logging.
+**`Tel` is etl4s's telemetry API object** - it provides the same method names as the `Etl4sTelemetry` trait for consistency.
+
+**Your implementation connects to:** OpenTelemetry SDK, Prometheus, DataDog, New Relic, CloudWatch, or whatever you want.
 
 ## Usage
 
 ```scala
 val process = Transform[List[String], Int] { data =>
-  Tel.span("processing") {
-    Tel.counter("items", data.size)
+  Tel.withSpan("processing") {
+    Tel.addCounter("items", data.size)
     data.map(_.length).sum
   }
 }
@@ -52,13 +54,13 @@ val processUsers = Transform[List[RawUser], List[ValidUser]] { rawUsers =>
   val invalidCount = rawUsers.size - validated.size
   
   // This IS business logic - the business needs these metrics
-  Tel.counter("users.processed", rawUsers.size) 
-  Tel.counter("users.invalid", invalidCount)
-  Tel.gauge("data.quality.ratio", validated.size.toDouble / rawUsers.size)
+  Tel.addCounter("users.processed", rawUsers.size) 
+  Tel.addCounter("users.invalid", invalidCount)
+  Tel.setGauge("data.quality.ratio", validated.size.toDouble / rawUsers.size)
   
   // Business decision based on data quality
   if (invalidCount > threshold) {
-    Tel.counter("pipeline.quality.failures", 1)
+    Tel.addCounter("pipeline.quality.failures", 1)
     throw new DataQualityException("Too many invalid records")
   }
   
@@ -120,7 +122,7 @@ implicit val telemetry: Etl4sTelemetry = Etl4sConsoleTelemetry()
 
 ### Span Attributes
 ```scala
-Tel.span("processing",
+Tel.withSpan("processing",
   "input.size" -> data.size,
   "batch.id" -> batchId
 ) {
@@ -131,8 +133,8 @@ Tel.span("processing",
 ### Nested Spans
 Spans automatically nest when called within each other:
 ```scala
-Tel.span("outer") {
-  val result = Tel.span("inner") {
+Tel.withSpan("outer") {
+  val result = Tel.withSpan("inner") {
     // nested processing
     computeResult()
   }
@@ -144,7 +146,7 @@ Tel.span("outer") {
 Without an `Etl4sTelemetry`, all calls are no-ops with zero overhead:
 ```scala
 // No implicit provider - all Tel calls do nothing
-Tel.span("processing") { Tel.counter("processed", 1) }
+Tel.withSpan("processing") { Tel.addCounter("processed", 1) }
 ```
 
 ## API Reference
@@ -152,10 +154,10 @@ Tel.span("processing") { Tel.counter("processed", 1) }
 ### Tel Object
 | Method | Description |
 |:-------|:------------|
-| `Tel.span(name)(block)` | Execute block in named span |
-| `Tel.counter(name, value)` | Increment counter |
-| `Tel.gauge(name, value)` | Set gauge value |
-| `Tel.histogram(name, value)` | Record histogram value |
+| `Tel.withSpan(name)(block)` | Execute block in named span |
+| `Tel.addCounter(name, value)` | Increment counter |
+| `Tel.setGauge(name, value)` | Set gauge value |
+| `Tel.recordHistogram(name, value)` | Record histogram value |
 
 ### Etl4sTelemetry Interface
 | Method | Description |

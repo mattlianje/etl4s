@@ -615,11 +615,11 @@ class TelSpecs extends munit.FunSuite {
 
   test("Tel calls are no-ops without provider") {
     val node = Transform[String, String] { input =>
-      Tel.span("test-span") {
+      Tel.withSpan("test-span") {
         Trace.log("Processing")
-        Tel.counter("test.counter", 1)
-        Tel.gauge("test.gauge", 42.0)
-        Tel.histogram("test.histogram", 100.0)
+        Tel.addCounter("test.counter", 1)
+        Tel.setGauge("test.gauge", 42.0)
+        Tel.recordHistogram("test.histogram", 100.0)
         input.toUpperCase
       }
     }
@@ -633,10 +633,10 @@ class TelSpecs extends munit.FunSuite {
     implicit val otel: Etl4sTelemetry = Etl4sConsoleTelemetry("[TEST]")
 
     val node = Transform[String, String] { input =>
-      Tel.span("string-processing") {
-        Tel.counter("strings.processed", 1)
-        Tel.gauge("string.length", input.length.toDouble)
-        Tel.histogram("processing.time", 50.0)
+      Tel.withSpan("string-processing") {
+        Tel.addCounter("strings.processed", 1)
+        Tel.setGauge("string.length", input.length.toDouble)
+        Tel.recordHistogram("processing.time", 50.0)
         input.toUpperCase
       }
     }
@@ -649,15 +649,15 @@ class TelSpecs extends munit.FunSuite {
     implicit val otel: Etl4sTelemetry = Etl4sConsoleTelemetry()
 
     val node = Transform[String, Int] { input =>
-      Tel.span("outer") {
-        Tel.counter("outer.ops", 1)
+      Tel.withSpan("outer") {
+        Tel.addCounter("outer.ops", 1)
 
-        val length = Tel.span("inner") {
-          Tel.counter("inner.ops", 1)
+        val length = Tel.withSpan("inner") {
+          Tel.addCounter("inner.ops", 1)
           input.length
         }
 
-        Tel.histogram("result.value", length.toDouble)
+        Tel.recordHistogram("result.value", length.toDouble)
         length
       }
     }
@@ -670,24 +670,24 @@ class TelSpecs extends munit.FunSuite {
     implicit val otel: Etl4sTelemetry = Etl4sConsoleTelemetry("[INTEGRATION]")
 
     val pipeline = Transform[String, String] { input =>
-      Tel.span("validation") {
+      Tel.withSpan("validation") {
         if (input.isEmpty) {
           Trace.error("Empty input detected")
-          Tel.counter("validation.errors", 1)
+          Tel.addCounter("validation.errors", 1)
         } else {
           Trace.log("Input validated successfully")
-          Tel.counter("validation.success", 1)
+          Tel.addCounter("validation.success", 1)
         }
         input
       }
     } ~> Transform[String, String] { input =>
-      Tel.span("processing") {
+      Tel.withSpan("processing") {
         if (Trace.hasErrors) {
-          Tel.counter("processing.skipped", 1)
+          Tel.addCounter("processing.skipped", 1)
           "FALLBACK"
         } else {
-          Tel.counter("processing.completed", 1)
-          Tel.histogram("input.length", input.length.toDouble)
+          Tel.addCounter("processing.completed", 1)
+          Tel.recordHistogram("input.length", input.length.toDouble)
           input.toUpperCase
         }
       }
@@ -730,12 +730,12 @@ class TelSpecs extends munit.FunSuite {
     implicit val otel: Etl4sTelemetry = testProvider
 
     val node = Transform[List[String], Int] { strings =>
-      Tel.span("list-processing") {
-        Tel.counter("items.received", strings.size.toLong)
-        Tel.gauge("batch.size", strings.size.toDouble)
+      Tel.withSpan("list-processing") {
+        Tel.addCounter("items.received", strings.size.toLong)
+        Tel.setGauge("batch.size", strings.size.toDouble)
 
         val totalLength = strings.map(_.length).sum
-        Tel.histogram("total.length", totalLength.toDouble)
+        Tel.recordHistogram("total.length", totalLength.toDouble)
         totalLength
       }
     }
@@ -753,7 +753,7 @@ class TelSpecs extends munit.FunSuite {
 
   test("span attributes are no-ops without provider") {
     val node = Transform[String, String] { input =>
-      Tel.span("processing", "input.length" -> input.length, "type" -> "uppercase") {
+      Tel.withSpan("processing", "input.length" -> input.length, "type" -> "uppercase") {
         Tel.addEvent("started")
         val result = input.toUpperCase
         Tel.addEvent("completed")
@@ -769,7 +769,7 @@ class TelSpecs extends munit.FunSuite {
     implicit val otel: Etl4sTelemetry = Etl4sConsoleTelemetry()
 
     val node = Transform[String, String] { input =>
-      Tel.span("processing", "input.length" -> input.length, "type" -> "uppercase") {
+      Tel.withSpan("processing", "input.length" -> input.length, "type" -> "uppercase") {
         Tel.addEvent("started")
         val result = input.toUpperCase
         Tel.addEvent("completed", "output.length" -> result.length)
@@ -911,20 +911,20 @@ class TelSpecs extends munit.FunSuite {
 
     val pipeline = Extract[String, List[String]](_.split(",").toList) ~>
       Transform[List[String], List[String]] { items =>
-        Tel.span("data-transformation") {
+        Tel.withSpan("data-transformation") {
           Trace.log(s"Transforming ${items.size} items")
-          Tel.counter("items.received", items.size.toLong)
+          Tel.addCounter("items.received", items.size.toLong)
           val transformed = items.map(_.trim.toUpperCase)
-          Tel.histogram("transformation.time", 25.0)
+          Tel.recordHistogram("transformation.time", 25.0)
           transformed
         }
       } ~>
       Load[List[String], Int] { items =>
-        Tel.span("data-persistence") {
+        Tel.withSpan("data-persistence") {
           Trace.log(s"Persisting ${items.size} items")
-          Tel.counter("items.saved", items.size.toLong)
-          Tel.histogram("batch.processing.time", 150.0)
-          Tel.gauge("current.batch.size", items.size.toDouble)
+          Tel.addCounter("items.saved", items.size.toLong)
+          Tel.recordHistogram("batch.processing.time", 150.0)
+          Tel.setGauge("current.batch.size", items.size.toDouble)
           items.size
         }
       }
@@ -967,13 +967,13 @@ class TelSpecs extends munit.FunSuite {
     implicit val otel: Etl4sTelemetry = testProvider
 
     val node = Transform[List[String], Int] { strings =>
-      Tel.span("processing") {
-        Tel.counter("items.processed", 5L)
-        Tel.counter("items.processed", 3L)
-        Tel.counter("items.processed", 2L)
+      Tel.withSpan("processing") {
+        Tel.addCounter("items.processed", 5L)
+        Tel.addCounter("items.processed", 3L)
+        Tel.addCounter("items.processed", 2L)
 
-        Tel.counter("batches.completed", 1L)
-        Tel.counter("batches.completed", 1L)
+        Tel.addCounter("batches.completed", 1L)
+        Tel.addCounter("batches.completed", 1L)
 
         strings.size
       }

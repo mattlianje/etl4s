@@ -1,5 +1,5 @@
 //> using dep "org.scalameta::munit:1.1.1"
-//> using scala 2.12 2.13 3
+//> using scala 2.12 2.13 3.5
 
 //> using test.dep "io.opentelemetry:opentelemetry-api:1.54.1"
 //> using test.dep "io.opentelemetry:opentelemetry-sdk:1.54.1"
