@@ -1,8 +1,10 @@
 # Telemetry
 
-etl4s provides a minimal telemetry interface.
+etl4s provides a minimal telemetry interface. This interface exists to decouple telemetry from specific backends - write once, backend anywhere.
 
 ## How It Works
+
+The `Etl4sTelemetry` trait defines the core interface:
 
 ```scala
 trait Etl4sTelemetry {
@@ -13,9 +15,9 @@ trait Etl4sTelemetry {
 }
 ```
 
-All etl4s pipeline run methods automatically look for `Etl4sTelemetry` in implicit scope. By default, `Tel` calls are no-ops with zero overhead.
+All etl4s pipeline run methods automatically look for `Etl4sTelemetry` in implicit scope.
 
-**`Tel` is etl4s's telemetry API object** - it provides the same method names as the `Etl4sTelemetry` trait for consistency.
+The `Tel` object provides a convenient API with identical method names to the trait. By default, all `Tel` calls are no-ops with zero overhead until you provide an implementation.
 
 **Your implementation connects to:** OpenTelemetry SDK, Prometheus, DataDog, New Relic, CloudWatch, or whatever you want.
 
@@ -29,10 +31,10 @@ val process = Transform[List[String], Int] { data =>
   }
 }
 
-// Development: no-ops (zero cost)
+/* Development: no-ops (zero cost) */
 process.unsafeRun(data)
 
-// Production: your backend
+/* Production: your backend */
 implicit val telemetry: Etl4sTelemetry = MyPrometheusProvider()
 process.unsafeRun(data)
 ```
@@ -53,12 +55,12 @@ val processUsers = Transform[List[RawUser], List[ValidUser]] { rawUsers =>
   val validated = rawUsers.filter(isValid)
   val invalidCount = rawUsers.size - validated.size
   
-  // This IS business logic - the business needs these metrics
+  /* This IS business logic - the business needs these metrics */
   Tel.addCounter("users.processed", rawUsers.size) 
   Tel.addCounter("users.invalid", invalidCount)
   Tel.setGauge("data.quality.ratio", validated.size.toDouble / rawUsers.size)
   
-  // Business decision based on data quality
+  /* Business decision based on data quality */
   if (invalidCount > threshold) {
     Tel.addCounter("pipeline.quality.failures", 1)
     throw new DataQualityException("Too many invalid records")
@@ -93,7 +95,7 @@ class OpenTelemetryProvider extends Etl4sTelemetry {
   def addCounter(name: String, value: Long): Unit = {
     meter.counterBuilder(name).build().add(value)
   }
-  // ... implement setGauge, recordHistogram
+  /* ... implement setGauge, recordHistogram */
 }
 ```
 
@@ -108,13 +110,13 @@ class PrometheusProvider extends Etl4sTelemetry {
   def addCounter(name: String, value: Long): Unit = {
     Counter.build().name(name).register().inc(value)
   }
-  // ... implement setGauge, recordHistogram
+  /* ... implement setGauge, recordHistogram */
 }
 ```
 
 ### Console (Built-in)
 ```scala
-// Development telemetry - prints to stdout
+/* Development telemetry - prints to stdout */
 implicit val telemetry: Etl4sTelemetry = Etl4sConsoleTelemetry()
 ```
 
@@ -126,7 +128,7 @@ Tel.withSpan("processing",
   "input.size" -> data.size,
   "batch.id" -> batchId
 ) {
-  // processing logic
+  /* processing logic */
 }
 ```
 
@@ -135,7 +137,7 @@ Spans automatically nest when called within each other:
 ```scala
 Tel.withSpan("outer") {
   val result = Tel.withSpan("inner") {
-    // nested processing
+    /* nested processing */
     computeResult()
   }
   result
@@ -145,7 +147,7 @@ Tel.withSpan("outer") {
 ### No-Op by Default
 Without an `Etl4sTelemetry`, all calls are no-ops with zero overhead:
 ```scala
-// No implicit provider - all Tel calls do nothing
+/* No implicit provider - all Tel calls do nothing */
 Tel.withSpan("processing") { Tel.addCounter("processed", 1) }
 ```
 
