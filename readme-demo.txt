@@ -1,8 +1,8 @@
 import etl4s._
 
 /* Define your building blocks */
-val fiveExtract: Extract[Unit, Int] = Extract(5)
-val timesTwo: Transform[Int, Int] = Transform(_ * 2)
+val fiveExtract: Extract[Unit, Int]  = Extract(5)
+val timesTwo:    Transform[Int, Int] = Transform(_ * 2)
 
 /* Add retry logic */
 val plusFive: Transform[Int, Int] = Transform {
