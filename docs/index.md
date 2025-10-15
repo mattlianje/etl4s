@@ -228,10 +228,10 @@ body {
 import etl4s._
 
 /* Define your building blocks */
-val fiveExtract: Extract[Unit, Int]     = Extract(5)
-val timesTwo:    Transform[Int, Int]    = Transform(_ * 2)
-val exclaim:     Transform[Int, String] = Transform(n => s"$n!")
-val consoleLoad: Load[String, Unit]     = Load(println(_))
+val fiveExtract = Extract(5)
+val timesTwo    = Transform[Int, Int](_ * 2)
+val exclaim     = Transform[Int, String](n => s"$n!")
+val consoleLoad = Load[String, Unit](println(_))
 
 /* Add config with .requires */
 val dbLoad      = Load[String, Unit].requires[String] { dbType => s =>
@@ -240,7 +240,7 @@ val dbLoad      = Load[String, Unit].requires[String] { dbType => s =>
 
 /* Stitch your pipeline */
 val pipeline =
-  fiveExtract ~> timesTwo ~> exclaim ~> (consoleLoad &> dbLoad)
+  fiveExtract ~> timesTwo ~> exclaim ~> (consoleLoad & dbLoad)
 
 /* Provide config, then run*/
 pipeline.provide("sqlite").unsafeRun(())
