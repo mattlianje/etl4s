@@ -2,7 +2,7 @@
  * +==========================================================================+
  * |                                 etl4s                                    |
  * |                     Powerful, whiteboard-style ETL                       |
- * |                            Version 1.4.1                                 |
+ * |                            Version 1.5.0                                 |
  * |                 Compatible with Scala 2.12, 2.13, and 3                  |
  * |                                                                          |
  * | Copyright 2025 Matthieu Court (matthieu.court@protonmail.com)            |
@@ -632,6 +632,14 @@ package object etl4s {
   }
 
   /**
+   * Type class for types that can carry metadata.
+   */
+  trait HasMetadata[F[_]] {
+    def metadata[A](fa: F[A]): Any
+    def withMetadata[A](fa: F[A], meta: Any): F[A]
+  }
+
+  /**
    * The Reader monad for dependency injection and context management.
    *
    * Reader represents a computation that depends on some shared environment or configuration.
@@ -654,18 +662,47 @@ package object etl4s {
    * @tparam R the environment/configuration type
    * @tparam A the result type
    * @param run the function that computes A given environment R
+   * @param metadata optional metadata that can be attached at compile time
    */
-  case class Reader[R, A](run: R => A) {
-    def map[B](f: A => B): Reader[R, B] = Reader(r => f(run(r)))
+  case class Reader[R, A](run: R => A, metadata: Any = None) {
+    def map[B](f: A => B): Reader[R, B] = Reader(r => f(run(r)), metadata)
     def flatMap[B](f: A => Reader[R, B]): Reader[R, B] =
-      Reader(r => f(run(r)).run(r))
+      Reader(r => f(run(r)).run(r), metadata)
     def provideContext(ctx: R): A = run(ctx)
     def provide(ctx: R): A        = run(ctx)
+
+    /**
+     * Attaches custom metadata to this Reader.
+     *
+     * @param meta the metadata to attach (can be any type)
+     * @return a new Reader with the attached metadata
+     */
+    def withMetadata(meta: Any): Reader[R, A] = copy(metadata = meta)
   }
 
   object Reader {
     def pure[R, A](a: A): Reader[R, A] = Reader(_ => a)
     def ask[R]: Reader[R, R]           = Reader(identity)
+  }
+
+  /**
+   * HasMetadata instances for Node and Reader.
+   */
+  object HasMetadata {
+    // Basically just type lambda syntax: ({type L[X] = SomeType})#L creates a type constructor
+    // from multi-parameter types to work with single-parameter typeclasses like HasMetadata[F[_]]
+    // ... to keep the cross builds between 2.12, 2.13 and 3.x simple for now
+    implicit def nodeHasMetadata[A, B]: HasMetadata[({ type L[X] = Node[A, B] })#L] =
+      new HasMetadata[({ type L[X] = Node[A, B] })#L] {
+        def metadata[X](fa: Node[A, B]): Any                       = fa.metadata
+        def withMetadata[X](fa: Node[A, B], meta: Any): Node[A, B] = fa.withMetadata(meta)
+      }
+
+    implicit def readerHasMetadata[R]: HasMetadata[({ type L[A] = Reader[R, A] })#L] =
+      new HasMetadata[({ type L[A] = Reader[R, A] })#L] {
+        def metadata[A](fa: Reader[R, A]): Any                         = fa.metadata
+        def withMetadata[A](fa: Reader[R, A], meta: Any): Reader[R, A] = fa.withMetadata(meta)
+      }
   }
 
   /**
@@ -801,6 +838,7 @@ package object etl4s {
         fa.run(ctx).tap(result => g(ctx)(result))
       }
     }
+
   }
 
   /**

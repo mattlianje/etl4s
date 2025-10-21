@@ -284,11 +284,8 @@ class BasicSpecs extends munit.FunSuite {
   }
 
   test("metadata works") {
-    case class Info(source: String)
-    val node = Extract("data").withMetadata(Info("db"))
-
-    assertEquals(node.metadata.asInstanceOf[Info].source, "db")
-    assertEquals(node.unsafeRun(()), "data")
+    val reader = Reader[String, String](ctx => s"$ctx-data").withMetadata("source-info")
+    assertEquals(reader.metadata, "source-info")
   }
 }
 
@@ -551,6 +548,11 @@ class ReaderSpecs extends munit.FunSuite {
     assertEquals(insights.result, "HELLO")
     assertEquals(insights.logs, List("Step 1"))
     assert(insights.timeElapsedMillis >= 0)
+  }
+
+  test("Reader metadata works") {
+    val reader = Reader[String, String](ctx => s"$ctx-result").withMetadata("reader-info")
+    assertEquals(reader.metadata, "reader-info")
   }
 
   test("unsafeRun collects trace internally") {

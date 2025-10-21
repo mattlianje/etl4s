@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="pix/etl4s-2.png" width="700">
+  <img src="pix/etl4s-3.png" width="700">
 </p>
 
 # <img src="pix/etl4s-logo.png" width="50"> etl4s
