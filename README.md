@@ -22,6 +22,7 @@ Battle-tested at [Instacart](https://www.instacart.com/). Part of [d4](https://g
 - Built-in retry/failure handling
 - Automatic [tracing](#introspection-with-etl4strace)
 - Drop-in [(open)telemetry](#telemetry)
+- [Data lineage](#lineage) tracking and visualization
 
 ## Installation
 
@@ -60,6 +61,16 @@ pipeline.unsafeRun(())
 
 ## Documentation 
 [Full Documentation](https://mattlianje.github.io/etl4s/) - Detailed guides, API references, and examples
+
+---
+
+## Of note...
+- Ultimately - these nodes and pipelines are just reifications of functions and values (with a few niceties like built in retries, failure handling, concurrency-shorthand, and Future based parallelism).
+- Chaotic, framework/infra-coupled ETL codebases that grow without an imposed discipline drive dev-teams and data-orgs to their knees.
+- **etl4s** is a little DSL to enforce discipline, type-safety and re-use of pure functions - 
+and see [functional ETL](https://maximebeauchemin.medium.com/functional-data-engineering-a-modern-paradigm-for-batch-data-processing-2327ec32c42a) for what it is... and could be.
+
+---
 
 ## Core Concepts
 **etl4s** has one core building block:
@@ -103,12 +114,6 @@ The above will not compile with:
   |                Required: Node[Int, Any]
 ```
 
-## Of note...
-- Ultimately - these nodes and pipelines are just reifications of functions and values (with a few niceties like built in retries, failure handling, concurrency-shorthand, and Future based parallelism).
-- Chaotic, framework/infra-coupled ETL codebases that grow without an imposed discipline drive dev-teams and data-orgs to their knees.
-- **etl4s** is a little DSL to enforce discipline, type-safety and re-use of pure functions - 
-and see [functional ETL](https://maximebeauchemin.medium.com/functional-data-engineering-a-modern-paradigm-for-batch-data-processing-2327ec32c42a) for what it is... and could be.
-
 ## Operators
 
 etl4s uses a few simple operators to build pipelines:
@@ -120,6 +125,79 @@ etl4s uses a few simple operators to build pipelines:
 | `&>` | Parallel | Group concurrent operations with same input | `t1 &> t2` |
 | `>>` | Sequence | Runs pipelines in order (ignoring previous output) | `p1 >> p2` |
 
+## Configuration
+
+Some steps need config. Some don't.
+Just declare what each step `.requires`, then `.provide` it later.
+
+```scala
+Node[In, Out].requires[Config](cfg => in => out)
+/** Scala 2.x:
+  * Node.requires[Config, In, Out](cfg => in => out)
+  */
+```
+Like this, every Node step can declare the exact config it needs (just Reader monads under the hood):
+```scala
+import etl4s._
+
+case class ApiConfig(url: String, key: String)
+
+val fetchData  = Extract("user123")
+val enrichData = Transform[String, String].requires[ApiConfig] { cfg => user =>
+  s"Processed with ${cfg.key}: $user"
+}
+
+val pipeline = fetchData ~> enrichData
+```
+**etl4s** automatically infers the smallest shared config needed for your whole pipeline.
+Just `.provide` once.
+
+## Parallelizing Tasks
+**etl4s** has an elegant shorthand for grouping and parallelizing operations that share the same input type:
+```scala
+/* Simulate slow IO operations (e.g: DB calls, API requests) */
+
+val e1 = Extract { Thread.sleep(100); 42 }
+val e2 = Extract { Thread.sleep(100); "hello" }
+val e3 = Extract { Thread.sleep(100); true }
+```
+
+Sequential run of e1, e2, and e3 **(~300ms total)**
+```scala
+val sequential: Extract[Unit, ((Int, String), Boolean)] =
+     e1 & e2 & e3
+```
+
+Parallel run of e1, e2, e3 on their own JVM threads with Scala Futures **(~100ms total, same result, 3X faster)**
+```scala
+import scala.concurrent.ExecutionContext.Implicits.global
+
+val parallel: Extract[Unit, ((Int, String), Boolean)] =
+     e1 &> e2 &> e3
+```
+Use the built-in zip method to flatten unwieldly nested tuples:
+```scala
+val clean: Extract[Unit, (Int, String, Boolean)] =
+     (e1 & e2 & e3).zip
+```
+Mix sequential and parallel execution (First two parallel (~100ms), then third (~100ms)):
+```scala
+val mixed = (e1 &> e2) & e3
+```
+
+Full example of a parallel pipeline:
+```scala
+val consoleLoad: Load[String, Unit] = Load(println(_))
+val dbLoad:      Load[String, Unit] = Load(x => println(s"DB Load: ${x}"))
+
+val merge = Transform[(Int, String, Boolean), String] { t => 
+    val (i, s, b) = t
+    s"$i-$s-$b"
+  }
+
+val pipeline =
+  (e1 &> e2 &> e3).zip ~> merge ~> (consoleLoad &> dbLoad)
+```
 
 ## Handling Failures
 **etl4s** comes with 2 methods you can use (on a `Node` or `Pipeline`) to handle failures out of the box:
@@ -207,80 +285,6 @@ Trace(
 )
 ```
 
-## Parallelizing Tasks
-**etl4s** has an elegant shorthand for grouping and parallelizing operations that share the same input type:
-```scala
-/* Simulate slow IO operations (e.g: DB calls, API requests) */
-
-val e1 = Extract { Thread.sleep(100); 42 }
-val e2 = Extract { Thread.sleep(100); "hello" }
-val e3 = Extract { Thread.sleep(100); true }
-```
-
-Sequential run of e1, e2, and e3 **(~300ms total)**
-```scala
-val sequential: Extract[Unit, ((Int, String), Boolean)] =
-     e1 & e2 & e3
-```
-
-Parallel run of e1, e2, e3 on their own JVM threads with Scala Futures **(~100ms total, same result, 3X faster)**
-```scala
-import scala.concurrent.ExecutionContext.Implicits.global
-
-val parallel: Extract[Unit, ((Int, String), Boolean)] =
-     e1 &> e2 &> e3
-```
-Use the built-in zip method to flatten unwieldly nested tuples:
-```scala
-val clean: Extract[Unit, (Int, String, Boolean)] =
-     (e1 & e2 & e3).zip
-```
-Mix sequential and parallel execution (First two parallel (~100ms), then third (~100ms)):
-```scala
-val mixed = (e1 &> e2) & e3
-```
-
-Full example of a parallel pipeline:
-```scala
-val consoleLoad: Load[String, Unit] = Load(println(_))
-val dbLoad:      Load[String, Unit] = Load(x => println(s"DB Load: ${x}"))
-
-val merge = Transform[(Int, String, Boolean), String] { t => 
-    val (i, s, b) = t
-    s"$i-$s-$b"
-  }
-
-val pipeline =
-  (e1 &> e2 &> e3).zip ~> merge ~> (consoleLoad &> dbLoad)
-```
-
-## Configuration
-
-Some steps need config. Some don’t.
-Just declare what each step `.requires`, then `.provide` it later.
-
-```scala
-Node[In, Out].requires[Config](cfg => in => out)
-/** Scala 2.x:
-  * Node.requires[Config, In, Out](cfg => in => out)
-  */
-```
-Like this, every Node step can declare the exact config it needs (just Reader monads under the hood):
-```scala
-import etl4s._
-
-case class ApiConfig(url: String, key: String)
-
-val fetchData  = Extract("user123")
-val enrichData = Transform[String, String].requires[ApiConfig] { cfg => user =>
-  s"Processed with ${cfg.key}: $user"
-}
-
-val pipeline = fetchData ~> enrichData
-```
-**etl4s** automatically infers the smallest shared config needed for your whole pipeline.
-Just `.provide` once.
-
 ## Telemetry
 etl4s provides a minimal `Etl4sTelemetry` interface for observability. All pipeline run methods automatically look for this interface in implicit scope.
 
@@ -304,6 +308,75 @@ process.unsafeRun(data) /* metrics flow to Prometheus */
 
 The `Etl4sTelemetry` interface has just 4 methods: `withSpan`, `addCounter`, `setGauge`, `recordHistogram`
 which cover 95% of observability needs. Read more in the [Telemetry guide](https://mattlianje.github.io/etl4s/opentelemetry/).
+
+## Lineage
+
+Track data lineage and visualize pipeline dependencies. Attach metadata to any Node:
+
+```scala
+val A = Node[String, String](identity)
+  .lineage(
+    name = "A",
+    inputSources = List("s1", "s2"),
+    outputSources = List("s3"), 
+    schedule = Some("0 */2 * * *")
+  )
+
+val B = Node[String, String](identity)
+  .lineage(
+    name = "B",
+    inputSources = List("s3"),
+    outputSources = List("s4", "s5")
+  )
+```
+
+Export lineage as JSON, DOT (Graphviz), or Mermaid diagrams:
+
+```scala
+Seq(A, B).toJson
+Seq(A, B).toDot
+```
+
+<p align="center">
+  <img src="pix/graphviz-example.svg" width="500">
+</p>
+
+```scala
+Seq(A, B).toMermaid
+```
+```mermaid
+graph LR
+    classDef pipeline fill:#e1f5fe,stroke:#01579b,stroke-width:2px,color:#000
+    classDef dataSource fill:#f3e5f5,stroke:#4a148c,stroke-width:2px,color:#000
+    classDef cluster fill:#e8f5e8,stroke:#2e7d32,stroke-width:2px,color:#000
+
+    A["A<br/>(0 */2 * * *)"]
+    B["B"]
+    s1(["s1"])
+    s2(["s2"])
+    s3(["s3"])
+    s4(["s4"])
+    s5(["s5"])
+
+    s1 --> A
+    s2 --> A
+    A --> s3
+    s3 --> B
+    B --> s4
+    B --> s5
+    A -.-> B
+    linkStyle 6 stroke:#ff6b35,stroke-width:2px
+
+    class A pipeline
+    class B pipeline
+    class s1 dataSource
+    class s2 dataSource
+    class s3 dataSource
+    class s4 dataSource
+    class s5 dataSource
+```
+
+**etl4s** automatically infers dependencies by matching output → input sources. Nodes don't need to be connected with `~>` for lineage tracking. Explicit dependencies via `upstreamPipelines` also supported. Read more in the [Lineage guide](https://mattlianje.github.io/etl4s/lineage/).
 
 ## Examples
 
@@ -344,7 +417,6 @@ val combined =
 - Local scripts
 - Big Data workflows
 - Web-server dataflows
-
 
 ## Inspiration
 - Debasish Ghosh's [Functional and Reactive Domain Modeling](https://www.manning.com/books/functional-and-reactive-domain-modeling)

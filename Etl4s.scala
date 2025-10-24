@@ -1832,7 +1832,11 @@ package object etl4s {
       graph.dataSources.foreach(renderMermaidDataSource(builder, _))
       builder.append("\n")
 
-      graph.edges.foreach(renderMermaidEdge(builder, _))
+      var linkIndex = 0
+      graph.edges.foreach { edge =>
+        renderMermaidEdge(builder, edge, linkIndex)
+        linkIndex += 1
+      }
     }
 
     private def renderMermaidCluster(
@@ -1861,11 +1865,15 @@ package object etl4s {
       builder.append(s"""    $nodeId(["$ds"])\n""")
     }
 
-    private def renderMermaidEdge(builder: StringBuilder, e: LineageEdge): Unit = {
+    private def renderMermaidEdge(builder: StringBuilder, e: LineageEdge, linkIndex: Int): Unit = {
       val fromId = sanitizeId(e.from)
       val toId   = sanitizeId(e.to)
-      val style  = if (e.isDependency) " -.-> " else " --> "
-      builder.append(s"    $fromId$style$toId\n")
+      if (e.isDependency) {
+        builder.append(s"    $fromId -.-> $toId\n")
+        builder.append(s"    linkStyle $linkIndex stroke:#ff6b35,stroke-width:2px\n")
+      } else {
+        builder.append(s"    $fromId --> $toId\n")
+      }
     }
 
     private def renderMermaidClasses(builder: StringBuilder, graph: LineageGraph): Unit = {
