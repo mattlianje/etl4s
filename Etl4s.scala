@@ -71,6 +71,12 @@ package object etl4s {
     val metadata: Any = None
 
     /**
+     * Optional lineage information for data pipeline visualization.
+     * Documents inputs, outputs, scheduling, and organization.
+     */
+    def getLineage: Option[Lineage] = None
+
+    /**
      * Applies the node's function to the input.
      *
      * @param a the input value
@@ -215,10 +221,28 @@ package object etl4s {
      * }}}
      */
     def withMetadata(meta: Any): Node[A, B] = {
-      val currentF = this.f
+      val currentF       = this.f
+      val currentLineage = this.getLineage
       new Node[A, B] {
-        val f: A => B              = currentF
-        override val metadata: Any = meta
+        val f: A => B                            = currentF
+        override val metadata: Any               = meta
+        override def getLineage: Option[Lineage] = currentLineage
+      }
+    }
+
+    /**
+     * Attaches lineage information to this node.
+     *
+     * @param lin the lineage to attach
+     * @return a new Node with the attached lineage
+     */
+    def withLineage(lin: Lineage): Node[A, B] = {
+      val currentF        = this.f
+      val currentMetadata = this.metadata
+      new Node[A, B] {
+        val f: A => B                            = currentF
+        override val metadata: Any               = currentMetadata
+        override def getLineage: Option[Lineage] = Some(lin)
       }
     }
 
@@ -632,6 +656,41 @@ package object etl4s {
   }
 
   /**
+   * Lineage information for data pipeline visualization.
+   *
+   * Captures the name, inputs, outputs, and optional metadata about a pipeline
+   * component for visualization and documentation purposes.
+   *
+   * @param name the unique name/identifier for this pipeline component
+   * @param inputSources list of input data source names this component depends on
+   * @param outputSources list of output data source names this component produces
+   * @param schedule optional schedule information (e.g. "Every 2 hours", "Daily at 1:00 AM")
+   * @param cluster optional cluster/group name for organizing related components
+   * @param upstreamPipelines list of upstream Node/Reader objects this component depends on
+   *
+   * @example
+   * {{{
+   * val userEnrichment = Node[String, User](parseUser)
+   *   .lineage(
+   *     name = "user-enrichment",
+   *     inputSources = List("raw_users", "user_events"),
+   *     outputSources = List("enriched_users"),
+   *     schedule = Some("Every 2 hours"),
+   *     cluster = Some("user-processing"),
+   *     upstreamPipelines = List(someOtherNode, someReader)
+   *   )
+   * }}}
+   */
+  case class Lineage(
+    name: String,
+    inputSources: List[String] = List.empty,
+    outputSources: List[String] = List.empty,
+    upstreamPipelines: List[Any] = List.empty, // Node, Reader, or String
+    schedule: Option[String] = None,
+    cluster: Option[String] = None
+  )
+
+  /**
    * Type class for types that can carry metadata.
    */
   trait HasMetadata[F[_]] {
@@ -664,10 +723,10 @@ package object etl4s {
    * @param run the function that computes A given environment R
    * @param metadata optional metadata that can be attached at compile time
    */
-  case class Reader[R, A](run: R => A, metadata: Any = None) {
-    def map[B](f: A => B): Reader[R, B] = Reader(r => f(run(r)), metadata)
+  case class Reader[R, A](run: R => A, metadata: Any = None, getLineage: Option[Lineage] = None) {
+    def map[B](f: A => B): Reader[R, B] = Reader(r => f(run(r)), metadata, getLineage)
     def flatMap[B](f: A => Reader[R, B]): Reader[R, B] =
-      Reader(r => f(run(r)).run(r), metadata)
+      Reader(r => f(run(r)).run(r), metadata, getLineage)
     def provideContext(ctx: R): A = run(ctx)
     def provide(ctx: R): A        = run(ctx)
 
@@ -678,6 +737,14 @@ package object etl4s {
      * @return a new Reader with the attached metadata
      */
     def withMetadata(meta: Any): Reader[R, A] = copy(metadata = meta)
+
+    /**
+     * Attaches lineage information to this Reader.
+     *
+     * @param lin the lineage to attach
+     * @return a new Reader with the attached lineage
+     */
+    def withLineage(lin: Lineage): Reader[R, A] = copy(getLineage = Some(lin))
   }
 
   object Reader {
@@ -1383,6 +1450,518 @@ package object etl4s {
 
     def recordHistogram(name: String, value: Double): Unit = {
       println(s"$prefix [HISTOGRAM] $name: $value")
+    }
+  }
+
+  /**
+   * Typeclass for rendering lineage information to various formats.
+   */
+  trait LineageRenderer[T] {
+    def toJson(t: T): String
+    def toDot(t: T): String
+    def toMermaid(t: T): String
+  }
+
+  object LineageRenderer {
+    private def singleItemRenderer[T]: LineageRenderer[T] = new LineageRenderer[T] {
+      def toJson(t: T): String    = new LineageCollectionOps(Seq(t)).toJson
+      def toDot(t: T): String     = new LineageCollectionOps(Seq(t)).toDot
+      def toMermaid(t: T): String = new LineageCollectionOps(Seq(t)).toMermaid
+    }
+
+    implicit def nodeRenderer[A, B]: LineageRenderer[Node[A, B]] = singleItemRenderer[Node[A, B]]
+    implicit def readerRenderer[R, A]: LineageRenderer[Reader[R, A]] =
+      singleItemRenderer[Reader[R, A]]
+
+    implicit def seqRenderer[T]: LineageRenderer[Seq[T]] = new LineageRenderer[Seq[T]] {
+      def toJson(items: Seq[T]): String    = new LineageCollectionOps(items).toJson
+      def toDot(items: Seq[T]): String     = new LineageCollectionOps(items).toDot
+      def toMermaid(items: Seq[T]): String = new LineageCollectionOps(items).toMermaid
+    }
+  }
+
+  /**
+   * Extension methods for lineage rendering using typeclass.
+   */
+  implicit class LineageOps[T](val t: T)(implicit renderer: LineageRenderer[T]) {
+    def toJson: String    = renderer.toJson(t)
+    def toDot: String     = renderer.toDot(t)
+    def toMermaid: String = renderer.toMermaid(t)
+  }
+
+  /**
+   * Extension methods for adding lineage to Nodes.
+   */
+  implicit class NodeLineageOps[A, B](val node: Node[A, B]) {
+
+    /**
+     * Attaches lineage information to this node.
+     *
+     * @param name the unique name/identifier for this pipeline component
+     * @param inputSources list of input data source names
+     * @param outputSources list of output data source names
+     * @param schedule optional schedule information
+     * @param cluster optional cluster/group name
+     * @param upstreamPipelines list of upstream Node/Reader objects or String names this depends on
+     * @return a new Node with the attached lineage
+     *
+     * @example
+     * {{{
+     * val enrichment = Node[User, EnrichedUser](enrich)
+     *   .lineage(
+     *     name = "user-enrichment",
+     *     inputSources = List("raw_users", "user_events"),
+     *     outputSources = List("enriched_users"),
+     *     schedule = Some("Every 2 hours"),
+     *     cluster = Some("user-processing"),
+     *     upstreamPipelines = List(userExtract, eventExtract)
+     *   )
+     * }}}
+     */
+    def lineage(
+      name: String,
+      inputSources: List[String],
+      outputSources: List[String],
+      upstreamPipelines: List[Any] = List.empty,
+      schedule: Option[String] = None,
+      cluster: Option[String] = None
+    ): Node[A, B] = {
+      node.withLineage(
+        Lineage(name, inputSources, outputSources, upstreamPipelines, schedule, cluster)
+      )
+    }
+  }
+
+  /**
+   * Extension methods for adding lineage to Readers.
+   */
+  implicit class ReaderLineageOps[R, A](val reader: Reader[R, A]) {
+
+    /**
+     * Attaches lineage information to this reader.
+     *
+     * @param name the unique name/identifier for this pipeline component
+     * @param inputs list of input data source names
+     * @param outputs list of output data source names
+     * @param schedule optional schedule information
+     * @param cluster optional cluster/group name
+     * @param upstreamPipelines list of upstream Node/Reader objects or String names this depends on
+     * @return a new Reader with the attached lineage
+     */
+    def lineage(
+      name: String,
+      inputSources: List[String],
+      outputSources: List[String],
+      upstreamPipelines: List[Any] = List.empty,
+      schedule: Option[String] = None,
+      cluster: Option[String] = None
+    ): Reader[R, A] = {
+      reader.withLineage(
+        Lineage(name, inputSources, outputSources, upstreamPipelines, schedule, cluster)
+      )
+    }
+  }
+
+  /**
+   * Represents a pipeline node in the lineage graph.
+   */
+  case class LineageNode(
+    name: String,
+    input_sources: List[String],
+    output_sources: List[String],
+    upstream_pipelines: List[String],
+    schedule: Option[String],
+    cluster: Option[String]
+  )
+
+  /**
+   * Represents a connection between pipeline components or data sources.
+   */
+  case class LineageEdge(from: String, to: String, isDependency: Boolean = false)
+
+  /**
+   * JSON representation of lineage information for serialization and visualization.
+   */
+  case class LineageGraph(
+    pipelines: List[LineageNode],
+    dataSources: List[String],
+    edges: List[LineageEdge]
+  ) {
+
+    /**
+     * Converts this lineage graph to JSON string.
+     */
+    def toJson: String = {
+      import JsonHelpers._
+
+      val pipelinesJson   = jsonArray(pipelines)(pipelineToJson)
+      val dataSourcesJson = jsonArray(dataSources)(quote)
+      val edgesJson       = jsonArray(edges)(edgeToJson)
+
+      s"""{"pipelines":$pipelinesJson,"dataSources":$dataSourcesJson,"edges":$edgesJson}"""
+    }
+  }
+
+  private object JsonHelpers {
+    def jsonArray[A](items: Seq[A])(f: A => String): String = items.map(f).mkString("[", ",", "]")
+    def quote(s: String): String                            = s""""$s""""
+    def jsonField(key: String, value: String): String       = s""""$key":$value"""
+    def jsonObject(fields: String*): String                 = fields.mkString("{", ",", "}")
+
+    def pipelineToJson(p: LineageNode): String = {
+      val requiredFields = List(
+        jsonField("name", quote(p.name)),
+        jsonField("input_sources", jsonArray(p.input_sources)(quote)),
+        jsonField("output_sources", jsonArray(p.output_sources)(quote)),
+        jsonField("upstream_pipelines", jsonArray(p.upstream_pipelines)(quote))
+      )
+      val optionalFields = List(
+        p.schedule.map(s => jsonField("schedule", quote(s))),
+        p.cluster.map(c => jsonField("cluster", quote(c)))
+      ).flatten
+
+      jsonObject((requiredFields ++ optionalFields): _*)
+    }
+
+    def edgeToJson(e: LineageEdge): String = jsonObject(
+      jsonField("from", quote(e.from)),
+      jsonField("to", quote(e.to)),
+      jsonField("isDependency", e.isDependency.toString)
+    )
+  }
+
+  /**
+   * Extension methods for collections of pipeline components with lineage.
+   */
+  implicit class LineageCollectionOps[T](val items: Seq[T]) {
+
+    /**
+     * Converts a collection of Nodes or Readers with lineage information to JSON format.
+     *
+     * @return JSON string representation of the lineage graph
+     *
+     * @example
+     * {{{
+     * val p1 = Node[String, User](parse)
+     *   .lineage("user-enrichment", 
+     *     inputs = List("raw_users"), 
+     *     outputs = List("enriched_users"))
+     * 
+     * val json = Seq(p1).toJson
+     * }}}
+     */
+    def toJson: String = {
+      val lineages = items.flatMap(extractLineage)
+      if (lineages.isEmpty) return """{"pipelines":[],"dataSources":[],"edges":[]}"""
+
+      buildLineageGraph(lineages).toJson
+    }
+
+    /**
+     * Converts a collection of Nodes or Readers with lineage information to DOT graph format.
+     *
+     * The resulting DOT format can be visualized using Graphviz or similar tools.
+     * Pipelines are shown as boxes, data sources as ellipses, organized by cluster.
+     *
+     * @return DOT graph representation as a String
+     *
+     * @example
+     * {{{
+     * val p1 = Node[String, User](parse)
+     *   .lineage("user-enrichment", 
+     *     inputs = List("raw_users"), 
+     *     outputs = List("enriched_users"))
+     * 
+     * val dotGraph = Seq(p1, p2).toDot
+     * }}}
+     */
+    def toDot: String = {
+      val lineages = items.flatMap(extractLineage)
+      if (lineages.isEmpty)
+        return "digraph EmptyGraph {\n  label=\"No lineage information found\";\n}"
+
+      generateDotGraph(buildLineageGraph(lineages))
+    }
+
+    /**
+     * Converts a collection of Nodes or Readers with lineage information to Mermaid graph format.
+     *
+     * The resulting Mermaid format can be visualized in GitHub, web browsers, or Mermaid-compatible tools.
+     *
+     * @return Mermaid graph string representation of the lineage
+     *
+     * @example
+     * {{{
+     * val p1 = Node[String, User](parse)
+     *   .lineage("user-enrichment", 
+     *     inputs = List("raw_users"), 
+     *     outputs = List("enriched_users"))
+     * 
+     * val mermaidGraph = Seq(p1).toMermaid
+     * }}}
+     */
+    def toMermaid: String = {
+      val lineages = items.flatMap(extractLineage)
+      if (lineages.isEmpty) return "graph LR\n    EmptyGraph[\"No lineage information found\"]"
+
+      generateMermaidGraph(buildLineageGraph(lineages))
+    }
+
+    private def buildLineageGraph(lineages: Seq[Lineage]): LineageGraph = {
+      // Fail fast on duplicate names
+      val duplicates = lineages.groupBy(_.name).filter(_._2.size > 1)
+      if (duplicates.nonEmpty) {
+        throw new IllegalArgumentException(
+          s"Duplicate pipeline names: ${duplicates.keys.mkString(", ")}"
+        )
+      }
+
+      val allItemsWithLineage = items.flatMap(item => extractLineage(item).map(_ => item))
+
+      // Auto-infer upstreams by matching output -> input sources
+      val enrichedLineages = lineages.map { lineage =>
+        val inferredUpstreams = allItemsWithLineage.filter { item =>
+          extractLineage(item).exists { upstream =>
+            upstream.name != lineage.name &&
+            upstream.outputSources.exists(lineage.inputSources.contains)
+          }
+        }
+        lineage.copy(upstreamPipelines = (lineage.upstreamPipelines ++ inferredUpstreams).distinct)
+      }
+
+      LineageGraph(
+        pipelines = enrichedLineages.map(lineageToNode).toList,
+        dataSources = (enrichedLineages.flatMap(_.inputSources) ++ enrichedLineages.flatMap(
+          _.outputSources
+        )).distinct.toList,
+        edges = collectEdges(enrichedLineages)
+      )
+    }
+
+    private def lineageToNode(l: Lineage): LineageNode = LineageNode(
+      l.name,
+      l.inputSources,
+      l.outputSources,
+      l.upstreamPipelines.flatMap(extractPipelineName),
+      l.schedule,
+      l.cluster
+    )
+
+    private def extractLineage(item: Any): Option[Lineage] = item match {
+      case n: Node[_, _]   => n.getLineage
+      case r: Reader[_, _] => r.getLineage
+      case _               => None
+    }
+
+    private def extractPipelineName(obj: Any): Option[String] = obj match {
+      case n: Node[_, _]   => n.getLineage.map(_.name)
+      case r: Reader[_, _] => r.getLineage.map(_.name)
+      case s: String       => Some(s)
+      case _               => None
+    }
+
+    private def generateDotGraph(graph: LineageGraph): String = {
+      val builder = new StringBuilder
+      builder.append("digraph G {\n")
+      builder.append("    rankdir=LR; bgcolor=\"transparent\";\n")
+      builder.append("    node [fontsize=12, fontname=\"Arial\"];\n")
+      builder.append("    edge [fontsize=10, arrowsize=0.8];\n\n")
+
+      renderDotContent(builder, graph)
+
+      builder.append("\n    overlap=false; splines=true;\n}\n").toString
+    }
+
+    private def renderDotContent(builder: StringBuilder, graph: LineageGraph): Unit = {
+      val pipelinesByCluster = graph.pipelines.groupBy(_.cluster)
+
+      // Render clusters and standalone pipelines
+      pipelinesByCluster.foreach {
+        case (Some(clusterName), pipelines) => renderCluster(builder, clusterName, pipelines, 1)
+        case (None, pipelines)              => pipelines.foreach(renderPipelineNode(builder, _, 1))
+      }
+
+      // Render standalone data sources
+      val clusteredDataSources = graph.pipelines
+        .filter(_.cluster.isDefined)
+        .flatMap(p => p.input_sources ++ p.output_sources)
+        .toSet
+      graph.dataSources
+        .filterNot(clusteredDataSources.contains)
+        .foreach(renderDataSource(builder, _, 1))
+
+      builder.append("\n")
+
+      // Render edges
+      graph.edges.foreach { e =>
+        val style =
+          if (e.isDependency) """[color="#ff6b35", style="solid"]""" else """[color="#666"]"""
+        builder.append(s"""    "${e.from}" -> "${e.to}" $style;\n""")
+      }
+    }
+
+    private def generateMermaidGraph(graph: LineageGraph): String = {
+      val builder = new StringBuilder
+      builder.append("graph LR\n")
+      renderMermaidStyles(builder)
+      renderMermaidContent(builder, graph)
+      renderMermaidClasses(builder, graph)
+      builder.toString
+    }
+
+    private def renderMermaidStyles(builder: StringBuilder): Unit = {
+      builder.append(
+        "    classDef pipeline fill:#e1f5fe,stroke:#01579b,stroke-width:2px,color:#000\n"
+      )
+      builder.append(
+        "    classDef dataSource fill:#f3e5f5,stroke:#4a148c,stroke-width:2px,color:#000\n"
+      )
+      builder.append(
+        "    classDef cluster fill:#e8f5e8,stroke:#2e7d32,stroke-width:2px,color:#000\n\n"
+      )
+    }
+
+    private def renderMermaidContent(builder: StringBuilder, graph: LineageGraph): Unit = {
+      val pipelinesByCluster = graph.pipelines.groupBy(_.cluster)
+
+      pipelinesByCluster.foreach {
+        case (Some(clusterName), pipelines) => renderMermaidCluster(builder, clusterName, pipelines)
+        case (None, pipelines)              => pipelines.foreach(renderMermaidPipeline(builder, _))
+      }
+
+      graph.dataSources.foreach(renderMermaidDataSource(builder, _))
+      builder.append("\n")
+
+      graph.edges.foreach(renderMermaidEdge(builder, _))
+    }
+
+    private def renderMermaidCluster(
+      builder: StringBuilder,
+      clusterName: String,
+      pipelines: Seq[LineageNode]
+    ): Unit = {
+      val clusterId = sanitizeId(clusterName)
+      builder.append(s"""    subgraph $clusterId ["$clusterName"]\n""")
+      pipelines.foreach(p => renderMermaidPipeline(builder, p, "        "))
+      builder.append("    end\n\n")
+    }
+
+    private def renderMermaidPipeline(
+      builder: StringBuilder,
+      p: LineageNode,
+      indent: String = "    "
+    ): Unit = {
+      val nodeId = sanitizeId(p.name)
+      val label  = p.schedule.map(s => s"${p.name}<br/>($s)").getOrElse(p.name)
+      builder.append(s"""${indent}$nodeId["$label"]\n""")
+    }
+
+    private def renderMermaidDataSource(builder: StringBuilder, ds: String): Unit = {
+      val nodeId = sanitizeId(ds)
+      builder.append(s"""    $nodeId(["$ds"])\n""")
+    }
+
+    private def renderMermaidEdge(builder: StringBuilder, e: LineageEdge): Unit = {
+      val fromId = sanitizeId(e.from)
+      val toId   = sanitizeId(e.to)
+      val style  = if (e.isDependency) " -.-> " else " --> "
+      builder.append(s"    $fromId$style$toId\n")
+    }
+
+    private def renderMermaidClasses(builder: StringBuilder, graph: LineageGraph): Unit = {
+      builder.append("\n")
+      graph.pipelines.foreach(p => builder.append(s"    class ${sanitizeId(p.name)} pipeline\n"))
+      graph.dataSources.foreach(ds => builder.append(s"    class ${sanitizeId(ds)} dataSource\n"))
+    }
+
+    private def sanitizeId(name: String): String = name.replaceAll("[^a-zA-Z0-9]", "_")
+
+    private def collectEdges(lineages: Seq[Lineage]): List[LineageEdge] = {
+      val dataEdges = lineages.flatMap { lineage =>
+        val inputEdges  = lineage.inputSources.map(input => LineageEdge(input, lineage.name))
+        val outputEdges = lineage.outputSources.map(output => LineageEdge(lineage.name, output))
+        inputEdges ++ outputEdges
+      }
+
+      // Find pipeline dependencies (where one pipeline's output is another's input)
+      val pipelineOutputs = lineages.map(l => (l.name, l.outputSources)).toMap
+      val implicitDependencyEdges = lineages.flatMap { lineage =>
+        lineage.inputSources.flatMap { input =>
+          pipelineOutputs.collectFirst {
+            case (pipelineName, outputs) if outputs.contains(input) =>
+              LineageEdge(pipelineName, lineage.name, isDependency = true)
+          }
+        }
+      }
+
+      // Explicit upstream dependencies (via upstreamPipelines)
+      val explicitDependencyEdges = lineages.flatMap { lineage =>
+        lineage.upstreamPipelines.flatMap { upstreamObj =>
+          extractPipelineName(upstreamObj).map { upstreamName =>
+            LineageEdge(upstreamName, lineage.name, isDependency = true)
+          }
+        }
+      }
+
+      (dataEdges ++ implicitDependencyEdges ++ explicitDependencyEdges).toList.distinct
+    }
+
+    private def renderCluster(
+      builder: StringBuilder,
+      clusterName: String,
+      pipelines: Seq[LineageNode],
+      indent: Int
+    ): Unit = {
+      val ind           = "    " * indent
+      val sanitizedName = clusterName.replaceAll("[^a-zA-Z0-9_]", "_")
+
+      builder.append(s"${ind}subgraph cluster_$sanitizedName {\n")
+      builder.append(s"""${ind}    label="$clusterName";\n""")
+      builder.append(s"""${ind}    style="dotted";\n""")
+      builder.append(s"""${ind}    color="#666666";\n""")
+      builder.append(s"${ind}    fontsize=11;\n\n")
+
+      // Render pipelines in this cluster
+      pipelines.foreach { pipeline =>
+        renderPipelineNode(builder, pipeline, indent + 1)
+
+        // Render data sources that are specific to this cluster
+        val clusterDataSources = (pipeline.input_sources ++ pipeline.output_sources).distinct
+        clusterDataSources.foreach { ds =>
+          renderDataSource(builder, ds, indent + 1)
+        }
+      }
+
+      builder.append(s"${ind}}\n\n")
+    }
+
+    private def renderPipelineNode(
+      builder: StringBuilder,
+      pipeline: LineageNode,
+      indent: Int
+    ): Unit = {
+      val ind = "    " * indent
+      val scheduleLabel = pipeline.schedule match {
+        case Some(sched) =>
+          "<BR/><FONT POINT-SIZE=\"9\" COLOR=\"#d63384\"><I>" + sched + "</I></FONT>"
+        case None => ""
+      }
+
+      builder.append(s"""${ind}"${pipeline.name}" [shape=box, style="filled,rounded",""" + "\n")
+      builder.append(
+        s"""${ind}    fillcolor="#e3f2fd", color="#1976d2", fontname="Arial Bold",""" + "\n"
+      )
+      builder.append(ind + "    label=<" + pipeline.name + scheduleLabel + ">];\n")
+    }
+
+    private def renderDataSource(
+      builder: StringBuilder,
+      name: String,
+      indent: Int
+    ): Unit = {
+      val ind = "    " * indent
+      builder.append(s"""${ind}"$name" [shape=ellipse, style=filled,""" + "\n")
+      builder.append(s"""${ind}    fillcolor="#f3e5f5", color="#7b1fa2", fontsize=10];""" + "\n")
     }
   }
 
