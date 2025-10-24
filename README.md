@@ -62,7 +62,6 @@ pipeline.unsafeRun(())
 ## Documentation 
 [Full Documentation](https://mattlianje.github.io/etl4s/) - Detailed guides, API references, and examples
 
----
 
 ## Of note...
 - Ultimately - these nodes and pipelines are just reifications of functions and values (with a few niceties like built in retries, failure handling, concurrency-shorthand, and Future based parallelism).
@@ -139,7 +138,7 @@ val B = Transform[String, String].requires[Cfg] { cfg => data =>
 
 val pipeline = A ~> B
 
-pipeline.provide(Cfg("secret")).unsafeRun(())  // "secret: data"
+pipeline.provide(Cfg("secret")).unsafeRun(())  /* "secret: data" */
 ```
 
 **etl4s** automatically infers the smallest shared config for your pipeline. Just `.provide` once.
@@ -207,7 +206,7 @@ val A = Transform[Int, String] { x =>
   else "ok"
 }.withRetry(maxAttempts = 3, initialDelayMs = 10)
 
-Extract(42) ~> A  // Succeeds on 3rd attempt
+Extract(42) ~> A  /* Succeeds on 3rd attempt */
 ```
 
 #### `onFailure`
@@ -218,7 +217,7 @@ import etl4s._
 val A = Extract[Unit, String](_ => throw new RuntimeException("Boom!"))
   .onFailure(e => s"Error: ${e.getMessage}")
 
-A.unsafeRun(())  // Returns "Error: Boom!"
+A.unsafeRun(())  /* Returns "Error: Boom!" */
 ```
 
 ## Side Effects with `tap`
@@ -230,11 +229,11 @@ import etl4s._
 val A = Extract(_ => List("a.txt", "b.txt"))
 val B = Transform[List[String], Int](_.size)
 
-A ~> tap(files => println(s"Cleanup: $files")) ~> B  // tap passes data through
+A ~> tap(files => println(s"Cleanup: $files")) ~> B  /* tap passes data through */
 ```
 
 ## Introspection with `etl4s.Trace` 
-Nodes can access and update their runtime state. All state is automatically shared across your entire pipeline. Read more [here](https://mattlianje.github.io/etl4s/trace/)
+Nodes can access and update their runtime state with ThreadLocal channels spawened for free. All state is automatically shared across your entire pipeline. Read more [here](https://mattlianje.github.io/etl4s/trace/)
 
 ```scala
 val A = Transform[String, Int] { s =>
@@ -246,7 +245,7 @@ val B = Transform[Int, String] { n =>
   if (Trace.hasErrors) "FALLBACK" else s"len: $n"  
 }
 
-(A ~> B).unsafeRun("")  // "FALLBACK"
+(A ~> B).unsafeRun("")  /* "FALLBACK" */
 ```
 
 ## Telemetry
@@ -276,7 +275,7 @@ which cover 95% of observability needs. Read more in the [Telemetry guide](https
 
 ## Lineage
 
-Track data lineage and visualize pipeline dependencies. Attach metadata to any Node:
+Track data lineage and visualize pipeline dependencies. Attach metadata to any Node or Reader then use `.toDot`, `.toJson` or `.toMermaid` on any of the afore or Sequences of:
 
 ```scala
 val A = Node[String, String](identity)
