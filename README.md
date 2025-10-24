@@ -233,7 +233,7 @@ A ~> tap(files => println(s"Cleanup: $files")) ~> B  /* tap passes data through 
 ```
 
 ## Introspection with `etl4s.Trace` 
-Nodes can access and update their runtime state. All state is automatically shared across your entire pipeline. Read more [here](https://mattlianje.github.io/etl4s/trace/)
+Nodes can access and update their runtime state with ThreadLocal channels spawened for free. All state is automatically shared across your entire pipeline. Read more [here](https://mattlianje.github.io/etl4s/trace/)
 
 ```scala
 val A = Transform[String, Int] { s =>
