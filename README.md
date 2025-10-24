@@ -139,11 +139,13 @@ val B = Transform[String, String].requires[Cfg] { cfg => data =>
 val pipeline = A ~> B
 
 pipeline.provide(Cfg("secret")).unsafeRun(())  /* "secret: data" */
+
+/** NOTE (Scala 2.x)
+  * Use: `Node.requires[Cfg, In, Out](cfg => in => out)` syntax
+  */
 ```
 
 **etl4s** automatically infers the smallest shared config for your pipeline. Just `.provide` once.
-
-**Scala 2.x:** Use `Node.requires[Cfg, In, Out](cfg => in => out)` syntax.
 
 ## Parallelizing Tasks
 **etl4s** has an elegant shorthand for grouping and parallelizing operations that share the same input type:
