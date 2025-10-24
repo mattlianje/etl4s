@@ -1520,8 +1520,8 @@ package object etl4s {
      */
     def lineage(
       name: String,
-      inputs: List[String],
-      outputs: List[String],
+      inputs: List[String] = List.empty,
+      outputs: List[String] = List.empty,
       upstreams: List[Any] = List.empty,
       schedule: Option[String] = None,
       cluster: Option[String] = None
@@ -1550,8 +1550,8 @@ package object etl4s {
      */
     def lineage(
       name: String,
-      inputs: List[String],
-      outputs: List[String],
+      inputs: List[String] = List.empty,
+      outputs: List[String] = List.empty,
       upstreams: List[Any] = List.empty,
       schedule: Option[String] = None,
       cluster: Option[String] = None
