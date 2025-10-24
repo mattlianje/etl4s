@@ -282,16 +282,16 @@ Track data lineage and visualize pipeline dependencies. Attach metadata to any N
 val A = Node[String, String](identity)
   .lineage(
     name = "A",
-    inputSources = List("s1", "s2"),
-    outputSources = List("s3"), 
+    inputs = List("s1", "s2"),
+    outputs = List("s3"), 
     schedule = Some("0 */2 * * *")
   )
 
 val B = Node[String, String](identity)
   .lineage(
     name = "B",
-    inputSources = List("s3"),
-    outputSources = List("s4", "s5")
+    inputs = List("s3"),
+    outputs = List("s4", "s5")
   )
 ```
 
@@ -341,7 +341,7 @@ graph LR
     class s5 dataSource
 ```
 
-**etl4s** automatically infers dependencies by matching output → input sources. Nodes don't need to be connected with `~>` for lineage tracking. Explicit dependencies via `upstreamPipelines` also supported. Read more in the [Lineage guide](https://mattlianje.github.io/etl4s/lineage/).
+**etl4s** automatically infers dependencies by matching output → input sources. Nodes don't need to be connected with `~>` for lineage tracking. Explicit dependencies via `upstreams` also supported.
 
 ## Examples
 

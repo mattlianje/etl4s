@@ -662,30 +662,30 @@ package object etl4s {
    * component for visualization and documentation purposes.
    *
    * @param name the unique name/identifier for this pipeline component
-   * @param inputSources list of input data source names this component depends on
-   * @param outputSources list of output data source names this component produces
+   * @param inputs list of input data source names this component depends on
+   * @param outputs list of output data source names this component produces
    * @param schedule optional schedule information (e.g. "Every 2 hours", "Daily at 1:00 AM")
    * @param cluster optional cluster/group name for organizing related components
-   * @param upstreamPipelines list of upstream Node/Reader objects this component depends on
+   * @param upstreams list of upstream Node/Reader objects this component depends on
    *
    * @example
    * {{{
    * val userEnrichment = Node[String, User](parseUser)
    *   .lineage(
    *     name = "user-enrichment",
-   *     inputSources = List("raw_users", "user_events"),
-   *     outputSources = List("enriched_users"),
+   *     inputs = List("raw_users", "user_events"),
+   *     outputs = List("enriched_users"),
    *     schedule = Some("Every 2 hours"),
    *     cluster = Some("user-processing"),
-   *     upstreamPipelines = List(someOtherNode, someReader)
+   *     upstreams = List(someOtherNode, someReader)
    *   )
    * }}}
    */
   case class Lineage(
     name: String,
-    inputSources: List[String] = List.empty,
-    outputSources: List[String] = List.empty,
-    upstreamPipelines: List[Any] = List.empty, // Node, Reader, or String
+    inputs: List[String] = List.empty,
+    outputs: List[String] = List.empty,
+    upstreams: List[Any] = List.empty, // Node, Reader, or String
     schedule: Option[String] = None,
     cluster: Option[String] = None
   )
@@ -1498,11 +1498,11 @@ package object etl4s {
      * Attaches lineage information to this node.
      *
      * @param name the unique name/identifier for this pipeline component
-     * @param inputSources list of input data source names
-     * @param outputSources list of output data source names
+     * @param inputs list of input data source names
+     * @param outputs list of output data source names
      * @param schedule optional schedule information
      * @param cluster optional cluster/group name
-     * @param upstreamPipelines list of upstream Node/Reader objects or String names this depends on
+     * @param upstreams list of upstream Node/Reader objects or String names this depends on
      * @return a new Node with the attached lineage
      *
      * @example
@@ -1510,24 +1510,24 @@ package object etl4s {
      * val enrichment = Node[User, EnrichedUser](enrich)
      *   .lineage(
      *     name = "user-enrichment",
-     *     inputSources = List("raw_users", "user_events"),
-     *     outputSources = List("enriched_users"),
+     *     inputs = List("raw_users", "user_events"),
+     *     outputs = List("enriched_users"),
      *     schedule = Some("Every 2 hours"),
      *     cluster = Some("user-processing"),
-     *     upstreamPipelines = List(userExtract, eventExtract)
+     *     upstreams = List(userExtract, eventExtract)
      *   )
      * }}}
      */
     def lineage(
       name: String,
-      inputSources: List[String],
-      outputSources: List[String],
-      upstreamPipelines: List[Any] = List.empty,
+      inputs: List[String],
+      outputs: List[String],
+      upstreams: List[Any] = List.empty,
       schedule: Option[String] = None,
       cluster: Option[String] = None
     ): Node[A, B] = {
       node.withLineage(
-        Lineage(name, inputSources, outputSources, upstreamPipelines, schedule, cluster)
+        Lineage(name, inputs, outputs, upstreams, schedule, cluster)
       )
     }
   }
@@ -1545,19 +1545,19 @@ package object etl4s {
      * @param outputs list of output data source names
      * @param schedule optional schedule information
      * @param cluster optional cluster/group name
-     * @param upstreamPipelines list of upstream Node/Reader objects or String names this depends on
+     * @param upstreams list of upstream Node/Reader objects or String names this depends on
      * @return a new Reader with the attached lineage
      */
     def lineage(
       name: String,
-      inputSources: List[String],
-      outputSources: List[String],
-      upstreamPipelines: List[Any] = List.empty,
+      inputs: List[String],
+      outputs: List[String],
+      upstreams: List[Any] = List.empty,
       schedule: Option[String] = None,
       cluster: Option[String] = None
     ): Reader[R, A] = {
       reader.withLineage(
-        Lineage(name, inputSources, outputSources, upstreamPipelines, schedule, cluster)
+        Lineage(name, inputs, outputs, upstreams, schedule, cluster)
       )
     }
   }
@@ -1723,16 +1723,16 @@ package object etl4s {
         val inferredUpstreams = allItemsWithLineage.filter { item =>
           extractLineage(item).exists { upstream =>
             upstream.name != lineage.name &&
-            upstream.outputSources.exists(lineage.inputSources.contains)
+            upstream.outputs.exists(lineage.inputs.contains)
           }
         }
-        lineage.copy(upstreamPipelines = (lineage.upstreamPipelines ++ inferredUpstreams).distinct)
+        lineage.copy(upstreams = (lineage.upstreams ++ inferredUpstreams).distinct)
       }
 
       LineageGraph(
         pipelines = enrichedLineages.map(lineageToNode).toList,
-        dataSources = (enrichedLineages.flatMap(_.inputSources) ++ enrichedLineages.flatMap(
-          _.outputSources
+        dataSources = (enrichedLineages.flatMap(_.inputs) ++ enrichedLineages.flatMap(
+          _.outputs
         )).distinct.toList,
         edges = collectEdges(enrichedLineages)
       )
@@ -1740,9 +1740,9 @@ package object etl4s {
 
     private def lineageToNode(l: Lineage): LineageNode = LineageNode(
       l.name,
-      l.inputSources,
-      l.outputSources,
-      l.upstreamPipelines.flatMap(extractPipelineName),
+      l.inputs,
+      l.outputs,
+      l.upstreams.flatMap(extractPipelineName),
       l.schedule,
       l.cluster
     )
@@ -1886,15 +1886,15 @@ package object etl4s {
 
     private def collectEdges(lineages: Seq[Lineage]): List[LineageEdge] = {
       val dataEdges = lineages.flatMap { lineage =>
-        val inputEdges  = lineage.inputSources.map(input => LineageEdge(input, lineage.name))
-        val outputEdges = lineage.outputSources.map(output => LineageEdge(lineage.name, output))
+        val inputEdges  = lineage.inputs.map(input => LineageEdge(input, lineage.name))
+        val outputEdges = lineage.outputs.map(output => LineageEdge(lineage.name, output))
         inputEdges ++ outputEdges
       }
 
       // Find pipeline dependencies (where one pipeline's output is another's input)
-      val pipelineOutputs = lineages.map(l => (l.name, l.outputSources)).toMap
+      val pipelineOutputs = lineages.map(l => (l.name, l.outputs)).toMap
       val implicitDependencyEdges = lineages.flatMap { lineage =>
-        lineage.inputSources.flatMap { input =>
+        lineage.inputs.flatMap { input =>
           pipelineOutputs.collectFirst {
             case (pipelineName, outputs) if outputs.contains(input) =>
               LineageEdge(pipelineName, lineage.name, isDependency = true)
@@ -1902,9 +1902,9 @@ package object etl4s {
         }
       }
 
-      // Explicit upstream dependencies (via upstreamPipelines)
+      // Explicit upstream dependencies (via upstreams)
       val explicitDependencyEdges = lineages.flatMap { lineage =>
-        lineage.upstreamPipelines.flatMap { upstreamObj =>
+        lineage.upstreams.flatMap { upstreamObj =>
           extractPipelineName(upstreamObj).map { upstreamName =>
             LineageEdge(upstreamName, lineage.name, isDependency = true)
           }

@@ -991,7 +991,7 @@ class TelSpecs extends munit.FunSuite {
 
   test("lineage - attach to Node") {
     val node = Node[String, Int](_.length)
-      .lineage("string-length", List("text_input"), List("length_output"))
+      .lineage("string-length", inputs = List("text_input"), outputs = List("length_output"))
 
     assertEquals(node.unsafeRun("hello"), 5)
     assert(node.getLineage.exists(_.name == "string-length"))
@@ -1001,8 +1001,8 @@ class TelSpecs extends munit.FunSuite {
     val node = Node[Int, Int](_ * 2)
       .lineage(
         "doubler",
-        List("numbers"),
-        List("doubled"),
+        inputs = List("numbers"),
+        outputs = List("doubled"),
         schedule = Some("Every 5 min"),
         cluster = Some("math")
       )
@@ -1015,7 +1015,7 @@ class TelSpecs extends munit.FunSuite {
   test("lineage - Reader") {
     case class Config(mult: Int)
     val reader = Reader[Config, Node[Int, Int]](c => Node(_ * c.mult))
-      .lineage("mult", List("nums"), List("scaled"), cluster = Some("cfg"))
+      .lineage("mult", inputs = List("nums"), outputs = List("scaled"), cluster = Some("cfg"))
 
     assertEquals(reader.getLineage.get.name, "mult")
     assertEquals(reader.provide(Config(3)).unsafeRun(10), 30)
@@ -1023,7 +1023,13 @@ class TelSpecs extends munit.FunSuite {
 
   test("lineage - toJson") {
     val p = Node[String, String](identity)
-      .lineage("pipe", List("in"), List("out"), schedule = Some("Daily"), cluster = Some("test"))
+      .lineage(
+        "pipe",
+        inputs = List("in"),
+        outputs = List("out"),
+        schedule = Some("Daily"),
+        cluster = Some("test")
+      )
 
     val json = Seq(p).toJson
     assert(json.contains("\"name\":\"pipe\""))
@@ -1031,8 +1037,10 @@ class TelSpecs extends munit.FunSuite {
   }
 
   test("lineage - auto-infer upstream") {
-    val p1 = Node[String, String](identity).lineage("s1", List("raw"), List("proc"))
-    val p2 = Node[String, String](identity).lineage("s2", List("proc"), List("final"))
+    val p1 =
+      Node[String, String](identity).lineage("s1", inputs = List("raw"), outputs = List("proc"))
+    val p2 =
+      Node[String, String](identity).lineage("s2", inputs = List("proc"), outputs = List("final"))
 
     val json = Seq(p1, p2).toJson
     assert(json.contains("\"isDependency\":true"))
@@ -1040,7 +1048,13 @@ class TelSpecs extends munit.FunSuite {
 
   test("lineage - toDot") {
     val p = Node[String, String](identity)
-      .lineage("enrich", List("raw"), List("clean"), schedule = Some("2h"), cluster = Some("users"))
+      .lineage(
+        "enrich",
+        inputs = List("raw"),
+        outputs = List("clean"),
+        schedule = Some("2h"),
+        cluster = Some("users")
+      )
 
     val dot = Seq(p).toDot
     assert(dot.contains("digraph G"))
@@ -1049,7 +1063,8 @@ class TelSpecs extends munit.FunSuite {
   }
 
   test("lineage - mixed with/without") {
-    val w  = Node[String, String](_.toUpperCase).lineage("up", List("t"), List("T"))
+    val w =
+      Node[String, String](_.toUpperCase).lineage("up", inputs = List("t"), outputs = List("T"))
     val wo = Node[String, Int](_.length)
 
     val json = Seq(w, wo).toJson
@@ -1065,22 +1080,22 @@ class TelSpecs extends munit.FunSuite {
   }
 
   test("lineage - preserves behavior") {
-    val n1 = Node[Int, Int](_ * 2).lineage("x2", List("in"), List("out"))
-    val n2 = Node[Int, Int](_ + 10).lineage("+10", List("in2"), List("out2"))
+    val n1 = Node[Int, Int](_ * 2).lineage("x2", inputs = List("in"), outputs = List("out"))
+    val n2 = Node[Int, Int](_ + 10).lineage("+10", inputs = List("in2"), outputs = List("out2"))
     assertEquals((n1 ~> n2).unsafeRun(5), 20)
   }
 
   test("lineage - explicit upstreams") {
-    val p1 = Node[String, String](identity).lineage("u1", List("a"), List("b"))
-    val p2 = Node[String, String](identity).lineage("u2", List("c"), List("d"))
+    val p1 = Node[String, String](identity).lineage("u1", inputs = List("a"), outputs = List("b"))
+    val p2 = Node[String, String](identity).lineage("u2", inputs = List("c"), outputs = List("d"))
     val p3 = Node[String, String](identity).lineage(
       "agg",
-      List("x"),
-      List("y"),
-      upstreamPipelines = List(p1, p2)
+      inputs = List("x"),
+      outputs = List("y"),
+      upstreams = List(p1, p2)
     )
 
-    assertEquals(p3.getLineage.get.upstreamPipelines.size, 2)
+    assertEquals(p3.getLineage.get.upstreams.size, 2)
     assert(Seq(p1, p2, p3).toJson.contains("\"isDependency\":true"))
   }
 
@@ -1088,28 +1103,35 @@ class TelSpecs extends munit.FunSuite {
     val p = Node[String, String](identity)
       .lineage(
         "report",
-        List("agg"),
-        List("out"),
-        upstreamPipelines = List("analytics", "validation")
+        inputs = List("agg"),
+        outputs = List("out"),
+        upstreams = List("analytics", "validation")
       )
 
-    assertEquals(p.getLineage.get.upstreamPipelines, List("analytics", "validation"))
+    assertEquals(p.getLineage.get.upstreams, List("analytics", "validation"))
     assert(Seq(p).toJson.contains("\"analytics\""))
   }
 
   test("lineage - upstream Reader") {
-    val up = Node[String, String](identity).lineage("up", List("in"), List("out"))
+    val up =
+      Node[String, String](identity).lineage("up", inputs = List("in"), outputs = List("out"))
     val r = Reader[String, Node[String, String]](_ => Node(identity))
-      .lineage("r", List("in"), List("out"), upstreamPipelines = List(up))
+      .lineage("r", inputs = List("in"), outputs = List("out"), upstreams = List(up))
 
-    assertEquals(r.getLineage.get.upstreamPipelines.size, 1)
+    assertEquals(r.getLineage.get.upstreams.size, 1)
   }
 
   test("lineage - toMermaid") {
     val p1 = Node[String, String](identity)
-      .lineage("enrich", List("raw"), List("clean"), schedule = Some("2h"), cluster = Some("users"))
+      .lineage(
+        "enrich",
+        inputs = List("raw"),
+        outputs = List("clean"),
+        schedule = Some("2h"),
+        cluster = Some("users")
+      )
     val p2 = Node[String, String](identity)
-      .lineage("proc", List("orders"), List("done"), upstreamPipelines = List(p1))
+      .lineage("proc", inputs = List("orders"), outputs = List("done"), upstreams = List(p1))
 
     val m = Seq(p1, p2).toMermaid
     assert(m.contains("graph LR"))
@@ -1119,8 +1141,8 @@ class TelSpecs extends munit.FunSuite {
   }
 
   test("lineage - single item render") {
-    val n = Node[String, String](identity).lineage("n", List("i"), List("o"))
-    val r = Reader[String, String](identity).lineage("r", List("i2"), List("o2"))
+    val n = Node[String, String](identity).lineage("n", inputs = List("i"), outputs = List("o"))
+    val r = Reader[String, String](identity).lineage("r", inputs = List("i2"), outputs = List("o2"))
 
     assert(n.toJson.contains("n"))
     assert(n.toDot.contains("n"))
