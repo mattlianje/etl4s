@@ -15,7 +15,7 @@ Battle-tested at [Instacart](https://www.instacart.com/). Part of [d4](https://g
 
 ## Features
 - Declarative, typed pipeline endpoints
-- Zero-deps, use **Etl4s.scala** like a header file
+- Use **Etl4s.scala** like a header file
 - Type-safe, compile-time checked
 - [Config-driven](#configuration) by design
 - Easy, monadic composition of pipelines
@@ -143,6 +143,8 @@ pipeline.provide(Cfg("secret")).unsafeRun(())  // "secret: data"
 ```
 
 **etl4s** automatically infers the smallest shared config for your pipeline. Just `.provide` once.
+
+**Scala 2.x:** Use `Node.requires[Cfg, In, Out](cfg => in => out)` syntax.
 
 ## Parallelizing Tasks
 **etl4s** has an elegant shorthand for grouping and parallelizing operations that share the same input type:
