@@ -989,4 +989,142 @@ class TelSpecs extends munit.FunSuite {
     assertEquals(testProvider.spans.size, 1)
   }
 
+  test("lineage - attach to Node") {
+    val node = Node[String, Int](_.length)
+      .lineage("string-length", List("text_input"), List("length_output"))
+
+    assertEquals(node.unsafeRun("hello"), 5)
+    assert(node.getLineage.exists(_.name == "string-length"))
+  }
+
+  test("lineage - schedule and cluster") {
+    val node = Node[Int, Int](_ * 2)
+      .lineage(
+        "doubler",
+        List("numbers"),
+        List("doubled"),
+        schedule = Some("Every 5 min"),
+        cluster = Some("math")
+      )
+
+    val lin = node.getLineage.get
+    assertEquals(lin.schedule, Some("Every 5 min"))
+    assertEquals(lin.cluster, Some("math"))
+  }
+
+  test("lineage - Reader") {
+    case class Config(mult: Int)
+    val reader = Reader[Config, Node[Int, Int]](c => Node(_ * c.mult))
+      .lineage("mult", List("nums"), List("scaled"), cluster = Some("cfg"))
+
+    assertEquals(reader.getLineage.get.name, "mult")
+    assertEquals(reader.provide(Config(3)).unsafeRun(10), 30)
+  }
+
+  test("lineage - toJson") {
+    val p = Node[String, String](identity)
+      .lineage("pipe", List("in"), List("out"), schedule = Some("Daily"), cluster = Some("test"))
+
+    val json = Seq(p).toJson
+    assert(json.contains("\"name\":\"pipe\""))
+    assert(json.contains("\"schedule\":\"Daily\""))
+  }
+
+  test("lineage - auto-infer upstream") {
+    val p1 = Node[String, String](identity).lineage("s1", List("raw"), List("proc"))
+    val p2 = Node[String, String](identity).lineage("s2", List("proc"), List("final"))
+
+    val json = Seq(p1, p2).toJson
+    assert(json.contains("\"isDependency\":true"))
+  }
+
+  test("lineage - toDot") {
+    val p = Node[String, String](identity)
+      .lineage("enrich", List("raw"), List("clean"), schedule = Some("2h"), cluster = Some("users"))
+
+    val dot = Seq(p).toDot
+    assert(dot.contains("digraph G"))
+    assert(dot.contains("enrich"))
+    assert(dot.contains("cluster_users"))
+  }
+
+  test("lineage - mixed with/without") {
+    val w  = Node[String, String](_.toUpperCase).lineage("up", List("t"), List("T"))
+    val wo = Node[String, Int](_.length)
+
+    val json = Seq(w, wo).toJson
+    assert(json.contains("up"))
+  }
+
+  test("lineage - empty") {
+    assertEquals(
+      Seq.empty[Node[String, String]].toJson,
+      """{"pipelines":[],"dataSources":[],"edges":[]}"""
+    )
+    assert(Seq.empty[Node[String, String]].toDot.contains("No lineage"))
+  }
+
+  test("lineage - preserves behavior") {
+    val n1 = Node[Int, Int](_ * 2).lineage("x2", List("in"), List("out"))
+    val n2 = Node[Int, Int](_ + 10).lineage("+10", List("in2"), List("out2"))
+    assertEquals((n1 ~> n2).unsafeRun(5), 20)
+  }
+
+  test("lineage - explicit upstreams") {
+    val p1 = Node[String, String](identity).lineage("u1", List("a"), List("b"))
+    val p2 = Node[String, String](identity).lineage("u2", List("c"), List("d"))
+    val p3 = Node[String, String](identity).lineage(
+      "agg",
+      List("x"),
+      List("y"),
+      upstreamPipelines = List(p1, p2)
+    )
+
+    assertEquals(p3.getLineage.get.upstreamPipelines.size, 2)
+    assert(Seq(p1, p2, p3).toJson.contains("\"isDependency\":true"))
+  }
+
+  test("lineage - upstream strings") {
+    val p = Node[String, String](identity)
+      .lineage(
+        "report",
+        List("agg"),
+        List("out"),
+        upstreamPipelines = List("analytics", "validation")
+      )
+
+    assertEquals(p.getLineage.get.upstreamPipelines, List("analytics", "validation"))
+    assert(Seq(p).toJson.contains("\"analytics\""))
+  }
+
+  test("lineage - upstream Reader") {
+    val up = Node[String, String](identity).lineage("up", List("in"), List("out"))
+    val r = Reader[String, Node[String, String]](_ => Node(identity))
+      .lineage("r", List("in"), List("out"), upstreamPipelines = List(up))
+
+    assertEquals(r.getLineage.get.upstreamPipelines.size, 1)
+  }
+
+  test("lineage - toMermaid") {
+    val p1 = Node[String, String](identity)
+      .lineage("enrich", List("raw"), List("clean"), schedule = Some("2h"), cluster = Some("users"))
+    val p2 = Node[String, String](identity)
+      .lineage("proc", List("orders"), List("done"), upstreamPipelines = List(p1))
+
+    val m = Seq(p1, p2).toMermaid
+    assert(m.contains("graph LR"))
+    assert(m.contains("enrich<br/>(2h)"))
+    assert(m.contains("subgraph users"))
+    assert(m.contains("-.->"))
+  }
+
+  test("lineage - single item render") {
+    val n = Node[String, String](identity).lineage("n", List("i"), List("o"))
+    val r = Reader[String, String](identity).lineage("r", List("i2"), List("o2"))
+
+    assert(n.toJson.contains("n"))
+    assert(n.toDot.contains("n"))
+    assert(r.toMermaid.contains("r"))
+  }
+
 }
