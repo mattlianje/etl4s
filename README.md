@@ -222,7 +222,7 @@ val A = Extract[Unit, String](_ => throw new RuntimeException("Boom!"))
 A.unsafeRun(())  /* Returns "Error: Boom!" */
 ```
 
-## Side Effects with `tap`
+## Side Outputs
 The `tap` method performs side effects without disrupting pipeline flow:
 
 ```scala
@@ -234,7 +234,7 @@ val B = Transform[List[String], Int](_.size)
 A ~> tap(files => println(s"Cleanup: $files")) ~> B  /* tap passes data through */
 ```
 
-## Introspection with `etl4s.Trace` 
+## Tracing
 Nodes can access and update their runtime state with ThreadLocal channels spawened for free. All state is automatically shared across your entire pipeline. Read more [here](https://mattlianje.github.io/etl4s/trace/)
 
 ```scala
