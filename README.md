@@ -228,10 +228,11 @@ The `tap` method performs side effects without disrupting pipeline flow:
 ```scala
 import etl4s._
 
-val A = Extract(_ => List("a.txt", "b.txt"))
+val A = Extract((_: Unit) => List("a.txt", "b.txt"))
+           .tap(files => println(s"Cleanup: $files"))
 val B = Transform[List[String], Int](_.size)
 
-A ~> tap(files => println(s"Cleanup: $files")) ~> B  /* tap passes data through */
+A ~> B
 ```
 
 ## Tracing
