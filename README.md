@@ -62,7 +62,6 @@ pipeline.unsafeRun(())
 ## Documentation 
 [Full Documentation](https://mattlianje.github.io/etl4s/) - Detailed guides, API references, and examples
 
----
 
 ## Of note...
 - Ultimately - these nodes and pipelines are just reifications of functions and values (with a few niceties like built in retries, failure handling, concurrency-shorthand, and Future based parallelism).
