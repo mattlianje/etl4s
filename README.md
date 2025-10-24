@@ -275,7 +275,7 @@ which cover 95% of observability needs. Read more in the [Telemetry guide](https
 
 ## Lineage
 
-Track data lineage and visualize pipeline dependencies. Attach metadata to any Node:
+Track data lineage and visualize pipeline dependencies. Attach metadata to any Node or Reader then use `.toDot`, `.toJson` or `.toMermaid` on any of the afore or Sequences of:
 
 ```scala
 val A = Node[String, String](identity)
