@@ -1,4 +1,4 @@
-# Data Lineage
+# Lineage
 
 Track data lineage and generate visual pipeline diagrams.
 
@@ -36,7 +36,7 @@ Seq(A, B).toMermaid
 ### Graphviz
 
 <p align="center">
-  <img src="../pix/graphviz-example.svg" width="500">
+  <img src="https://raw.githubusercontent.com/mattlianje/etl4s/master/pix/graphviz-example.svg" width="500">
 </p>
 
 Generate DOT graphs for Graphviz:
@@ -80,7 +80,7 @@ graph LR
 
 Orange dotted arrows show inferred dependencies.
 
-## Parameters
+## Lineage Parameters
 
 - **`name`** (required): Unique identifier
 - **`inputs`**: Input data sources (default: empty)
@@ -89,7 +89,7 @@ Orange dotted arrows show inferred dependencies.
 - **`schedule`**: Human-readable schedule (e.g., "0 */2 * * *")
 - **`cluster`**: Group name for organizing related pipelines
 
-## Automatic Dependency Inference
+## Auto-Inference
 
 **etl4s** infers dependencies by matching outputs to inputs:
 
@@ -108,7 +108,7 @@ Seq(extract, transform, load).toMermaid
 
 Nodes don't need to be connected with `~>` for lineage tracking.
 
-## Explicit Dependencies
+## Explicit Upstreams
 
 Use `upstreams` for non-data dependencies:
 

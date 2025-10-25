@@ -1,5 +1,5 @@
 
-# Config-Driven Pipelines
+# Configuration
 
 Make your pipelines configurable and reusable. Declare what each step needs, then provide config once.
 
@@ -18,7 +18,7 @@ val pipeline = A ~> B
 pipeline.provide(Cfg("secret")).unsafeRun(())  // "secret: data"
 ```
 
-## Config Inheritance & Propagation
+## Config Propagation
 
 Build modular configs with traits. **etl4s** automatically infers what your pipeline needs:
 

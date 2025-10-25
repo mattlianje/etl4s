@@ -1,4 +1,4 @@
-# Pipeline Tracing with `Trace`
+# Runtime State
 
 Nodes can access and update their runtime state:
 
