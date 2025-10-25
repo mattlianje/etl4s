@@ -222,20 +222,21 @@ val A = Extract[Unit, String](_ => throw new RuntimeException("Boom!"))
 A.unsafeRun(())  /* Returns "Error: Boom!" */
 ```
 
-## Side Effects with `tap`
+## Side Outputs
 The `tap` method performs side effects without disrupting pipeline flow:
 
 ```scala
 import etl4s._
 
-val A = Extract(_ => List("a.txt", "b.txt"))
+val A = Extract((_: Unit) => List("a.txt", "b.txt"))
+           .tap(files => println(s"Cleanup: $files"))
 val B = Transform[List[String], Int](_.size)
 
-A ~> tap(files => println(s"Cleanup: $files")) ~> B  /* tap passes data through */
+A ~> B
 ```
 
-## Introspection with `etl4s.Trace` 
-Nodes can access and update their runtime state with ThreadLocal channels spawened for free. All state is automatically shared across your entire pipeline. Read more [here](https://mattlianje.github.io/etl4s/trace/)
+## Tracing
+Nodes can access and update their runtime state with ThreadLocal channels spawned for free. All state is automatically shared across your entire pipeline. Read more [here](https://mattlianje.github.io/etl4s/trace/)
 
 ```scala
 val A = Transform[String, Int] { s =>
@@ -277,7 +278,8 @@ which cover 95% of observability needs. Read more in the [Telemetry guide](https
 
 ## Lineage
 
-Track data lineage and visualize pipeline dependencies. Attach metadata to any Node or Reader then use `.toDot`, `.toJson` or `.toMermaid` on any of the afore or Sequences of:
+Track data lineage and visualize pipeline dependencies. Attach metadata to any Node or Reader then call `.toDot`, `.toJson` or `.toMermaid`
+on individual instances or on Sequences:
 
 ```scala
 val A = Node[String, String](identity)
@@ -342,7 +344,7 @@ graph LR
     class s5 dataSource
 ```
 
-**etl4s** automatically infers dependencies by matching output → input sources. Nodes don't need to be connected with `~>` for lineage tracking. Explicit dependencies via `upstreams` also supported.
+**etl4s** automatically infers dependencies by matching output -> input sources. Nodes don't need to be connected with `~>` for lineage tracking. Explicit dependencies via `upstreams` also supported.
 
 ## Examples
 
