@@ -1,29 +1,27 @@
 
 ### Chain two pipelines
-Simple UNIX-pipe style chaining of two pipelines:
 ```scala
 import etl4s._
 
-val p1 = Pipeline((i: Int) => i.toString)
-val p2 = Pipeline((s: String) => s + "!")
+val A = Pipeline((i: Int) => i.toString)
+val B = Pipeline((s: String) => s + "!")
 
-val p3: Pipeline[Int, String] = p1 ~> p2
+val C = A ~> B  // Int => String
 ```
 
 ### Complex chaining
-Connect the output of two pipelines to a third:
 ```scala
 import etl4s._
 
-val namePipeline = Pipeline("John Doe")
-val agePipeline  = Pipeline(30)
-val toUpper      = Transform[String, String](_.toUpperCase)
-val consoleLoad  = Load[String, Unit](println(_))
+val A = Pipeline("data")
+val B = Pipeline(42)
+val C = Transform[String, String](_.toUpperCase)
+val D = Load[String, Unit](println)
 
-val combined: Pipeline[Unit, Unit] =
+val pipeline =
   for {
-    name <- namePipeline
-    age <- agePipeline
-    _ <- Extract(s"$name | $age") ~> toUpper ~> consoleLoad
+    str <- A
+    num <- B
+    _ <- Extract(s"$str-$num") ~> C ~> D
   } yield ()
 ```

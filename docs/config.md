@@ -6,41 +6,43 @@ Make your pipelines configurable and reusable. Declare what each step needs, the
 ```scala
 import etl4s._
 
-case class ApiConfig(url: String, key: String)
+case class Cfg(key: String)
 
-val extract = Extract("user123")
-val enrich = Transform[String, String].requires[ApiConfig] { cfg => user =>
-  s"${cfg.key}: $user"
+val A = Extract("data")
+val B = Transform[String, String].requires[Cfg] { cfg => data =>
+  s"${cfg.key}: $data"
 }
 
-val pipeline = extract ~> enrich
+val pipeline = A ~> B
 
-// Provide config and run
-pipeline.provide(ApiConfig("api.com", "SECRET")).unsafeRun(())
+pipeline.provide(Cfg("secret")).unsafeRun(())  // "secret: data"
 ```
 
 ## Config Inheritance & Propagation
 
-Build modular configs with traits. **etl4s** automatically infers what your pipeline needs and propagates config through the entire pipeline:
+Build modular configs with traits. **etl4s** automatically infers what your pipeline needs:
 
 ```scala
 trait HasDb { def dbUrl: String }
 trait HasAuth { def apiKey: String }
 
-val saveData = Load[String, Unit].requires[HasDb] { cfg => data =>
-  println(s"Saving to ${cfg.dbUrl}")
+val A = Load[String, Unit].requires[HasDb] { cfg => data =>
+  println(s"Saving to ${cfg.dbUrl}: $data")
 }
 
-val fetchUser = Extract[String, User].requires[HasAuth] { cfg => id =>
-  fetchFromApi(cfg.apiKey, id)
+val B = Extract[Unit, String].requires[HasAuth] { cfg => _ =>
+  s"Fetched with ${cfg.apiKey}"
 }
+
+val C = Transform[String, String](_.toUpperCase)
 
 // Combined config
 case class AppConfig(dbUrl: String, apiKey: String) extends HasDb with HasAuth
 
-val pipeline = fetchUser ~> process ~> saveData
-// Config flows to all steps that need it automatically
-pipeline.provide(AppConfig("jdbc:pg", "secret")).unsafeRun("user123")
+val pipeline = B ~> C ~> A
+
+// Config flows to all steps automatically
+pipeline.provide(AppConfig("jdbc:pg", "secret-key")).unsafeRun(())
 ```
 
 ## Context
@@ -52,19 +54,19 @@ case class DbConfig(url: String, timeout: Int)
 
 object DataPipeline extends Context[DbConfig] {
   
-  val fetch = Context.Extract[String, List[User]] { cfg => query =>
-    connectAndFetch(cfg.url, query)
+  val fetch = Context.Extract[Unit, String] { cfg => _ =>
+    s"Connected to ${cfg.url} with timeout ${cfg.timeout}s"
   }
   
-  val save = Context.Load[List[User], Unit] { cfg => users =>
-    Database.connect(cfg.url).save(users)
+  val save = Context.Load[String, Unit] { cfg => data =>
+    println(s"Saving to ${cfg.url}: $data")
   }
   
   val pipeline = fetch ~> save
 }
 
 // Provide config once
-DataPipeline.pipeline.provide(DbConfig("jdbc:pg", 5000)).unsafeRun("query")
+DataPipeline.pipeline.provide(DbConfig("jdbc:pg", 5000)).unsafeRun(())
 ```
 
 ## Scala 2.x Note
@@ -74,12 +76,12 @@ Use explicit types for better inference:
 ```scala
 // Scala 2.x
 Transform.requires[Config, String, String] { cfg => input => 
-  process(cfg, input)
+  cfg.key + input
 }
 
 // Scala 3 (preferred)
 Transform[String, String].requires[Config] { cfg => input => 
-  process(cfg, input)
+  cfg.key + input
 }
 ```
 

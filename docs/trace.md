@@ -11,19 +11,19 @@ Use `runTrace` to get all your logs and errors cleanly after you've run your pip
 **How it works:** Trace uses two [ThreadLocal](https://docs.oracle.com/javase/8/docs/api/java/lang/ThreadLocal.html) channels (like Unix stdout/stderr) that automatically accumulate across your pipeline - thread-safe with minimal overhead:
 
 ```scala
-val p = Transform[String, Int] { input =>
-  Trace.log("Processing input")
-  input.length
+val A = Transform[String, Int] { s =>
+  Trace.log("Processing")
+  s.length
 }
 
-val res: Int = p.unsafeRun("hello")  // 5
-val resTrace: Trace[Int] = p.unsafeRunTrace("hello")
+val res: Int = A.unsafeRun("hello")  // 5
+val trace: Trace[Int] = A.unsafeRunTrace("hello")
 ```
 
 ```
 Trace(
   result = 5,
-  logs = List("Processing input"),
+  logs = List("Processing"),
   errors = List(),
   timeElapsedMillis = 2L
 )
@@ -34,19 +34,19 @@ Trace(
 Downstream nodes can instantly see what happened upstream and adapt their behavior.
 
 ```scala
-val upstream = Transform[String, Int] { input =>
-  if (input.isEmpty) Trace.error("Empty input")
-  input.length
+val A = Transform[String, Int] { s =>
+  if (s.isEmpty) Trace.error("empty")
+  s.length
 }
 
-val downstream = Transform[Int, String] { value =>
-  if (Trace.hasErrors) "FALLBACK" else s"Length: $value"  
+val B = Transform[Int, String] { n =>
+  if (Trace.hasErrors) "FALLBACK" else s"len: $n"  
 }
 
-val p = upstream ~> downstream
+val pipeline = A ~> B
 
-p.unsafeRun("hello")  /* "Length: 5" */
-p.unsafeRun("")       /* "FALLBACK" */
+pipeline.unsafeRun("hello")  /* "len: 5" */
+pipeline.unsafeRun("")       /* "FALLBACK" */
 ```
 
 **No wiring required.** The downstream node automatically knows about upstream problems and switches to fallback mode since it can access the run's `Trace`
