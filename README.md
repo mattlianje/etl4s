@@ -44,19 +44,19 @@ import etl4s._
 ```scala
 import etl4s._
 
-/* Define components */
 val getUser  = Extract("John Doe")
-val getOrder = Extract("2 items")
-val process  = Transform[(String, String), String] { case (user, order) => 
-  s"$user ordered $order" 
+val getOrder = Extract("Order #1234")
+val combine  = Transform[(String, String), String] { case (user, order) => 
+  s"$user placed $order" 
 }
 val saveDb    = Load[String, String](s => { println(s"DB: $s"); s })
 val sendEmail = Load[String, Unit](s => println(s"Email: $s"))
 
-/* Group tasks with &, Connect with ~> */
-val pipeline =
-     (getUser & getOrder) ~> process ~> (saveDb & sendEmail)
-pipeline.unsafeRun(())
+val pipeline = (getUser & getOrder) ~> combine ~> (saveDb & sendEmail)
+
+pipeline(())
+// DB: John Doe placed Order #1234
+// Email: John Doe placed Order #1234
 ```
 
 ## Documentation 
@@ -76,23 +76,21 @@ Node[-In, +Out]
 ```
 A Node wraps a lazily-evaluated function `In => Out`. Chain them with `~>` to build pipelines.
 
-To improve readability and express intent, **etl4s** defines four aliases: `Extract`, `Transform`, `Load` and `Pipeline`.
-All behave the same under the hood.
+To improve readability and express intent, **etl4s** defines four aliases: `Extract`, `Transform`, `Load` and `Pipeline`. All behave the same under the hood.
 
-Drop in any function like:
 ```scala
 val step = Transform[String, Int](_.length)
+step("hello")  // 5
 ```
 
-You can run nodes like plain functions:
-```scala
-val len: Int = step("HELLO") // 5
-```
-Or explicitly:
-- `.unsafeRun(input)` - runs and throws on failure (trace collected internally)
-- `.safeRun(input)` - returns a Try (trace collected internally) 
-- `.unsafeRunTrace(input)` - returns Trace with logs, timeElapsedMillis, validation errors
-- `.safeRunTrace(input)` - returns Trace with Try result safely
+**Running pipelines:**
+- `pipeline(input)` - call like a function
+- `.unsafeRun(input)` - explicit run
+- `.safeRun(input)` - returns `Try[Out]`
+- `.unsafeRunTrace(input)` - returns `Trace` (logs, timing, errors)
+- `.safeRunTrace(input)` - returns `Trace` with `Try[Out]`
+
+**DI:** Use `.requires` to turn any Node into a `Reader[Config, Node]`. The `~>` operator works between Nodes and Readers. See [Configuration](#configuration).
 
 ## Type safety
 **etl4s** won't let you chain together "blocks" that don't fit together:

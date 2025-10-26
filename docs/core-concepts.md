@@ -1,86 +1,65 @@
-
-At the heart of **etl4s** is a single abstraction:
+**etl4s** has one core building block:
 ```scala
 Node[-In, +Out]
 ```
-A Node is just a lazy, typed function `In => Out` that can be chained into pipelines using `~>`. That's it.
+A Node wraps a lazily-evaluated function `In => Out`. Chain them with `~>` to build pipelines.
 
 ## Node types
-For clarity and intent, **etl4s** provides 4 nodes aliases:
+To improve readability and express intent, **etl4s** defines four aliases: `Extract`, `Transform`, `Load` and `Pipeline`. All behave the same under the hood.
+
 ```scala
 type Extract[-In, +Out]   = Node[In, Out]
 type Transform[-In, +Out] = Node[In, Out]
 type Load[-In, +Out]      = Node[In, Out]
 type Pipeline[-In, +Out]  = Node[In, Out]
 ```
-They all behave identically under the hood.
 
-## Quick examples
+## Building pipelines
 ```scala
 import etl4s._
 
-// A basic extract node
-val extract: Extract[Unit, String] = Extract("hello")
-
-// A transform node from String to Int
-val getStringLen = Transform[String, Int](_.length)
-
-println(extract(()))        // hello
-println(getStringLen("hi")) // 2
-```
-You can wrap any Function1:
-```scala
-val toStr = Extract[Int, String](_.toString)
-```
-
-## Building pipelines
-Compose nodes with `~>`:
-```scala
-val A = Extract("hello")
-val B = Transform[String, Int](_.length)
-val C = Load[Int, String](n => s"Length: $n")
+val A = Extract("users.csv")
+val B = Transform[String, Int](csv => csv.split("\n").length)
+val C = Load[Int, Unit](count => println(s"Processed $count users"))
 
 val pipeline = A ~> B ~> C
-```
-Or define a pipeline from any Function1:
-```scala
-val shout = Pipeline[String, String](_.toUpperCase)
+
+pipeline(())  // Processed 3 users
 ```
 
-## Executing pipelines
-### 1) Call them like functions
-All pipelines are just values of type `In => Out`, so you can run them like this:
+Create standalone nodes:
 ```scala
-pipeline(())        /* => "Length: 5" */
-shout("hi")         /* => "HI" */
+val toUpper = Transform[String, String](_.toUpperCase)
+toUpper("hello")  // HELLO
 ```
 
-### 2) Use `.unsafeRun(...)`
-To run with error surfacing (trace information collected internally):
+## Running pipelines
+Call like a function:
+```scala
+pipeline(())
+```
+
+Or be explicit:
 ```scala
 pipeline.unsafeRun(())
 ```
 
-### 3) Use `.safeRun(...)`
-To catch exceptions (trace information collected internally):
+**Error handling:**
 ```scala
 val risky = Pipeline[String, Int](_.toInt)
-val result = risky.safeRun("oops")  // => Failure(...)
+
+risky.safeRun("42")    // Success(42)
+risky.safeRun("oops")  // Failure(...)
 ```
 
-### 4) Use traced execution
-To get full execution details including logs, timing, and validation errors:
+**Execution details:**
 ```scala
 val trace = pipeline.unsafeRunTrace(())
 // trace.result, trace.logs, trace.timeElapsedMillis, trace.errors
 
-val safeTrace = pipeline.safeRunTrace(())  
-// safeTrace.result is a Try[B]
+val safeTrace = pipeline.safeRunTrace(())
+// safeTrace.result is a Try[Out]
 ```
 
-### 5) Run and measure time
-Run your pipeline:
-```scala
-val slow = Node[Unit, Unit](_ => Thread.sleep(100))
-val (_, elapsedMs) = slow.unsafeRunTimedMillis(())
-```
+!!! note "Readers and config"
+    **etl4s** also has a `Reader` type for dependency injection. Use `.requires` to turn any Node into a `Reader[Config, Node]`. The `~>` operator works between Nodes and Readers. See [Configuration](config.md).
