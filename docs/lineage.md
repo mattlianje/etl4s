@@ -1,6 +1,7 @@
 # Lineage
 
-Track data lineage and generate visual pipeline diagrams.
+Attach lineage metadata with `.lineage` then use `.toDot`, `.toMermaid` or `.toJson` to
+get the string representation of your lineage diagrams.
 
 ## Quick Start
 

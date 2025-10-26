@@ -1,7 +1,7 @@
 
 # Configuration
 
-Make your pipelines configurable and reusable. Declare what each step needs, then provide config once.
+Make your pipelines configurable and reusable. Declare what each step needs with `.requires`, then provide config once. The required context is automatically inferred.
 
 ```scala
 import etl4s._
