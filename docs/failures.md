@@ -1,8 +1,7 @@
+**etl4s** provides built-in failure handling:
 
-**etl4s** comes with 2 methods you can use (on a `Node` or `Pipeline`) to handle failures out of the box:
-
-### 1) `.withRetry`
-Give any Node retry capability using the built-in `withRetry`:
+## .withRetry
+Retry failed operations with exponential backoff using `.withRetry`:
 ```scala
 import etl4s._
 
@@ -18,27 +17,26 @@ val riskyTransformWithRetry = Transform[Int, String] {
 val pipeline = Extract(42) ~> riskyTransformWithRetry
 pipeline.unsafeRun(())
 ```
-This prints:
+Output:
 ```
 Success after 3 attempts
 ```
 
-### 2) `.onFailure`
-Catch exceptions and perform some action:
+## .onFailure
+Catch exceptions and provide fallback values using `.onFailure`:
 ```scala
 import etl4s._
 
 val riskyExtract =
     Extract[Unit, String](_ => throw new RuntimeException("Boom!"))
 
-val safeExtract = riskyExtract
-                    .onFailure(e => s"Failed with: ${e.getMessage} ... firing missile")
-val consoleLoad: Load[String, Unit] = Load(println(_))
+val safeExtract = riskyExtract.onFailure(e => s"Failed: ${e.getMessage}")
+val consoleLoad = Load[String, Unit](println(_))
 
 val pipeline = safeExtract ~> consoleLoad
 pipeline.unsafeRun(())
-``` 
-This prints:
 ```
-Failed with: Boom! ... firing missile
+Output:
+```
+Failed: Boom!
 ```

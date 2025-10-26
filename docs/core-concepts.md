@@ -61,5 +61,4 @@ val safeTrace = pipeline.safeRunTrace(())
 // safeTrace.result is a Try[Out]
 ```
 
-!!! note "Readers and config"
-    **etl4s** also has a `Reader` type for dependency injection. Use `.requires` to turn any Node into a `Reader[Config, Node]`. The `~>` operator works between Nodes and Readers. See [Configuration](config.md).
+⚠️ **etl4s** also has a `Reader` type for dependency injection. Use `.requires` to turn any Node into a `Reader[Config, Node]`. The `~>` operator works between Nodes and Readers. See [Configuration](config.md) for details.
