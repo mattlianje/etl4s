@@ -39,7 +39,7 @@ nav:
   - Handling failures: failures.md
   - Side Outputs: logs.md
   - Tracing: trace.md
-  - Lineage: lineage.md
+  - Lineage Diagrams: lineage.md
   - Telemetry: opentelemetry.md
   - Testing: testing.md
   - Examples: examples.md
