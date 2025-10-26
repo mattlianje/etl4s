@@ -85,7 +85,7 @@ graph LR
 
 Orange dotted arrows show inferred dependencies.
 
-## JSON Export
+### JSON
 
 ```scala
 Seq(A, B).toJson
