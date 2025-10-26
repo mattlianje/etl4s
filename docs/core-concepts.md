@@ -36,11 +36,11 @@ val toStr = Extract[Int, String](_.toString)
 ## Building pipelines
 Compose nodes with `~>`:
 ```scala
-val E = Extract("hello")
-val T = Transform[String, Int](_.length)
-val L = Load[Int, String](n => s"Length: $n")
+val A = Extract("hello")
+val B = Transform[String, Int](_.length)
+val C = Load[Int, String](n => s"Length: $n")
 
-val pipeline = E ~> T ~> L
+val pipeline = A ~> B ~> C
 ```
 Or define a pipeline from any Function1:
 ```scala

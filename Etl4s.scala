@@ -18,7 +18,7 @@
  * with functional programming principles.
  *
  * @author Matthieu Court
- * @version 1.4.1
+ * @version 1.5.0
  */
 package object etl4s {
   import scala.language.{higherKinds, implicitConversions}
@@ -1708,7 +1708,7 @@ package object etl4s {
     }
 
     private def buildLineageGraph(lineages: Seq[Lineage]): LineageGraph = {
-      // Fail fast on duplicate names
+      /* Fail in duplicate names... TODO review this */
       val duplicates = lineages.groupBy(_.name).filter(_._2.size > 1)
       if (duplicates.nonEmpty) {
         throw new IllegalArgumentException(
@@ -1718,7 +1718,7 @@ package object etl4s {
 
       val allItemsWithLineage = items.flatMap(item => extractLineage(item).map(_ => item))
 
-      // Auto-infer upstreams by matching output -> input sources
+      /* Auto-infers upstreams by matching output -> input */
       val enrichedLineages = lineages.map { lineage =>
         val inferredUpstreams = allItemsWithLineage.filter { item =>
           extractLineage(item).exists { upstream =>
@@ -1775,13 +1775,11 @@ package object etl4s {
     private def renderDotContent(builder: StringBuilder, graph: LineageGraph): Unit = {
       val pipelinesByCluster = graph.pipelines.groupBy(_.cluster)
 
-      // Render clusters and standalone pipelines
       pipelinesByCluster.foreach {
         case (Some(clusterName), pipelines) => renderCluster(builder, clusterName, pipelines, 1)
         case (None, pipelines)              => pipelines.foreach(renderPipelineNode(builder, _, 1))
       }
 
-      // Render standalone data sources
       val clusteredDataSources = graph.pipelines
         .filter(_.cluster.isDefined)
         .flatMap(p => p.input_sources ++ p.output_sources)
@@ -1792,7 +1790,6 @@ package object etl4s {
 
       builder.append("\n")
 
-      // Render edges
       graph.edges.foreach { e =>
         val style =
           if (e.isDependency) """[color="#ff6b35", style="solid"]""" else """[color="#666"]"""
@@ -1891,7 +1888,6 @@ package object etl4s {
         inputEdges ++ outputEdges
       }
 
-      // Find pipeline dependencies (where one pipeline's output is another's input)
       val pipelineOutputs = lineages.map(l => (l.name, l.outputs)).toMap
       val implicitDependencyEdges = lineages.flatMap { lineage =>
         lineage.inputs.flatMap { input =>
@@ -1902,7 +1898,6 @@ package object etl4s {
         }
       }
 
-      // Explicit upstream dependencies (via upstreams)
       val explicitDependencyEdges = lineages.flatMap { lineage =>
         lineage.upstreams.flatMap { upstreamObj =>
           extractPipelineName(upstreamObj).map { upstreamName =>
@@ -1929,11 +1924,9 @@ package object etl4s {
       builder.append(s"""${ind}    color="#666666";\n""")
       builder.append(s"${ind}    fontsize=11;\n\n")
 
-      // Render pipelines in this cluster
       pipelines.foreach { pipeline =>
         renderPipelineNode(builder, pipeline, indent + 1)
 
-        // Render data sources that are specific to this cluster
         val clusterDataSources = (pipeline.input_sources ++ pipeline.output_sources).distinct
         clusterDataSources.foreach { ds =>
           renderDataSource(builder, ds, indent + 1)

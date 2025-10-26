@@ -89,44 +89,20 @@ Orange dotted arrows show inferred dependencies.
 - **`schedule`**: Human-readable schedule (e.g., "0 */2 * * *")
 - **`cluster`**: Group name for organizing related pipelines
 
-## Auto-Inference
-
-**etl4s** infers dependencies by matching outputs to inputs:
-
-```scala
-val extract = Node[String, String](identity)
-  .lineage("extract", inputs = List("db"), outputs = List("staging"))
-
-val transform = Node[String, String](identity)
-  .lineage("transform", inputs = List("staging"), outputs = List("clean"))
-
-val load = Node[String, String](identity)
-  .lineage("load", inputs = List("clean"), outputs = List("warehouse"))
-
-Seq(extract, transform, load).toMermaid
-```
-
-Nodes don't need to be connected with `~>` for lineage tracking.
-
 ## Explicit Upstreams
 
 Use `upstreams` for non-data dependencies:
 
 ```scala
-val A = Node[User, EnrichedUser](enrich)
-  .lineage("user-pipeline", inputs = List("raw_users"), outputs = List("users"))
+val C = Node[String, String](identity)
+  .lineage("C", upstreams = List(A, B))
 
-val B = Node[Order, ProcessedOrder](process)  
-  .lineage("order-pipeline", inputs = List("raw_orders"), outputs = List("orders"))
-
-val C = Node[Data, Report](aggregate)
-  .lineage(
-    name = "analytics",
-    inputs = List("data"),
-    outputs = List("report"),
-    upstreams = List(A, B)
-  )
+Seq(A, B, C).toDot
 ```
+
+<p align="center">
+  <img src="https://raw.githubusercontent.com/mattlianje/etl4s/master/pix/graphviz-dependencies-example.svg" width="500">
+</p>
 
 ## JSON Export
 
@@ -139,44 +115,30 @@ JSON structure includes:
 - `dataSources`: Array of data source names
 - `edges`: Connections with `isDependency` flag
 
-Compatible with data catalog tools.
-
 ## Clusters
 
 Group related pipelines:
 
 ```scala
-val A = Node[Order, ProcessedOrder](process)
+val B = Node[String, String](identity)
   .lineage(
-    name = "validation",
-    inputs = List("raw_orders"),
-    outputs = List("valid_orders"),
-    cluster = Some("order-processing")
+    name = "B",
+    inputs = List("s3"),
+    outputs = List("s4", "s5"),
+    cluster = Some("Y")
   )
+
+val C = Node[String, String](identity)
+  .lineage(
+    name = "C",
+    upstreams = List(A, B),
+    cluster = Some("Y")
+  )
+
+Seq(A, B, C).toDot
 ```
 
-Clusters appear as grouped regions in visualizations.
-
-## With Readers
-
-```scala
-case class Config(url: String)
-
-val A = Reader[Config, Node[Data, Result]] { cfg =>
-  Node(data => loadToDb(cfg.url, data))
-}.lineage(
-  name = "db-loader",
-  inputs = List("processed"),
-  outputs = List("stored"),
-  cluster = Some("persistence")
-)
-```
-
-## Best Practices
-
-1. Use consistent naming for data sources
-2. Match output/input names for auto-inference
-3. Add schedules for operational clarity
-4. Group with clusters
-5. Use `upstreams` for operational dependencies
+<p align="center">
+  <img src="https://raw.githubusercontent.com/mattlianje/etl4s/master/pix/graphviz-cluster-example.svg" width="500">
+</p>
 
