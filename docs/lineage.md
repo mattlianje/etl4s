@@ -34,12 +34,12 @@ Seq(A, B).toMermaid
 
 ## Visualization
 
-### Graphviz/DOT
+### DOT
 
 Generate DOT graphs for Graphviz:
 
 ```scala
-val dot = Seq(A, B).toDot
+Seq(A, B).toDot
 ```
 
 <p align="center">
@@ -49,7 +49,7 @@ val dot = Seq(A, B).toDot
 ### Mermaid
 
 ```scala
-val dot = Seq(A, B).toMermaid
+Seq(A, B).toMermaid
 ```
 
 ```mermaid
@@ -88,7 +88,7 @@ Orange dotted arrows show inferred dependencies.
 ## JSON Export
 
 ```scala
-val json = Seq(A, B).toJson
+Seq(A, B).toJson
 ```
 
 JSON structure includes:
