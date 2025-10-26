@@ -21,8 +21,8 @@ Battle-tested at [Instacart](https://www.instacart.com/). Part of [d4](https://g
 - Easy, monadic composition of pipelines
 - Built-in retry/failure handling
 - Automatic [tracing](#introspection-with-etl4strace)
-- Drop-in [(open)telemetry](#telemetry)
-- [Data lineage](#lineage) tracking and visualization
+- Drop-in [telemetry](#telemetry)
+- [Data lineage](#lineage) visualization
 
 ## Installation
 
