@@ -55,8 +55,6 @@ val sendEmail = Load[String, Unit](s => println(s"Email: $s"))
 val pipeline = (getUser & getOrder) ~> combine ~> (saveDb & sendEmail)
 
 pipeline(())
-// DB: John Doe placed Order #1234
-// Email: John Doe placed Order #1234
 ```
 
 ## Documentation 
