@@ -34,11 +34,7 @@ Seq(A, B).toMermaid
 
 ## Visualization
 
-### Graphviz
-
-<p align="center">
-  <img src="https://raw.githubusercontent.com/mattlianje/etl4s/master/pix/graphviz-example.svg" width="500">
-</p>
+### Graphviz/DOT
 
 Generate DOT graphs for Graphviz:
 
@@ -46,7 +42,15 @@ Generate DOT graphs for Graphviz:
 val dot = Seq(A, B).toDot
 ```
 
+<p align="center">
+  <img src="https://raw.githubusercontent.com/mattlianje/etl4s/master/pix/graphviz-example.svg" width="500">
+</p>
+
 ### Mermaid
+
+```scala
+val dot = Seq(A, B).toMermaid
+```
 
 ```mermaid
 graph LR
@@ -81,6 +85,17 @@ graph LR
 
 Orange dotted arrows show inferred dependencies.
 
+## JSON Export
+
+```scala
+val json = Seq(A, B).toJson
+```
+
+JSON structure includes:
+- `pipelines`: Array of pipeline objects
+- `dataSources`: Array of data source names
+- `edges`: Connections with `isDependency` flag
+
 ## Lineage Parameters
 
 - **`name`** (required): Unique identifier
@@ -94,10 +109,15 @@ Orange dotted arrows show inferred dependencies.
 
 Use `upstreams` for non-data dependencies:
 
+If you add a node `C`
 ```scala
 val C = Node[String, String](identity)
   .lineage("C", upstreams = List(A, B))
 
+```
+
+Then do:
+```scala
 Seq(A, B, C).toDot
 ```
 
@@ -105,16 +125,8 @@ Seq(A, B, C).toDot
   <img src="https://raw.githubusercontent.com/mattlianje/etl4s/master/pix/graphviz-dependencies-example.svg" width="500">
 </p>
 
-## JSON Export
+Note how `C` has an orange upstream dependency to `A` and `B` despite not having as inputs their outputs.
 
-```scala
-val json = Seq(A, B).toJson
-```
-
-JSON structure includes:
-- `pipelines`: Array of pipeline objects
-- `dataSources`: Array of data source names
-- `edges`: Connections with `isDependency` flag
 
 ## Clusters
 
