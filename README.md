@@ -65,14 +65,15 @@ Chaotic, framework-coupled ETL codebases that grow without an imposed discipline
 
 **etl4s** is a lightweight DSL to enforce discipline, type-safety, and reuse of pure functions - and see [functional ETL](https://maximebeauchemin.medium.com/functional-data-engineering-a-modern-paradigm-for-batch-data-processing-2327ec32c42a) for what it is... and could be.
 
-- **One core abstraction:** Just `Node[-In, +Out]`. Bring your own extension methods.
-- **Zero dependencies:** Use **Etl4s.scala** like a header file. No runtime, no framework lock-in.
-- **Built-in resilience:** Add retries with `.withRetry()`, handle failures with `.onFailure()`. No boilerplate for error handling.
-- **ThreadLocal tracing:** Cross-pipeline state tracking with zero wiring. Downstream nodes automatically "know" what happened upstream via `Trace` channels. Inspect timing, logs, and errors with `.unsafeRunTrace()`.
-- **Metrics by design:** In OLAP/ETL processes, observability metrics are frequently business-critical (especially at the peripheries in Extractors and Loaders). The `Etl4sTelemetry` interface is baked into the core, not bolted on. Use `Tel` calls in your business logic: zero-cost until you provide an implementation. Works with any backend: Prometheus, DataDog, OpenTelemetry.
-- **Lineage visualization:** Pipelines are data structures. Attach metadata with `.lineage()`, then call `.toMermaid` or `.toDot` to generate diagrams showing how your data flows - impossible with raw functions.
-- **Clean dependency injection:** Avoid "parameter drilling" config objects through nested functions. Use `.requires` to declare what each step needs, then `.provide` once. **etl4s** automatically infers and injects the minimal required configuration.
-- **Type safety:** Compile-time checks prevent mismatched pipeline stages. If it compiles, it fits together.
+- **From tangled calls to clean graphs**: Raw function composition can obscure the high-level flow of data. etl4s uses a declarative DSL (`~>`, `&`, `&>`) to define pipelines as explicit, type-safe graphs. This makes your data flows easy to read, reason about, and modify: like a whiteboard diagram.
+
+- **Built-in resilience and parallelism**: Instead of manually writing boilerplate for error handling and concurrency, etl4s provides clean, chainable methods. Add automatic retries with `.withRetry`, handle failures with `.onFailure`, and run tasks in parallel with the `&>` operator, keeping your core logic clean.
+
+- **Free observability and lineage**: Instrumenting raw functions for monitoring is tedious. **etl4s** offers automatic ThreadLocal tracing (`.unsafeRunTrace`) to inspect the timing, logs, and errors of every step. Because pipelines are data structures, you can also attach metadata and automatically generate lineage diagrams—something impossible with plain functions.
+
+- **Metrics by design**: The `Etl4sTelemetry` interface is baked into every pipeline. Add counters, gauges, and histograms directly in your business logic (zero cost until you provide an implementation). Works with any backend: Prometheus, DataDog, OpenTelemetry.
+
+- **Clean configuration and dependency management**: Avoid "parameter drilling" configuration objects through nested functions. **etl4s** provides a simple dependency injection system (`.requires` and `.provide`) that automatically infers and injects the minimal required configuration for any part of your pipeline.
 
 
 ## Core Concepts
