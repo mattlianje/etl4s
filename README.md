@@ -54,7 +54,7 @@ val sendEmail = Load[String, Unit](s => println(s"Email: $s"))
 
 val pipeline = (getUser & getOrder) ~> combine ~> (saveDb & sendEmail)
 
-pipeline(())
+pipeline.unsafeRun()
 ```
 
 ## Why etl4s?
