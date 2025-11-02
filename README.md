@@ -65,9 +65,7 @@ Chaotic, framework-coupled ETL codebases that grow without an imposed discipline
 
 **etl4s** is a lightweight DSL to enforce discipline, type-safety, and reuse of pure functions - and see [functional ETL](https://maximebeauchemin.medium.com/functional-data-engineering-a-modern-paradigm-for-batch-data-processing-2327ec32c42a) for what it is... and could be.
 
-- **From tangled calls to clean graphs**
-
-Raw function composition can obscure the high-level flow of data. **etl4s** uses a declarative DSL (`~>`, `&`, `&>`) to define pipelines as explicit, type-safe graphs. This makes your data flows easy to read, reason about, and modify: like a whiteboard diagram.
+- **From tangled calls to clean graphs**: Raw function composition can obscure the high-level flow of data. **etl4s** uses a declarative DSL (`~>`, `&`, `&>`) to define pipelines as explicit, type-safe graphs. This makes your data flows easy to read, reason about, and modify: like a whiteboard diagram.
 
 - **Reusable, typed endpoints**: Pipelines are declarative values with clear contracts (`Node[In, Out]`). Share them across teams as portable, composable components.
 
