@@ -67,7 +67,9 @@ Chaotic, framework-coupled ETL codebases that grow without an imposed discipline
 
 - **From tangled calls to clean graphs**: Raw function composition can obscure the high-level flow of data. etl4s uses a declarative DSL (`~>`, `&`, `&>`) to define pipelines as explicit, type-safe graphs. This makes your data flows easy to read, reason about, and modify: like a whiteboard diagram.
 
-- **Built-in resilience and parallelism**: Instead of manually writing boilerplate for error handling and concurrency, etl4s provides clean, chainable methods. Add automatic retries with `.withRetry`, handle failures with `.onFailure`, and run tasks in parallel with the `&>` operator, keeping your core logic clean.
+- **Reusable, typed endpoints**: Pipelines are declarative values with clear contracts (`Node[In, Out]`). Share them across teams as portable, composable components.
+
+- **Built-in resilience and parallelism**: Instead of manually writing boilerplate for error handling and concurrency, **etl4s** provides clean, chainable methods. Add automatic retries with `.withRetry`, handle failures with `.onFailure`, and run tasks in parallel with the `&>` operator, keeping your core logic clean.
 
 - **Free observability and lineage**: Instrumenting raw functions for monitoring is tedious. **etl4s** offers automatic ThreadLocal tracing (`.unsafeRunTrace`) to inspect the timing, logs, and errors of every step. Because pipelines are data structures, you can also attach metadata and automatically generate lineage diagrams—something impossible with plain functions.
 
