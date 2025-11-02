@@ -57,10 +57,6 @@ val pipeline = (getUser & getOrder) ~> combine ~> (saveDb & sendEmail)
 pipeline(())
 ```
 
-## Documentation 
-[Full Documentation](https://mattlianje.github.io/etl4s/) - Detailed guides, API references, and examples
-
-
 ## Why etl4s?
 
 Ultimately, these nodes and pipelines are just reifications of functions and values with a few extra niceties.
