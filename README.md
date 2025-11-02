@@ -69,15 +69,13 @@ Chaotic, framework-coupled ETL codebases that grow without discipline drive dev 
 
 **etl4s** is a lightweight DSL to enforce discipline, type-safety, and reuse of pure functions - and see [functional ETL](https://maximebeauchemin.medium.com/functional-data-engineering-a-modern-paradigm-for-batch-data-processing-2327ec32c42a) for what it is... and could be.
 
-### What you get
-
 - **One core abstraction:** Just `Node[-In, +Out]`. Bring your own extension methods.
 - **Zero dependencies:** Use **Etl4s.scala** like a header file. No runtime, no framework lock-in.
 - **Built-in resilience:** Add retries with `.withRetry()`, handle failures with `.onFailure()`. No boilerplate for error handling.
 - **ThreadLocal tracing:** Cross-pipeline state tracking with zero wiring. Downstream nodes automatically "know" what happened upstream via `Trace` channels. Inspect timing, logs, and errors with `.unsafeRunTrace()`.
 - **Metrics by design:** In OLAP/ETL processes, observability metrics are frequently business-critical (especially at the peripheries in Extractors and Loaders). The `Etl4sTelemetry` interface is baked into the core, not bolted on. Use `Tel` calls in your business logic—zero cost until you provide an implementation. Works with any backend: Prometheus, DataDog, OpenTelemetry.
-- **Lineage visualization:** Pipelines are data structures. Attach metadata with `.lineage()`, then call `.toMermaid` or `.toDot` to generate diagrams showing how your data flows—impossible with raw functions.
-- **Clean dependency injection:** Avoid "parameter drilling" config objects through nested functions. Use `.requires` to declare what each step needs, then `.provide` once. etl4s automatically infers and injects the minimal required configuration.
+- **Lineage visualization:** Pipelines are data structures. Attach metadata with `.lineage()`, then call `.toMermaid` or `.toDot` to generate diagrams showing how your data flows - impossible with raw functions.
+- **Clean dependency injection:** Avoid "parameter drilling" config objects through nested functions. Use `.requires` to declare what each step needs, then `.provide` once. **etl4s** automatically infers and injects the minimal required configuration.
 - **Type safety:** Compile-time checks prevent mismatched pipeline stages. If it compiles, it fits together.
 
 
