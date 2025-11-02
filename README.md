@@ -65,7 +65,7 @@ Chaotic, framework-coupled ETL codebases that grow without an imposed discipline
 
 **etl4s** is a lightweight DSL to enforce discipline, type-safety, and reuse of pure functions - and see [functional ETL](https://maximebeauchemin.medium.com/functional-data-engineering-a-modern-paradigm-for-batch-data-processing-2327ec32c42a) for what it is... and could be.
 
-- **From tangled calls to clean graphs**: Raw function composition can obscure the high-level flow of data. etl4s uses a declarative DSL (`~>`, `&`, `&>`) to define pipelines as explicit, type-safe graphs. This makes your data flows easy to read, reason about, and modify: like a whiteboard diagram.
+- **From tangled calls to clean graphs**: Raw function composition can obscure the high-level flow of data. **etl4s** uses a declarative DSL (`~>`, `&`, `&>`) to define pipelines as explicit, type-safe graphs. This makes your data flows easy to read, reason about, and modify: like a whiteboard diagram.
 
 - **Reusable, typed endpoints**: Pipelines are declarative values with clear contracts (`Node[In, Out]`). Share them across teams as portable, composable components.
 
@@ -73,7 +73,7 @@ Chaotic, framework-coupled ETL codebases that grow without an imposed discipline
 
 - **Free observability and lineage**: Instrumenting raw functions for monitoring is tedious. **etl4s** offers automatic ThreadLocal tracing (`.unsafeRunTrace`) to inspect the timing, logs, and errors of every step with `Trace` calls. Because pipelines are data structures, you can also attach metadata and automatically generate lineage diagrams: impossible with plain functions.
 
-- **Metrics by design**: The `Etl4sTelemetry` interface is baked into every pipeline. Add counters, gauges, and histograms directly in your business logic with `Tel` calls (zero cost until you provide an implementation). Works with any backend: Prometheus, DataDog, OpenTelemetry.
+- **Metrics by design**: Metrics in pipelines are often an afterthought, awkwardly bolted on. With **etl4s**, the `Etl4sTelemetry` interface is baked into every pipeline. Add counters, gauges, and histograms directly in your business logic with `Tel` calls (zero-cost until you provide an implementation). Works with any backend: Prometheus, DataDog, OpenTelemetry.
 
 - **Clean configuration and dependency management**: Avoid "parameter drilling" configuration objects through nested functions. **etl4s** provides a simple dependency injection system (`.requires` and `.provide`) that automatically infers and injects the minimal required configuration for any part of your pipeline.
 
