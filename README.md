@@ -76,7 +76,7 @@ pipeline.unsafeRun()
 
 - **Automatic state tracking**: Pipeline steps often need to react to upstream events - validation failures, warnings, timeouts, but threading state manually through function calls is painful. **etl4s** uses ThreadLocal `Trace` channels that flow automatically: downstream steps can check `Trace.hasErrors`, `Trace.getLogs`, or `Trace.getElapsedTimeMillis` without any wiring. Call `.unsafeRunTrace()` for full execution details.
 
-- **Metrics by design**: In ETL, metrics aren't just infra-monitoring, they're business logic... especially at the peripheries in Extractors and Loaders. Yet, metric collection is typically bolted on afterwards, or run as side-process. **etl4s** bakes the `Etl4sTelemetry` interface into every pipeline. Add counters, gauges, and histograms directly in your business logic with `Tel` calls (zero-cost until you provide an implementation). Works with any backend: Prometheus, DataDog, OpenTelemetry.
+- **Metrics by design**: In ETL, metrics aren't just infra-monitoring, they're business logic... especially at the peripheries in Extractors and Loaders. Yet, metric collection is typically bolted on afterwards, or run as side-processes. **etl4s** bakes the `Etl4sTelemetry` interface into every pipeline. Add counters, gauges, and histograms directly in your business logic with `Tel` calls (zero-cost until you provide an implementation). Works with any backend: Prometheus, DataDog, OpenTelemetry.
 
 - **Lineage visualization for free**: Because **etl4s** pipelines are data structures, you can attach metadata and automatically generate lineage diagrams with `.toMermaid` or `.toDot`... impossible with plain functions.
 
