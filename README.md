@@ -63,7 +63,7 @@ Ultimately, these nodes and pipelines are just reifications of functions and val
 
 Chaotic, framework-coupled ETL codebases that grow without an imposed discipline drive dev teams and data orgs to their knees.
 
-**etl4s** is a lightweight DSL to enforce discipline, type-safety, and reuse of pure functions - and see [functional ETL](https://maximebeauchemin.medium.com/functional-data-engineering-a-modern-paradigm-for-batch-data-processing-2327ec32c42a) for what it is... and could be.
+**etl4s** is a lightweight DSL to enforce discipline, type-safety, and reuse of pure functions - and see [functional ETL](https://maximebeauchemin.medium.com/functional-data-engineering-a-modern-paradigm-for-batch-data-processing-2327ec32c42a) for what it is... and could be. **But, why etl4s? Why not raw functions??**
 
 - **From tangled calls to clean graphs**: Raw function composition can obscure the high-level flow of data. **etl4s** uses a declarative DSL (`~>`, `&`, `&>`) to define pipelines as explicit, type-safe graphs. This makes your data flows easy to read, reason about, and modify: like a whiteboard diagram.
 
