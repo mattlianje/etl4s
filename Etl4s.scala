@@ -2,7 +2,7 @@
  * +==========================================================================+
  * |                                 etl4s                                    |
  * |                     Powerful, whiteboard-style ETL                       |
- * |                            Version 1.5.0                                 |
+ * |                            Version 1.6.1                                 |
  * |                 Compatible with Scala 2.12, 2.13, and 3                  |
  * |                                                                          |
  * | Copyright 2025 Matthieu Court (matthieu.court@protonmail.com)            |
@@ -16,9 +16,6 @@
  * 
  * It enables config-driven, whiteboard-style pipeline composition
  * with functional programming principles.
- *
- * @author Matthieu Court
- * @version 1.5.0
  */
 package object etl4s {
   import scala.language.{higherKinds, implicitConversions}
@@ -85,6 +82,13 @@ package object etl4s {
     def apply(a: A): B = f(a)
 
     /**
+     * Runs the node without any input (for Node[Any, B]).
+     * Only available when the node accepts Any as input.
+     */
+    def unsafeRun()(implicit ev: A =:= Any): B =
+      unsafeRun(null.asInstanceOf[A])(Etl4sNoOpTelemetry)
+
+    /**
      * Runs the node without any error handling.
      * Trace information is collected internally but only accessible via unsafeRunTraced.
      *
@@ -114,6 +118,12 @@ package object etl4s {
           Try(f(a))
         }
       }
+
+    /**
+     * Runs the node with error handling without any input (for Node[Any, B]).
+     */
+    def safeRun()(implicit ev: A =:= Any): Try[B] =
+      safeRun(null.asInstanceOf[A])(Etl4sNoOpTelemetry)
 
     /**
      * Runs the node and collects insights about the execution.
@@ -318,30 +328,31 @@ package object etl4s {
     }
 
     /**
-     * Side effect composition: runs this node, ignores result, then runs next with Unit input.
+     * Sequential side-effect composition: runs this node, then runs next with the same input.
      *
-     * Useful for logging, cleanup, or other side effects that don't affect the main data flow.
+     * Executes this node for its side effects, then passes the original input to the next node.
+     * This is useful for chaining side effects that all need access to the same input value.
      *
      * @tparam C the output type of the next node
-     * @param next a node that takes Unit as input
-     * @return a new Node that performs the side effect after the main computation
+     * @param next a node that takes the same input type as this node
+     * @return a new Node that executes both nodes with the same input and returns the second result
      *
      * @example
      * {{{
-     * val processData = Node[String, Int](_.length)
-     * val logSuccess = Node[Unit, Unit](_ => println("Processing complete"))
-     * val withLogging = processData >> logSuccess
+     * val storeToS3 = Node[Int, Unit](n => println(s"Stored $n to S3"))
+     * val storeToDb = Node[Int, Unit](n => println(s"Stored $n to DB"))
+     * val storeBoth = storeToS3 >> storeToDb  // Both receive the same Int
      * }}}
      */
-    def >>[C](next: Node[Unit, C]): Node[A, C] = Node { a =>
+    def >>[C](next: Node[A, C]): Node[A, C] = Node { a =>
       f(a)
-      next(()) /* Execute the next node with unit input and return its result */
+      next(a)
     }
 
     /**
      * Side effect composition with a Reader-wrapped node.
      */
-    def >>[T, C](next: Reader[T, Node[Unit, C]]): Reader[T, Node[A, C]] = {
+    def >>[T, C](next: Reader[T, Node[A, C]]): Reader[T, Node[A, C]] = {
       next.map(nextNode => this >> nextNode)
     }
 
@@ -537,14 +548,40 @@ package object etl4s {
 
   /** Node companion object with factory methods */
   object Node {
+
+    /**
+     * Creates a node from a function A => B.
+     */
     def apply[A, B](func: A => B): Node[A, B] = new Node[A, B] {
       val f: A => B = func
     }
+
+    /**
+     * Creates a lazy node that evaluates the value when run (not at construction time).
+     * Accepts any input type for maximum composability.
+     *
+     * This is the most flexible constructor - use it for side effects, I/O, or any
+     * computation that should be deferred until execution.
+     *
+     * @param value the by-name parameter to evaluate when the node runs
+     * @return a Node[Any, B] that evaluates value on each run
+     *
+     * @example
+     * {{{
+     * val getUserInput = Node {
+     *   println("Enter your name:")
+     *   scala.io.StdIn.readLine()
+     * }
+     * // Nothing prints until you call getUserInput.unsafeRun(...)
+     * }}}
+     */
+    def apply[B](value: => B): Node[Any, B] = Node((_: Any) => value)
 
     def identity[A]: Node[A, A]                   = Node(a => a)
     def unit[B](value: => B): Node[Unit, B]       = Node(_ => value)
     def effect(action: => Unit): Node[Unit, Unit] = Node(_ => action)
     def pure[A, B](b: B): Node[A, B]              = Node(_ => b)
+
     def requires[T, A, B](f: T => A => B): Reader[T, Node[A, B]] = {
       Reader { config =>
         Node { a =>
@@ -563,28 +600,28 @@ package object etl4s {
   /** Factory objects for semantic clarity */
   object Pipeline {
     def apply[A, B](func: A => B): Pipeline[A, B]                = Node(func)
-    def apply[B](value: B): Pipeline[Unit, B]                    = Node(_ => value)
+    def apply[B](value: => B): Pipeline[Any, B]                  = Node(value)
     def pure[A]: Pipeline[A, A]                                  = Node.identity[A]
     def requires[T, A, B](f: T => A => B): Reader[T, Node[A, B]] = Node.requires[T, A, B](f)
   }
 
   object Extract {
     def apply[A, B](func: A => B): Extract[A, B]                 = Node(func)
-    def apply[B](value: B): Extract[Unit, B]                     = Node(_ => value)
+    def apply[B](value: => B): Extract[Any, B]                   = Node(value)
     def pure[A]: Extract[A, A]                                   = Node.identity[A]
     def requires[T, A, B](f: T => A => B): Reader[T, Node[A, B]] = Node.requires[T, A, B](f)
   }
 
   object Transform {
     def apply[A, B](func: A => B): Transform[A, B]               = Node(func)
-    def apply[B](value: B): Transform[Unit, B]                   = Node(_ => value)
+    def apply[B](value: => B): Transform[Any, B]                 = Node(value)
     def pure[A]: Transform[A, A]                                 = Node.identity[A]
     def requires[T, A, B](f: T => A => B): Reader[T, Node[A, B]] = Node.requires[T, A, B](f)
   }
 
   object Load {
     def apply[A, B](func: A => B): Load[A, B]                    = Node(func)
-    def apply[B](value: B): Load[Unit, B]                        = Node(_ => value)
+    def apply[B](value: => B): Load[Any, B]                      = Node(value)
     def pure[A]: Load[A, A]                                      = Node.identity[A]
     def requires[T, A, B](f: T => A => B): Reader[T, Node[A, B]] = Node.requires[T, A, B](f)
   }
@@ -675,8 +712,8 @@ package object etl4s {
    *     name = "user-enrichment",
    *     inputs = List("raw_users", "user_events"),
    *     outputs = List("enriched_users"),
-   *     schedule = Some("Every 2 hours"),
-   *     cluster = Some("user-processing"),
+   *     schedule = "Every 2 hours",
+   *     cluster = "user-processing",
    *     upstreams = List(someOtherNode, someReader)
    *   )
    * }}}
@@ -686,8 +723,8 @@ package object etl4s {
     inputs: List[String] = List.empty,
     outputs: List[String] = List.empty,
     upstreams: List[Any] = List.empty, // Node, Reader, or String
-    schedule: Option[String] = None,
-    cluster: Option[String] = None
+    schedule: String = "",
+    cluster: String = ""
   )
 
   /**
@@ -860,14 +897,14 @@ package object etl4s {
     /**
       *  >>: Reader(Node) >> {Reader(Node) | Reader(Node) compat | Node}
       */
-    def >>[C](fb: Reader[T1, Node[Unit, C]]): Reader[T1, Node[A, C]] = {
+    def >>[C](fb: Reader[T1, Node[A, C]]): Reader[T1, Node[A, C]] = {
       for {
         nodeA <- fa
         nodeB <- fb
       } yield nodeA >> nodeB
     }
 
-    def >>[T2, C, R](fb: Reader[T2, Node[Unit, C]])(implicit
+    def >>[T2, C, R](fb: Reader[T2, Node[A, C]])(implicit
       compat: ReaderCompat[T1, T2, R]
     ): Reader[R, Node[A, C]] = {
       Reader { (env: R) =>
@@ -877,7 +914,7 @@ package object etl4s {
       }
     }
 
-    def >>[C](node: Node[Unit, C]): Reader[T1, Node[A, C]] = {
+    def >>[C](node: Node[A, C]): Reader[T1, Node[A, C]] = {
       fa.map(readerNode => readerNode >> node)
     }
 
@@ -1512,8 +1549,8 @@ package object etl4s {
      *     name = "user-enrichment",
      *     inputs = List("raw_users", "user_events"),
      *     outputs = List("enriched_users"),
-     *     schedule = Some("Every 2 hours"),
-     *     cluster = Some("user-processing"),
+     *     schedule = "Every 2 hours",
+     *     cluster = "user-processing",
      *     upstreams = List(userExtract, eventExtract)
      *   )
      * }}}
@@ -1523,8 +1560,8 @@ package object etl4s {
       inputs: List[String] = List.empty,
       outputs: List[String] = List.empty,
       upstreams: List[Any] = List.empty,
-      schedule: Option[String] = None,
-      cluster: Option[String] = None
+      schedule: String = "",
+      cluster: String = ""
     ): Node[A, B] = {
       node.withLineage(
         Lineage(name, inputs, outputs, upstreams, schedule, cluster)
@@ -1553,8 +1590,8 @@ package object etl4s {
       inputs: List[String] = List.empty,
       outputs: List[String] = List.empty,
       upstreams: List[Any] = List.empty,
-      schedule: Option[String] = None,
-      cluster: Option[String] = None
+      schedule: String = "",
+      cluster: String = ""
     ): Reader[R, A] = {
       reader.withLineage(
         Lineage(name, inputs, outputs, upstreams, schedule, cluster)
@@ -1570,8 +1607,8 @@ package object etl4s {
     input_sources: List[String],
     output_sources: List[String],
     upstream_pipelines: List[String],
-    schedule: Option[String],
-    cluster: Option[String]
+    schedule: String,
+    cluster: String
   )
 
   /**
@@ -1616,8 +1653,8 @@ package object etl4s {
         jsonField("upstream_pipelines", jsonArray(p.upstream_pipelines)(quote))
       )
       val optionalFields = List(
-        p.schedule.map(s => jsonField("schedule", quote(s))),
-        p.cluster.map(c => jsonField("cluster", quote(c)))
+        if (p.schedule.nonEmpty) Some(jsonField("schedule", quote(p.schedule))) else None,
+        if (p.cluster.nonEmpty) Some(jsonField("cluster", quote(p.cluster))) else None
       ).flatten
 
       jsonObject((requiredFields ++ optionalFields): _*)
@@ -1773,7 +1810,8 @@ package object etl4s {
     }
 
     private def renderDotContent(builder: StringBuilder, graph: LineageGraph): Unit = {
-      val pipelinesByCluster = graph.pipelines.groupBy(_.cluster)
+      val pipelinesByCluster =
+        graph.pipelines.groupBy(p => if (p.cluster.nonEmpty) Some(p.cluster) else None)
 
       pipelinesByCluster.foreach {
         case (Some(clusterName), pipelines) => renderCluster(builder, clusterName, pipelines, 1)
@@ -1781,7 +1819,7 @@ package object etl4s {
       }
 
       val clusteredDataSources = graph.pipelines
-        .filter(_.cluster.isDefined)
+        .filter(_.cluster.nonEmpty)
         .flatMap(p => p.input_sources ++ p.output_sources)
         .toSet
       graph.dataSources
@@ -1819,7 +1857,8 @@ package object etl4s {
     }
 
     private def renderMermaidContent(builder: StringBuilder, graph: LineageGraph): Unit = {
-      val pipelinesByCluster = graph.pipelines.groupBy(_.cluster)
+      val pipelinesByCluster =
+        graph.pipelines.groupBy(p => if (p.cluster.nonEmpty) Some(p.cluster) else None)
 
       pipelinesByCluster.foreach {
         case (Some(clusterName), pipelines) => renderMermaidCluster(builder, clusterName, pipelines)
@@ -1853,7 +1892,7 @@ package object etl4s {
       indent: String = "    "
     ): Unit = {
       val nodeId = sanitizeId(p.name)
-      val label  = p.schedule.map(s => s"${p.name}<br/>($s)").getOrElse(p.name)
+      val label  = if (p.schedule.nonEmpty) s"${p.name}<br/>(${p.schedule})" else p.name
       builder.append(s"""${indent}$nodeId["$label"]\n""")
     }
 
@@ -1942,10 +1981,10 @@ package object etl4s {
       indent: Int
     ): Unit = {
       val ind = "    " * indent
-      val scheduleLabel = pipeline.schedule match {
-        case Some(sched) =>
-          "<BR/><FONT POINT-SIZE=\"9\" COLOR=\"#d63384\"><I>" + sched + "</I></FONT>"
-        case None => ""
+      val scheduleLabel = if (pipeline.schedule.nonEmpty) {
+        "<BR/><FONT POINT-SIZE=\"9\" COLOR=\"#d63384\"><I>" + pipeline.schedule + "</I></FONT>"
+      } else {
+        ""
       }
 
       builder.append(s"""${ind}"${pipeline.name}" [shape=box, style="filled,rounded",""" + "\n")

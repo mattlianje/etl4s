@@ -26,13 +26,13 @@ val usersDF = Seq(
 ).toDF("id", "name", "email", "age", "register_date", "active")
 
 /* Pipeline components */
-val extract = Extract[Unit, DataFrame](_ => usersDF)
+val extract = Extract(usersDF)
 val filter = Transform[DataFrame, DataFrame](_.filter("active = true"))
 val report = Load[DataFrame, Unit](_.show())
 
 /* Compose and run */
 val pipeline = extract ~> filter ~> report
-pipeline.unsafeRun(())
+pipeline.unsafeRun()
 ```
 
 ## Config-Driven Pipeline
@@ -55,7 +55,7 @@ val pipeline = extract ~> save
 
 /* Provide config and run */
 val config = Config(minAge = 25, outputPath = "data/users")
-pipeline.provide(config).unsafeRun(())
+pipeline.provide(config).unsafeRun()
 ```
 
-That's it! You've built a complete, configurable ETL pipeline with type safety and clean composition.
+You've built a complete, configurable ETL pipeline with type safety and clean composition.

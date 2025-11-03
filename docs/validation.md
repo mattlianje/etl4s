@@ -56,7 +56,7 @@ val specialValidator = Validated[User] { user =>
 
 ### Real pipeline use
 ```scala
-val extract = Extract[Unit, List[User]](_ => List(
+val extract = Extract(List(
   User("Alice", "alice@mail.com", 25),
   User("", "bad@", 15)
 ))

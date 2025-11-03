@@ -24,7 +24,7 @@ val C = Load[Int, Unit](count => println(s"Processed $count users"))
 
 val pipeline = A ~> B ~> C
 
-pipeline(())  // Processed 3 users
+pipeline.unsafeRun()// Processed 3 users
 ```
 
 Create standalone nodes:
@@ -41,7 +41,7 @@ pipeline(())
 
 Or be explicit:
 ```scala
-pipeline.unsafeRun(())
+pipeline.unsafeRun()
 ```
 
 **Error handling:**

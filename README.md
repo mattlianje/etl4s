@@ -28,11 +28,11 @@ Battle-tested at [Instacart](https://www.instacart.com/). Part of [d4](https://g
 
 **etl4s** is on MavenCentral and cross-built for Scala, 2.12, 2.13, 3.x
 ```scala
-"xyz.matthieucourt" %% "etl4s" % "1.6.0"
+"xyz.matthieucourt" %% "etl4s" % "1.6.1"
 ```
 Or try in REPL:
 ```bash
-scala-cli repl --scala 3 --dep xyz.matthieucourt:etl4s_3:1.6.0
+scala-cli repl --scala 3 --dep xyz.matthieucourt:etl4s_3:1.6.1
 ```
 
 All you need:
@@ -54,7 +54,7 @@ val sendEmail = Load[String, Unit](s => println(s"Email: $s"))
 
 val pipeline = (getUser & getOrder) ~> combine ~> (saveDb & sendEmail)
 
-pipeline(())
+pipeline.unsafeRun()
 ```
 
 ## Documentation 
@@ -116,7 +116,7 @@ etl4s uses a few simple operators to build pipelines:
 | `~>` | Connect | Chains operations in sequence | `e1 ~> t1 ~> l1` |
 | `&` | Combine | Group sequential operations with same input | `t1 & t2` |
 | `&>` | Parallel | Group concurrent operations with same input | `t1 &> t2` |
-| `>>` | Sequence | Runs pipelines in order (ignoring previous output) | `p1 >> p2` |
+| `>>` | Sequence | Runs nodes in order with same input | `p1 >> p2` |
 
 ## Configuration
 
@@ -220,17 +220,27 @@ val A = Extract[Unit, String](_ => throw new RuntimeException("Boom!"))
 A.unsafeRun(())  /* Returns "Error: Boom!" */
 ```
 
-## Side Outputs
-The `tap` method performs side effects without disrupting pipeline flow:
+## Side Effects
+Use `.tap()` for side effects without disrupting pipeline flow:
 
 ```scala
 import etl4s._
 
-val A = Extract((_: Unit) => List("a.txt", "b.txt"))
-           .tap(files => println(s"Cleanup: $files"))
+val A = Extract(List("a.txt", "b.txt"))
+  .tap(files => println(s"Processing: $files"))
+
 val B = Transform[List[String], Int](_.size)
 
 A ~> B
+```
+
+Chain side effects with `>>`:
+```scala
+val logStart = Node { println("Starting...") }
+val logEnd   = Node { println("Done!") }
+
+val pipeline = logStart >> (A ~> B) >> logEnd
+pipeline.unsafeRun()
 ```
 
 ## Tracing
@@ -285,7 +295,7 @@ val A = Node[String, String](identity)
     name = "A",
     inputs = List("s1", "s2"),
     outputs = List("s3"), 
-    schedule = Some("0 */2 * * *")
+    schedule = "0 */2 * * *"
   )
 
 val B = Node[String, String](identity)

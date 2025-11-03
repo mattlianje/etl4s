@@ -7,7 +7,7 @@
 
 //> using publish.name "etl4s"
 //> using publish.organization "xyz.matthieucourt"
-//> using publish.version "1.6.0"
+//> using publish.version "1.6.1"
 //> using publish.url "https://github.com/mattlianje/etl4s"
 //> using publish.vcs "github:mattlianje/etl4s"
 //> using publish.license "Apache-2.0"

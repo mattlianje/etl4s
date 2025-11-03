@@ -95,8 +95,8 @@ class BasicSpecs extends munit.FunSuite {
 
     val pipeline =
       Extract("hello") ~>
-        Transform[String, Int](_.length) ~>
-        tap((n: Int) => intercepted = s"Length is $n") ~>
+        Transform[String, Int](_.length)
+          .tap(n => intercepted = s"Length is $n") ~>
         Transform[Int, String](n => n.toString)
 
     val result = pipeline.unsafeRun(())
@@ -108,21 +108,20 @@ class BasicSpecs extends munit.FunSuite {
   test("sequential operations with >>") {
     var sequence = List.empty[String]
 
-    val step1 = Node[Unit, Int] { _ =>
-      sequence = sequence :+ "step1"
-      10
+    val step1 = Node[Int, Unit] { n =>
+      sequence = sequence :+ s"step1:$n"
     }
 
-    val step2 = Node[Unit, String] { _ =>
-      sequence = sequence :+ "step2"
+    val step2 = Node[Int, String] { n =>
+      sequence = sequence :+ s"step2:$n"
       "done"
     }
 
     val pipeline = step1 >> step2
 
-    val result = pipeline.unsafeRun(())
+    val result = pipeline.unsafeRun(42)
     assertEquals(result, "done")
-    assertEquals(sequence, List("step1", "step2"))
+    assertEquals(sequence, List("step1:42", "step2:42"))
   }
 
   test("type flattening with zip") {
@@ -179,14 +178,14 @@ class BasicSpecs extends munit.FunSuite {
 
     val R = Load[(String, Unit, Unit), String](_._1)
 
-    val pipeline: Pipeline[Unit, String] =
+    val pipeline: Pipeline[Any, String] =
       (
         (s1 & s2) ~> D &
           (s3 ~> E)
       ) ~> F ~>
         (w1 & w2 & w3).zip ~> R
 
-    val result = pipeline.unsafeRun(())
+    val result = pipeline.unsafeRun()
     assert(result == "[FOO + num:10 | double:2.50 processed]")
   }
 
@@ -197,21 +196,21 @@ class BasicSpecs extends munit.FunSuite {
   }
 
   test("can create and chain effect") {
-    val e           = Node.effect { println("yo"); println("dawg") }
+    val e           = Node { println("yo"); println("dawg") }
     val effectChain = e >> e >> e >> e >> e >> e
+    effectChain.unsafeRun()
   }
 
   test("tap preserves data flow while performing side effects") {
     var processedData: Option[String] = None
 
-    val getData = Extract((unit: Unit) => "test data")
-    val logData = tap[String] { data =>
-      processedData = Some(data)
-      println(s"Processing: $data")
-    }
+    val getData   = Extract((unit: Unit) => "test data")
     val transform = Transform[String, Int](_.length)
 
-    val pipeline = getData ~> logData ~> transform
+    val pipeline = getData.tap { data =>
+      processedData = Some(data)
+      println(s"Processing: $data")
+    } ~> transform
 
     val result = pipeline.unsafeRun(())
 
@@ -222,14 +221,13 @@ class BasicSpecs extends munit.FunSuite {
   test("tap can be used for logging in pipeline composition") {
     var tempFilesCleaned = false
 
-    val fetchData = Extract((unit: Unit) => List("file1.txt", "file2.txt"))
-    val flushTempFiles = tap[List[String]] { files =>
-      tempFilesCleaned = true
-      println(s"Cleaning up ${files.size} temporary files...")
-    }
+    val fetchData    = Extract((unit: Unit) => List("file1.txt", "file2.txt"))
     val processFiles = Transform[List[String], Int](_.size)
 
-    val p = fetchData ~> flushTempFiles ~> processFiles
+    val p = fetchData.tap { files =>
+      tempFilesCleaned = true
+      println(s"Cleaning up ${files.size} temporary files...")
+    } ~> processFiles
 
     val result = p.unsafeRun(())
 
@@ -416,17 +414,17 @@ class ReaderSpecs extends munit.FunSuite {
   }
 
   test("reader(node) all operators compat") {
-    val r1    = Reader[Int, Transform[Int, Int]] { ctx => Transform(_ * 2) }
-    val t1    = Transform[Int, Int](_ * 2)
-    val tUnit = Transform[Unit, Unit](_ => ())
-    val unitR = Reader[Int, Transform[Unit, Unit]] { ctx => Transform(_ => ()) }
+    val r1   = Reader[Int, Transform[Int, Int]] { ctx => Transform(_ * 2) }
+    val t1   = Transform[Int, Int](_ * 2)
+    val tAny = Transform[Any, Unit](_ => ())
+    val anyR = Reader[Int, Transform[Any, Unit]] { ctx => Transform(_ => ()) }
 
     val test1 = r1 & r1 & r1 & t1
     val test2 = r1 &> r1 &> r1 &> t1
-    val test3 = unitR >> Extract(1)
-    val test4 = unitR >> unitR
+    val test3 = r1 >> r1
+    val test4 = anyR >> anyR
     val test5 = t1 & r1
-    val test6 = tUnit >> unitR
+    val test6 = tAny >> anyR
   }
 
   test("requires and provide") {
@@ -1003,19 +1001,19 @@ class TelSpecs extends munit.FunSuite {
         "doubler",
         inputs = List("numbers"),
         outputs = List("doubled"),
-        schedule = Some("Every 5 min"),
-        cluster = Some("math")
+        schedule = "Every 5 min",
+        cluster = "math"
       )
 
     val lin = node.getLineage.get
-    assertEquals(lin.schedule, Some("Every 5 min"))
-    assertEquals(lin.cluster, Some("math"))
+    assertEquals(lin.schedule, "Every 5 min")
+    assertEquals(lin.cluster, "math")
   }
 
   test("lineage - Reader") {
     case class Config(mult: Int)
     val reader = Reader[Config, Node[Int, Int]](c => Node(_ * c.mult))
-      .lineage("mult", inputs = List("nums"), outputs = List("scaled"), cluster = Some("cfg"))
+      .lineage("mult", inputs = List("nums"), outputs = List("scaled"), cluster = "cfg")
 
     assertEquals(reader.getLineage.get.name, "mult")
     assertEquals(reader.provide(Config(3)).unsafeRun(10), 30)
@@ -1027,8 +1025,8 @@ class TelSpecs extends munit.FunSuite {
         "pipe",
         inputs = List("in"),
         outputs = List("out"),
-        schedule = Some("Daily"),
-        cluster = Some("test")
+        schedule = "Daily",
+        cluster = "test"
       )
 
     val json = Seq(p).toJson
@@ -1052,8 +1050,8 @@ class TelSpecs extends munit.FunSuite {
         "enrich",
         inputs = List("raw"),
         outputs = List("clean"),
-        schedule = Some("2h"),
-        cluster = Some("users")
+        schedule = "2h",
+        cluster = "users"
       )
 
     val dot = Seq(p).toDot
@@ -1115,7 +1113,7 @@ class TelSpecs extends munit.FunSuite {
   test("lineage - upstream Reader") {
     val up =
       Node[String, String](identity).lineage("up", inputs = List("in"), outputs = List("out"))
-    val r = Reader[String, Node[String, String]](_ => Node(identity))
+    val r = Reader[String, Node[String, String]](_ => Node(x => x))
       .lineage("r", inputs = List("in"), outputs = List("out"), upstreams = List(up))
 
     assertEquals(r.getLineage.get.upstreams.size, 1)
@@ -1127,8 +1125,8 @@ class TelSpecs extends munit.FunSuite {
         "enrich",
         inputs = List("raw"),
         outputs = List("clean"),
-        schedule = Some("2h"),
-        cluster = Some("users")
+        schedule = "2h",
+        cluster = "users"
       )
     val p2 = Node[String, String](identity)
       .lineage("proc", inputs = List("orders"), outputs = List("done"), upstreams = List(p1))

@@ -13,7 +13,7 @@ val A = Node[String, String](identity)
     name = "A",
     inputs = List("s1", "s2"),
     outputs = List("s3"), 
-    schedule = Some("0 */2 * * *")
+    schedule = "0 */2 * * *"
   )
 
 val B = Node[String, String](identity)
@@ -138,14 +138,14 @@ val B = Node[String, String](identity)
     name = "B",
     inputs = List("s3"),
     outputs = List("s4", "s5"),
-    cluster = Some("Y")
+    cluster = "Y"
   )
 
 val C = Node[String, String](identity)
   .lineage(
     name = "C",
     upstreams = List(A, B),
-    cluster = Some("Y")
+    cluster = "Y"
   )
 
 Seq(A, B, C).toDot
