@@ -57,14 +57,32 @@ val pipeline = (getUser & getOrder) ~> combine ~> (saveDb & sendEmail)
 pipeline.unsafeRun()
 ```
 
-## Documentation 
-[Full Documentation](https://mattlianje.github.io/etl4s/) - Detailed guides, API references, and examples
+## Why etl4s?
 
+- Ultimately, these nodes and pipelines are just reifications of functions and values with a few extra niceties.
+- Chaotic, framework-coupled ETL codebases that grow without an imposed discipline drive dev teams and data orgs to their knees.
+- **etl4s** is a lightweight DSL to enforce discipline, type-safety, and reuse of pure functions - and see [functional ETL](https://maximebeauchemin.medium.com/functional-data-engineering-a-modern-paradigm-for-batch-data-processing-2327ec32c42a) for what it is... and could be.
 
-## Of note...
-- Ultimately - these nodes and pipelines are just reifications of functions and values (with a few niceties like built in retries, failure handling, concurrency-shorthand, and Future based parallelism).
-- Chaotic, framework/infra-coupled ETL codebases that grow without an imposed discipline drive dev-teams and data-orgs to their knees.
-- **etl4s** is a little DSL to enforce discipline, type-safety and re-use of pure functions - and see [functional ETL](https://maximebeauchemin.medium.com/functional-data-engineering-a-modern-paradigm-for-batch-data-processing-2327ec32c42a) for what it is... and could be.
+<details>
+<summary><b>But seriously, why etl4s? Why not raw functions??</b></summary>
+
+<br>
+
+- **From tangled calls to clean graphs**: Raw function composition can obscure the high-level flow of data. **etl4s** uses a declarative DSL (`~>`, `&`, `&>`) to define pipelines as explicit, type-safe graphs. This makes your data flows easy to read, reason about, and modify: like a whiteboard diagram.
+
+- **Reusable, typed endpoints**: Pipelines are declarative values with clear contracts (`Node[In, Out]`). Share them across teams as portable, composable components or libs.
+
+- **Built-in resilience and parallelism**: Instead of manually writing boilerplate for error handling and concurrency, **etl4s** provides clean, chainable methods. Add automatic retries with `.withRetry`, handle failures with `.onFailure`, and run tasks in parallel with the `&>` operator, keeping your core logic clean.
+
+- **Automatic state tracking**: Pipeline steps often need to react to upstream events - validation failures, warnings, timeouts, but threading state manually through function calls is painful. **etl4s** uses ThreadLocal `Trace` channels that flow automatically: downstream steps can check `Trace.hasErrors`, `Trace.getLogs`, or `Trace.getElapsedTimeMillis` without any wiring. Call `.unsafeRunTrace()` for full execution details.
+
+- **Metrics by design**: In ETL, metrics aren't just infra-monitoring, they're business logic... especially at the peripheries in Extractors and Loaders. Yet, metric collection is typically bolted on afterwards, or run as side-processes. **etl4s** bakes the `Etl4sTelemetry` interface into every pipeline. Add counters, gauges, and histograms directly in your business logic with `Tel` calls (zero-cost until you provide an implementation). Works with any backend: Prometheus, DataDog, OpenTelemetry.
+
+- **Lineage visualization for free**: Because **etl4s** pipelines are data structures, you can attach metadata and automatically generate lineage diagrams with `.toMermaid` or `.toDot`... impossible with plain functions.
+
+- **Clean configuration and dependency management**: Avoid "parameter drilling" configuration objects through nested functions. **etl4s** provides a simple dependency injection system (`.requires` and `.provide`) that automatically infers and injects the minimal required configuration for any part of your pipeline.
+
+</details>
 
 
 ## Core Concepts
