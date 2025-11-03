@@ -59,14 +59,12 @@ pipeline.unsafeRun()
 
 ## Why etl4s?
 
-Ultimately, these nodes and pipelines are just reifications of functions and values with a few extra niceties.
-
-Chaotic, framework-coupled ETL codebases that grow without an imposed discipline drive dev teams and data orgs to their knees.
-
-**etl4s** is a lightweight DSL to enforce discipline, type-safety, and reuse of pure functions - and see [functional ETL](https://maximebeauchemin.medium.com/functional-data-engineering-a-modern-paradigm-for-batch-data-processing-2327ec32c42a) for what it is... and could be.
+- Ultimately, these nodes and pipelines are just reifications of functions and values with a few extra niceties.
+- Chaotic, framework-coupled ETL codebases that grow without an imposed discipline drive dev teams and data orgs to their knees.
+- **etl4s** is a lightweight DSL to enforce discipline, type-safety, and reuse of pure functions - and see [functional ETL](https://maximebeauchemin.medium.com/functional-data-engineering-a-modern-paradigm-for-batch-data-processing-2327ec32c42a) for what it is... and could be.
 
 <details>
-<summary><b>But, why etl4s? Why not raw functions??</b></summary>
+<summary><b>But seriously, why etl4s? Why not raw functions??</b></summary>
 
 <br>
 
