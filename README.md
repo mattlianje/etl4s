@@ -68,7 +68,7 @@ pipeline.unsafeRun()
 
 <br>
 
-- **From tangled calls to clean graphs**: Raw function composition can obscure the high-level flow of data. **etl4s** uses a declarative DSL (`~>`, `&`, `&>`) to define pipelines as explicit, type-safe graphs. This makes your data flows easy to read, reason about, and modify: like a whiteboard diagram.
+- **Clean, easy to edit graphs**: Raw function composition can obscure the high-level flow of data and monadic-stacks, although mightily useful and time-tested, don't impose a strict discipline on assignment and creating new bindings. **etl4s** uses a declarative DSL (`~>`, `&`, `&>`) to define pipelines as explicit, type-safe graphs. This makes your data flows easy to read, reason about, and modify: like a whiteboard diagram.
 
 - **Reusable, typed endpoints**: Pipelines are declarative values with clear contracts (`Node[In, Out]`). Share them across teams as portable, composable components or libs.
 
