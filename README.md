@@ -10,7 +10,7 @@ Battle-tested at [Instacart](https://www.instacart.com/). Part of [d4](https://g
 
 _Special thanks to [**Bit Complete**](https://www.bitcomplete.io/)_
 <a href="https://www.bitcomplete.io/">
-  <img src="https://raw.githubusercontent.com/mattlianje/d4/master/pix/bc-sponsor.svg" width="100%">
+  <img src="https://raw.githubusercontent.com/mattlianje/d4/master/pix/bc-sponsor.png" width="100%">
 </a>
 
 ## Features
