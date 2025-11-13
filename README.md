@@ -1,5 +1,4 @@
 <p align="right">
-  <sup>Supported by</sup><br>
   <a href="https://www.bitcomplete.io/">
     <img src="https://raw.githubusercontent.com/mattlianje/d4/master/pix/bc-sponsor.svg" width="300">
   </a>
