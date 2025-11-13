@@ -1,6 +1,11 @@
 <p align="center">
   <img src="pix/etl4s-2.png" width="700">
 </p>
+<div align="right">
+  <a href="https://www.bitcomplete.io/">
+    <img src="https://raw.githubusercontent.com/mattlianje/d4/master/pix/bc-sponsor.svg" width="140">
+  </a>
+</div>
 
 # <img src="pix/etl4s-logo.png" width="50"> etl4s
 **Powerful, whiteboard-style ETL**
