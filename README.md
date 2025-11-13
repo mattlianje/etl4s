@@ -1,3 +1,9 @@
+<p align="right">
+  <sup>Supported by</sup><br>
+  <a href="https://www.bitcomplete.io/">
+    <img src="https://raw.githubusercontent.com/mattlianje/d4/master/pix/bc-sponsor.svg" width="120">
+  </a>
+</p>
 <p align="center">
   <img src="pix/etl4s-2.png" width="700">
 </p>
