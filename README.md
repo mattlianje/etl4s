@@ -1,8 +1,8 @@
-<p align="right">
+<!-- <p align="right">
   <a href="https://www.bitcomplete.io/">
     <img src="https://raw.githubusercontent.com/mattlianje/d4/master/pix/bc-sponsor.svg" width="150">
   </a>
-</p>
+</p> -->
 <p align="center">
   <img src="pix/etl4s-2.png" width="700">
 </p>
@@ -12,6 +12,13 @@
 
 A lightweight, zero-dependency library for writing type-safe, beautiful ✨🍰  data flows in functional Scala. 
 Battle-tested at [Instacart](https://www.instacart.com/). Part of [d4](https://github.com/mattlianje/d4). ([Full Documentation](https://mattlianje.github.io/etl4s/))
+
+<p align="center">
+  <sub>Supported by</sub><br>
+  <a href="https://www.bitcomplete.io/" target="_blank" rel="noopener noreferrer">
+    <img src="https://raw.githubusercontent.com/mattlianje/d4/master/pix/bc-sponsor.svg" width="150">
+  </a>
+</p>
 
 
 ## Features
