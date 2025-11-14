@@ -1,6 +1,6 @@
 <p align="right">
   <a href="https://www.bitcomplete.io/">
-    <img src="https://raw.githubusercontent.com/mattlianje/d4/master/pix/bc-sponsor.svg" width="300">
+    <img src="https://raw.githubusercontent.com/mattlianje/d4/master/pix/bc-sponsor.svg" width="150">
   </a>
 </p>
 <p align="center">
