@@ -16,7 +16,7 @@ Battle-tested at [Instacart](https://www.instacart.com/). Part of [d4](https://g
 <p align="center">
   <sub>Supported by</sub><br>
   <a href="https://www.bitcomplete.io/" target="_blank" rel="noopener noreferrer">
-    <img src="https://raw.githubusercontent.com/mattlianje/d4/master/pix/bc-sponsor.svg" width="400">
+    <img src="https://raw.githubusercontent.com/mattlianje/d4/master/pix/bc-sponsor.svg" width="350">
   </a>
 </p>
 
