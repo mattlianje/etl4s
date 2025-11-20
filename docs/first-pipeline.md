@@ -1,61 +1,97 @@
-
 # Your First Pipeline
 
-Build a complete ETL pipeline in minutes. We'll use Spark, but **etl4s** works with any data processing library.
+Let's build a pipeline in 5 minutes. No Spark, no databases - just the basics.
+
+## Install
 
 ```bash
-scala-cli repl \
-  --dep xyz.matthieucourt::etl4s:1.4.1 \
-  --dep org.apache.spark:spark-sql_2.13:3.5.0
+scala-cli repl --dep io.github.mattlianje::etl4s:0.1.0
 ```
 
-## Basic Pipeline
+## A Node wraps a function
 
 ```scala
 import etl4s._
-import org.apache.spark.sql.{SparkSession, DataFrame}
 
-val spark = SparkSession.builder().appName("etl4s").master("local[*]").getOrCreate()
-import spark.implicits._
+val double = Transform[Int, Int](_ * 2)
 
-/* Sample data */
-val usersDF = Seq(
-  (1, "Alice", "alice@example.com", 25, "2023-01-15", true),
-  (2, "Bob", "bob@example.com", 32, "2023-03-22", true),
-  (3, "Charlie", "charlie@example.com", 19, "2022-11-08", false)
-).toDF("id", "name", "email", "age", "register_date", "active")
-
-/* Pipeline components */
-val extract = Extract(usersDF)
-val filter = Transform[DataFrame, DataFrame](_.filter("active = true"))
-val report = Load[DataFrame, Unit](_.show())
-
-/* Compose and run */
-val pipeline = extract ~> filter ~> report
-pipeline.unsafeRun()
+double(5)  // 10
 ```
 
-## Config-Driven Pipeline
+That's it. A `Node` wraps a function. You can call it like a function.
 
-Make your pipelines configurable and reusable:
+## Chain with `~>`
 
 ```scala
-case class Config(minAge: Int, outputPath: String)
+val double = Transform[Int, Int](_ * 2)
+val addTen = Transform[Int, Int](_ + 10)
 
-val extract = Extract[Unit, DataFrame].requires[Config] { cfg => _ =>
-  usersDF.filter(col("age") >= cfg.minAge)
-}
+val pipeline = double ~> addTen
 
-val save = Load[DataFrame, Unit].requires[Config] { cfg => df =>
-  println(s"Saving to ${cfg.outputPath}")
-  df.show()
-}
-
-val pipeline = extract ~> save
-
-/* Provide config and run */
-val config = Config(minAge = 25, outputPath = "data/users")
-pipeline.provide(config).unsafeRun()
+pipeline(5)  // 20
 ```
 
-You've built a complete, configurable ETL pipeline with type safety and clean composition.
+The `~>` operator chains nodes. Output of left becomes input of right. Types must match or it won't compile.
+
+## Extract, Transform, Load
+
+```scala
+val extract = Extract(5)                           // starts with 5
+val transform = Transform[Int, Int](_ * 2)         // double it
+val load = Load[Int, Unit](x => println(s"Result: $x"))  // print it
+
+val pipeline = extract ~> transform ~> load
+
+pipeline.unsafeRun(())  // prints "Result: 10"
+```
+
+`Extract`, `Transform`, `Load` are just aliases for `Node`. Use them to show intent.
+
+## Run in parallel with `&`
+
+```scala
+val double = Transform[Int, Int](_ * 2)
+val triple = Transform[Int, Int](_ * 3)
+
+val combine = Transform[(Int, Int), Int] { case (a, b) => a + b }
+
+val pipeline = Extract(5) ~> (double & triple) ~> combine
+
+pipeline.unsafeRun(())  // (10, 15) -> 25
+```
+
+`(double & triple)` runs both in parallel. Results collected as a tuple and passed to `combine`.
+
+## Add config with `.requires`
+
+```scala
+case class Config(multiplier: Int)
+
+val transform = Transform[Int, Int]
+  .requires[Config] { config => x =>
+    x * config.multiplier
+  }
+
+val load = Load[Int, Unit]
+  .requires[Config] { config => x =>
+    println(s"Result with multiplier ${config.multiplier}: $x")
+  }
+
+val pipeline = Extract(5) ~> transform ~> load
+
+val config = Config(multiplier = 3)
+pipeline.provide(config).unsafeRun(())  // prints "Result with multiplier 3: 15"
+```
+
+`.requires[Config]` declares a dependency. `.provide(config)` supplies it. No globals, no parameter drilling.
+
+## That's it
+
+You now know:
+
+- `Node` wraps functions
+- `~>` chains nodes
+- `&` runs nodes in parallel
+- `.requires` / `.provide` handles config
+
+Next: [Core Concepts](core-concepts.md) for more details, or [Examples](examples.md) to see real usage with Spark/Flink.

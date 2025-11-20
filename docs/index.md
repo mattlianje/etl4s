@@ -1,229 +1,107 @@
 ---
 hide:
-  - navigation
   - toc
-  - path
-  - header
-  - footer
-  - title
 ---
 
 <style>
-
-/* Global overrides */
-code,
-pre,
-pre code,
-.md-typeset code,
-.md-typeset pre code {
-  font-family: "JetBrains Mono", monospace !important;
-  font-size: 0.7rem !important;
-  line-height: 1.4 !important;
+/* Keep sidebar but hide TOC on index page */
+.md-sidebar--secondary {
+  display: none;
 }
 
-/* Completely hide MkDocs top nav bar */
-.md-header {
-  display: none !important;
+.md-content__inner {
+  max-width: 700px !important;
+  padding: 0 1rem !important;
 }
 
-.md-content, .md-main__inner {
-  max-width: 100% !important;
+.intro-header {
+  text-align: center;
+  padding: 2rem 0 1rem 0;
+}
+
+.intro-header img {
+  height: 64px;
+  margin-bottom: 1rem;
+}
+
+.intro-header h1 {
+  font-size: 2.5rem;
+  margin: 0.5rem 0;
+  border: none !important;
   padding: 0 !important;
-  margin: 0 !important;
 }
 
-/* Full-width hero wrapper */
-.hero-wrapper {
-  width: 100vw;
-  margin-left: calc(-50vw + 50%);
+.intro-header p {
+  font-size: 1.1rem;
+  margin: 0.5rem 0 1.5rem 0;
+  opacity: 0.9;
 }
 
-/* Hero banner */
-.hero {
+.intro-buttons {
+  display: flex;
+  gap: 0.75rem;
+  justify-content: center;
+  margin-bottom: 2rem;
+  flex-wrap: wrap;
+}
+
+.intro-buttons a {
+  padding: 0.5rem 1rem;
+  border-radius: 0.3rem;
+  text-decoration: none !important;
+  font-size: 0.85rem;
+  font-weight: 500;
+}
+
+.intro-buttons a.btn-primary {
   background: var(--md-primary-fg-color);
   color: var(--md-primary-bg-color);
-  text-align: center;
-  padding: 4rem 1rem;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
-  animation: fadeIn 0.6s ease-out both;
 }
-.hero h1 {
-  font-size: 3rem;
-  margin-bottom: 0.5rem;
-}
-.hero p {
-  font-size: 1.4rem;
-  margin-bottom: 2rem;
-}
-.hero-buttons a {
-  display: inline-block;
-  margin: 0 0.35rem;
-  padding: 0.4rem 1rem;
-  font-weight: 500;
-  font-size: 0.8rem;
-  border-radius: 0.35rem;
-  text-decoration: none;
-  background: var(--md-accent-fg-color);
-  color: var(--md-default-bg-color);
-  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.08);
-  transition: all 0.2s ease;
-}
-.hero-buttons a:hover {
-  transform: translateY(-2px);
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
-  background: var(--md-accent-fg-color--lighter, #d1c4e9);
+
+.intro-buttons a.btn-secondary {
+  border: 1px solid var(--md-primary-fg-color);
   color: var(--md-primary-fg-color);
 }
 
-.hero-buttons a.github-btn {
-  background: transparent;
-  color: #24292e;
-  border: 1px solid #ccc;
+.intro-buttons a:hover {
+  opacity: 0.85;
 }
 
-.hero-buttons a.github-btn:hover {
-  background: #f6f8fa;
-  color: #111;
-  border-color: #bbb;
-}
-.github-icon {
-  width: 14px;
-  height: 14px;
-  fill: currentColor;
-  margin-right: 0.4rem;
-  vertical-align: middle;
-  position: relative;
-  top: -0.5px;
-}
-
-/* Feature tiles row */
-.features {
-  display: flex;
-  justify-content: center;
-  flex-wrap: wrap;
-  gap: 2rem;
-  margin: 4rem auto;
-  max-width: 960px;
-  text-align: center;
-  padding: 0 2rem;
-}
-.feature-box {
-  flex: 1 1 250px;
-  padding: 1rem;
-  background: var(--md-default-bg-color);
-  border-radius: 0.75rem;
-  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.05);
-  transition: transform 0.2s;
-}
-.feature-box:hover {
-  transform: translateY(-4px);
-}
-.feature-box h3 {
-  font-size: 1.25rem;
-  margin-bottom: 0.5rem;
-  color: var(--md-primary-fg-color);
-}
-
-/* Fade-in */
-@keyframes fadeIn {
-  from {
-    opacity: 0;
-    transform: translateY(-10px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
-}
-
-/* Mobile */
+/* Mobile adjustments */
 @media (max-width: 768px) {
-  .hero h1 {
-    font-size: 2.2rem;
+  .intro-header h1 {
+    font-size: 2rem;
   }
-  .hero p {
-    font-size: 1.1rem;
+  
+  .intro-header p {
+    font-size: 1rem;
   }
-}
-
-@media (max-width: 768px) {
-  .hero-buttons {
-    display: flex;
-    flex-wrap: wrap;
-    justify-content: center;
-    gap: 0.75rem;
+  
+  .intro-buttons {
+    flex-direction: column;
+    align-items: stretch;
+    max-width: 300px;
+    margin-left: auto;
+    margin-right: auto;
   }
-
-  .hero-buttons a.github-btn {
-    width: auto;
-    margin: 0.5rem auto 0;
-    display: inline-flex;
-    justify-content: center;
+  
+  .intro-buttons a {
+    text-align: center;
   }
-}
-
-/* Final padding + margin */
-html, body, .md-main, .md-main__inner, .md-content, .md-container, main, article {
-  margin: 0 !important;
-  padding: 0 !important;
-  border: 0 !important;
-}
-
-body::before,
-.md-container::before,
-.md-main::before,
-.md-main__inner::before,
-.md-content::before,
-main::before,
-article::before {
-  display: none !important;
-  content: none !important;
-}
-
-body {
-  scroll-padding-top: 0 !important;
-  font-weight: 400;
-  -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
 }
 </style>
 
-<!-- Hero splash full-width -->
-<div class="hero-wrapper">
-  <div class="hero">
-    <img src="assets/etl4s-logo.png" alt="etl4s logo"
-         style="height: 72px; margin-bottom: 0.75rem;" />
-    <h1>etl4s</h1>
-    <p>Powerful, whiteboard-style ETL</p>
-
-    <div class="hero-buttons">
-      <a href="https://scastie.scala-lang.org/mattlianje/1280QhQ5RWODgizeXOIsXA/5"
-      target="_blank">TRY IT!</a>
-      <a href="installation/">GET STARTED</a>
-<a href="https://github.com/mattlianje/etl4s" target="_blank" class="github-btn">
-  <svg class="github-icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16">
-    <path fill-rule="evenodd" d="M8 0C3.58 0 0 3.58 0 8c0 3.54 
-      2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 
-      0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52
-      -.01-.53.63-.01 1.08.58 1.23.82.72 1.21 
-      1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78
-      -.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15
-      -.08-.2-.36-1.02.08-2.12 0 0 .67-.21 
-      2.2.82a7.56 7.56 0 012-.27c.68 0 1.36.09 
-      2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 
-      1.92.08 2.12.51.56.82 1.27.82 2.15 0 
-      3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 
-      1.48 0 1.07-.01 1.93-.01 2.2 0 
-      .21.15.46.55.38A8.013 8.013 0 0016 
-      8c0-4.42-3.58-8-8-8z"/>
-  </svg>
-  GITHUB
-</a>
-    </div>
+<div class="intro-header">
+  <img src="assets/etl4s-logo.png" alt="etl4s" />
+  <h1>etl4s</h1>
+  <p>Whiteboard-style ETL for Scala</p>
+  <div class="intro-buttons">
+    <a href="installation/" class="btn-primary">Get Started</a>
+    <a href="https://scastie.scala-lang.org/mattlianje/1280QhQ5RWODgizeXOIsXA/5" target="_blank" class="btn-secondary">Try in Scastie</a>
+    <a href="https://github.com/mattlianje/etl4s" target="_blank" class="btn-secondary">GitHub</a>
   </div>
 </div>
 
-<div style="max-width: 700px; margin: 2rem auto 0 auto;">
 ```scala
 import etl4s._
 
@@ -234,7 +112,7 @@ val exclaim     = Transform[Int, String](n => s"$n!")
 val consoleLoad = Load[String, Unit](println(_))
 
 /* Add config with .requires */
-val dbLoad      = Load[String, Unit].requires[String] { dbType => s =>
+val dbLoad = Load[String, Unit].requires[String] { dbType => s =>
   println(s"Saving to $dbType DB: $s")
 }
 
@@ -242,24 +120,99 @@ val dbLoad      = Load[String, Unit].requires[String] { dbType => s =>
 val pipeline =
   fiveExtract ~> timesTwo ~> exclaim ~> (consoleLoad & dbLoad)
 
-/* Provide config, then run*/
+/* Provide config, then run */
 pipeline.provide("sqlite").unsafeRun(())
 ```
-</div>
 
-<!-- Feature callouts -->
-<div class="features">
-  <div class="feature-box">
-    <h3>Whiteboard-style</h3>
-    <p>Model pipelines like you think - with visual, readable chaining</p>
-  </div>
-  <div class="feature-box">
-    <h3>Config-driven</h3>
-    <p>Your pipelines are typed, declarative endpoints - easy to compose and trigger</p>
-  </div>
-  <div class="feature-box">
-    <h3>Type-safe</h3>
-    <p>Prevent bugs by catching type mismatches at compile time</p>
-  </div>
-</div>
-<div style="height: 3rem;"></div>
+## What
+
+**etl4s** is a single-file, zero-dependency Scala library for expressing code as whiteboard-style pipelines. Chain operations with `~>`, parallelize with `&`, inject dependencies with `.requires`.
+
+## Why
+
+Ultimately, these nodes and pipelines are just reifications of functions and values with a few extra niceties. But without imposed discipline,
+data-orgs drive themselves to their knees with sprawling, framework coupled analytical codebases.
+
+**etl4s** is a lightweight DSL that enforces type-safety, makes dependencies explicit, and lets you build with pure functions.
+
+## What it does
+
+Makes structure explicit. Makes dependencies visible. Makes composition safe.
+
+**For engineers:**  
+You write `extract ~> transform ~> load`. That's the pipeline. Inject dependencies with `.requires[DbConfig]`.
+
+- **Already a pure-fp zealot?** etl4s is an ultralight effect system with no fiber runtime. Easy to vendor or extend since there's just one core abstraction: `Node[In, Out]`.
+- **New to functional programming?** etl4s makes writing and refactoring code feel like snapping Legos together. No category theory jargon required (though you can ease into it).
+
+**For managers:**  
+Impose structure on analytical code that survives people coming and going. Engineers ramp up in days because structure is in the code, not someone's head. New hires (and LLM's) read `e ~> (t1 & t2) ~> l` and just "get it".
+
+You get compile-time generated diagrams of all pipelines for free. When people leave, their work stays readable and modular.
+
+## Is it a framework?
+
+No - and never will be. It's an ultralight library that doesn't impose a worldview. Try it zero-cost on one pipeline today.
+
+## Where to use
+
+Anywhere: local scripts, web servers, alongside any framework like Spark or Flink.
+
+## Production ready?
+
+Yes - it powers the World's grocery deliveries at [Instacart](https://www.instacart.com/).
+
+## How it works
+
+**What is `~>`**
+
+`~>` connects pipeline stages. Its an overloaded symbolic operator that works with plain nodes (`Node[In, Out]`) or nodes that need config (`Reader[Env, Node[In, Out]]`).
+
+Mix them freely - the operator figures out what environment is needed. If two stages need different configs, it automatically merges them (as long as the config types are compatible).
+
+**Type safety at compile time**  
+`~>` connects nodes. Types must match or it won't compile.
+
+**Config dependencies made visible**  
+Use `.requires[DbConfig]` on any node. Pass it with `.provide(config)` at call site. No globals. No guessing what a pipeline needs.
+
+**Pipelines as values**  
+Every pipeline is a `Node[In, Out]`. Share them, compose them, test them. Snap together with `~>` and `&`.
+This ability to share and stitch your pipelines as values is the bedrock of self-serve.
+
+**Metrics in business logic**  
+In OLAP, metrics ARE business logic. Sprinkle `Tel` calls in your functions - zero-cost by default, light up in prod with your implementation:
+
+```scala
+val process = Transform[List[User], Int] { users =>
+  Tel.addCounter("users_processed", users.size)
+  users.filter(_.isValid).length
+}
+```
+
+**Execution visibility**  
+Call `.unsafeRunTrace()` to get full execution context - logs, errors, timing. No manual wiring needed:
+
+```scala
+val trace = pipeline.unsafeRunTrace(data)
+trace.logs                /* everything logged during execution */
+trace.errors              /* all errors encountered */
+trace.timeElapsedMillis   /* how long it took */
+```
+
+Any stage can log with `Trace.log()` or record errors with `Trace.error()`. Downstream stages see upstream issues automatically via `Trace.current` - no passing state through function parameters.
+
+**Automatic lineage**  
+Nodes are objects. Attach custom metadata at compile time (impossible with raw functions), then call `.toMermaid` or `.toDot` for diagrams.
+
+## Next steps
+
+**[Installation](installation.md)** - Add to your project
+
+**[Core Concepts](core-concepts.md)** - Node, `~>`, `&`, `.requires`
+
+**[Your First Pipeline](first-pipeline.md)** - Build something in 5 minutes
+
+**[Examples](examples.md)** - Common patterns and recipes
+
+**[API Reference](operators.md)** - All the operators and methods
