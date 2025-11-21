@@ -1148,3 +1148,344 @@ class TelSpecs extends munit.FunSuite {
   }
 
 }
+
+class ValidationSpecs extends munit.FunSuite {
+
+  test("ensure validates input and passes") {
+    val node = Node[Int, String](n => s"Value: $n")
+      .ensure(input = List(x => if (x > 0) None else Some("positive")))
+    assertEquals(node.unsafeRun(5), "Value: 5")
+  }
+
+  test("ensure collects multiple input errors") {
+    val isPositive = (x: Int) => if (x > 0) None else Some("positive")
+    val isEven     = (x: Int) => if (x % 2 == 0) None else Some("even")
+    val node = Node[Int, String](n => s"Value: $n")
+      .ensure(input = isPositive :: isEven :: Nil)
+    val ex = intercept[ValidationException](node.unsafeRun(-5))
+    assert(ex.getMessage.contains("positive") && ex.getMessage.contains("even"))
+  }
+
+  test("ensure validates output") {
+    val node = Node[String, Int](_.length)
+      .ensure(output = List(n => if (n > 0) None else Some("non-zero")))
+    assertEquals(node.unsafeRun("hello"), 5)
+    intercept[ValidationException](node.unsafeRun(""))
+  }
+
+  test("ensure validates transformation") {
+    val node = Node[List[Int], List[Int]](_.map(_ * 2))
+      .ensure(
+        change = List { case (in, out) =>
+          if (in.size == out.size) None else Some("size")
+        }
+      )
+    assertEquals(node.unsafeRun(List(1, 2, 3)), List(2, 4, 6))
+  }
+
+  test("ensure detects change violations") {
+    val node = Node[List[Int], List[Int]](_.filter(_ > 5))
+      .ensure(
+        change = List { case (in, out) =>
+          if (in.size == out.size) None else Some("size")
+        }
+      )
+    intercept[ValidationException](node.unsafeRun(List(1, 2, 3)))
+  }
+
+  test("validation errors logged to Trace") {
+    val node = Node[Int, String](n => s"$n")
+      .ensure(input = List(x => if (x > 0) None else Some("err")))
+    val trace = node.safeRunTrace(-5)
+    assert(trace.result.isFailure && trace.errors.nonEmpty)
+  }
+
+  test("Reader ensure with context") {
+    case class Config(min: Int, max: Int)
+    val checkMin = (cfg: Config) => (x: Int) => if (x >= cfg.min) None else Some("min")
+    val checkMax = (cfg: Config) => (x: Int) => if (x <= cfg.max) None else Some("max")
+    val node = Reader[Config, Node[Int, Int]] { cfg => Node((x: Int) => x) }
+      .ensure(input = Seq(checkMin, checkMax))
+    val config = Config(10, 100)
+    assertEquals(node.provide(config).unsafeRun(50), 50)
+    intercept[ValidationException](node.provide(config).unsafeRun(5))
+    intercept[ValidationException](node.provide(config).unsafeRun(150))
+  }
+
+  test("Reader ensure output with context") {
+    case class Config(allowed: Set[String])
+    case class User(name: String, domain: String)
+    val node = Reader[Config, Node[String, User]] { cfg =>
+      Node { s =>
+        val p = s.split("@"); User(p(0), p(1))
+      }
+    }.ensure(
+      output = List((cfg: Config) =>
+        (u: User) => if (cfg.allowed.contains(u.domain)) None else Some("domain")
+      )
+    )
+    val config = Config(Set("ok.com"))
+    assertEquals(node.provide(config).unsafeRun("x@ok.com").name, "x")
+    intercept[ValidationException](node.provide(config).unsafeRun("x@bad.com"))
+  }
+
+  test("Reader ensure change with context") {
+    case class Config(preserveSize: Boolean)
+    val node = Reader[Config, Node[List[Int], List[Int]]] { cfg =>
+      Node(_.distinct)
+    }.ensure(
+      change = Seq((cfg: Config) =>
+        (pair: (List[Int], List[Int])) =>
+          pair match {
+            case (in, out) => if (!cfg.preserveSize || in.size == out.size) None else Some("size")
+          }
+      )
+    )
+    assertEquals(node.provide(Config(false)).unsafeRun(List(1, 1, 2)), List(1, 2))
+    intercept[ValidationException](node.provide(Config(true)).unsafeRun(List(1, 1, 2)))
+  }
+
+  test("curried validators are reusable") {
+    case class Config(max: Int)
+    case class User(age: Int)
+    val checkAge = (cfg: Config) => (u: User) => if (u.age <= cfg.max) None else Some("age")
+
+    val node = Reader[Config, Node[User, User]] { _ => Node((u: User) => u) }
+      .ensure(output = Seq(checkAge))
+
+    assertEquals(node.provide(Config(100)).unsafeRun(User(50)).age, 50)
+    intercept[ValidationException](node.provide(Config(100)).unsafeRun(User(150)))
+  }
+
+  test("validation composes with pipeline") {
+    val n1 = Node[String, Int](_.length)
+      .ensure(input = Seq(s => if (s.nonEmpty) None else Some("empty")))
+    val n2 = Node[Int, String](n => s"$n")
+      .ensure(input = Seq(n => if (n > 0) None else Some("pos")))
+    val p = n1 ~> n2
+    assertEquals(p.unsafeRun("hi"), "2")
+    intercept[ValidationException](p.unsafeRun(""))
+  }
+
+  test("validation composes with &") {
+    val n1 =
+      Node[String, Int](_.length).ensure(input = Seq(s => if (s.nonEmpty) None else Some("e")))
+    val n2 = Node[String, String](_.toUpperCase)
+      .ensure(input = Seq(s => if (s.nonEmpty) None else Some("e")))
+    assertEquals((n1 & n2).unsafeRun("hi"), (2, "HI"))
+    intercept[ValidationException]((n1 & n2).unsafeRun(""))
+  }
+
+  test("Reader ensure accepts plain-style validators") {
+    case class Config(dummy: String)
+    case class User(age: Int)
+
+    val node = Reader[Config, Node[User, User]] { _ => Node((u: User) => u) }
+      .ensure(
+        output = Seq((_: Config) =>
+          (user: User) => if (user.age > 0 && user.age < 150) None else Some("invalid age")
+        )
+      )
+
+    assertEquals(node.provide(Config("x")).unsafeRun(User(50)).age, 50)
+    intercept[ValidationException](node.provide(Config("x")).unsafeRun(User(200)))
+  }
+
+  test("can mix curried validators in ensure") {
+    case class Config(max: Int)
+    case class User(age: Int)
+
+    val node = Reader[Config, Node[User, User]] { _ => Node((u: User) => u) }
+      .ensure(
+        output = Seq(
+          (_: Config) => (user: User) => if (user.age > 0) None else Some("must be positive"),
+          (cfg: Config) => (u: User) => if (u.age <= cfg.max) None else Some("too old")
+        )
+      )
+
+    assertEquals(node.provide(Config(100)).unsafeRun(User(50)).age, 50)
+    intercept[ValidationException](node.provide(Config(100)).unsafeRun(User(-5)))
+    intercept[ValidationException](node.provide(Config(100)).unsafeRun(User(150)))
+  }
+
+  test("Function1 implicitly converts to Node") {
+    val length: String => Int   = _.length
+    val double: Int => Int      = _ * 2
+    val toString: Int => String = _.toString
+
+    val pipeline = length ~> double ~> toString
+    assertEquals(pipeline.unsafeRun("hello"), "10")
+  }
+
+  test("Function1 works in pipelines with validation") {
+    val length: String => Int = _.length
+    val double: Int => Int    = _ * 2
+
+    val pipeline =
+      length ~> Node(double).ensure(input = Seq(x => if (x > 0) None else Some("positive")))
+    assertEquals(pipeline.unsafeRun("hi"), 4)
+  }
+
+  test("Function1 works with & operator") {
+    val length: String => Int   = _.length
+    val upper: String => String = _.toUpperCase
+
+    val parallel = length & upper
+    assertEquals(parallel.unsafeRun("hello"), (5, "HELLO"))
+  }
+
+  test("Function1 works with >> operator") {
+    var sideEffect1 = ""
+    var sideEffect2 = ""
+
+    val effect1: String => Unit   = s => sideEffect1 = s"first:$s"
+    val effect2: String => String = s => { sideEffect2 = s"second:$s"; s.toUpperCase }
+
+    val pipeline = effect1 >> effect2
+    assertEquals(pipeline.unsafeRun("hi"), "HI")
+    assertEquals(sideEffect1, "first:hi")
+    assertEquals(sideEffect2, "second:hi")
+  }
+
+  test("ensure combines multiple validation types") {
+    val node = Node[Int, String](n => s"Value: $n")
+      .ensure(
+        input = Seq(
+          x => if (x > 0) None else Some("positive"),
+          x => if (x < 1000) None else Some("too large")
+        ),
+        output = Seq(s => if (s.nonEmpty) None else Some("empty"))
+      )
+    assertEquals(node.unsafeRun(5), "Value: 5")
+    intercept[ValidationException](node.unsafeRun(-5))
+    intercept[ValidationException](node.unsafeRun(2000))
+  }
+
+  test("ensure with change validation") {
+    val node = Node[List[Int], List[Int]](_.distinct)
+      .ensure(
+        change = Seq(
+          { case (in, out) => if (out.size <= in.size) None else Some("grew") }
+        )
+      )
+    assertEquals(node.unsafeRun(List(1, 1, 2)), List(1, 2))
+  }
+
+  test("ensure with empty checks is no-op") {
+    val node = Node[Int, String](n => s"$n")
+      .ensure()
+    assertEquals(node.unsafeRun(5), "5")
+  }
+
+  test("ensurePar runs checks in parallel") {
+    import scala.concurrent.ExecutionContext.Implicits.global
+    import java.util.concurrent.atomic.AtomicInteger
+    val count = new AtomicInteger(0)
+
+    val node = Node[Int, String](n => s"Value: $n")
+      .ensurePar(
+        input = Seq(
+          x => { Thread.sleep(10); count.incrementAndGet(); if (x > 0) None else Some("positive") },
+          x => {
+            Thread.sleep(10); count.incrementAndGet(); if (x < 1000) None else Some("too large")
+          }
+        )
+      )
+
+    assertEquals(node.unsafeRun(5), "Value: 5")
+    assertEquals(count.get(), 2)
+  }
+
+  test("ensureWarn logs warnings instead of throwing") {
+    val isPositive = (x: Int) => if (x > 0) None else Some("Must be positive")
+    val node       = Node[Int, String](n => s"Value: $n").ensureWarn(input = isPositive :: Nil)
+    val trace      = node.safeRunTrace(-5)
+
+    assert(trace.result.isSuccess)
+    assert(trace.logs.exists(_.toString.contains("Input validation warning")))
+    assert(trace.logs.exists(_.toString.contains("Must be positive")))
+  }
+
+  test("ensureParWarn runs checks in parallel and logs warnings") {
+    import scala.concurrent.ExecutionContext.Implicits.global
+    val isPositive  = (x: Int) => if (x > 0) None else Some("Must be positive")
+    val lessThan100 = (x: Int) => if (x < 100) None else Some("Must be less than 100")
+    val node =
+      Node[Int, String](n => s"Value: $n").ensureParWarn(input = isPositive :: lessThan100 :: Nil)
+    val trace = node.safeRunTrace(-5)
+
+    assert(trace.result.isSuccess)
+    assert(trace.logs.exists(_.toString.contains("Input validation warning")))
+    assert(trace.logs.exists(_.toString.contains("Must be positive")))
+  }
+
+  test("Reader ensureWarn logs warnings with context") {
+    case class Config(min: Int)
+    val checkMin = (cfg: Config) => (x: Int) => if (x >= cfg.min) None else Some("too small")
+    val node = Reader[Config, Node[Int, String]] { _ => Node(n => s"Value: $n") }
+      .ensureWarn(input = checkMin :: Nil)
+    val trace = node.provide(Config(10)).safeRunTrace(5)
+
+    assert(trace.result.isSuccess)
+    assert(trace.logs.exists(_.toString.contains("Input validation warning")))
+    assert(trace.logs.exists(_.toString.contains("too small")))
+  }
+
+  test("Reader ensure combines multiple validation types") {
+    case class Config(min: Int, max: Int)
+
+    val node = Reader[Config, Node[Int, String]] { _ => Node(n => s"Value: $n") }
+      .ensure(
+        input = Seq(
+          (cfg: Config) => (x: Int) => if (x >= cfg.min) None else Some("too small"),
+          (_: Config) => (x: Int) => if (x > 0) None else Some("positive")
+        ),
+        output = Seq((_: Config) => (s: String) => if (s.nonEmpty) None else Some("empty"))
+      )
+
+    val config = Config(10, 100)
+    assertEquals(node.provide(config).unsafeRun(50), "Value: 50")
+    intercept[ValidationException](node.provide(config).unsafeRun(5))
+    intercept[ValidationException](node.provide(config).unsafeRun(-5))
+  }
+
+  test("Reader ensure with change validation") {
+    case class Config(preserveSize: Boolean)
+    val node = Reader[Config, Node[List[Int], List[Int]]] { _ => Node(_.distinct) }
+      .ensure(
+        change = Seq((cfg: Config) =>
+          (pair: (List[Int], List[Int])) =>
+            pair match {
+              case (in, out) => if (!cfg.preserveSize || in.size == out.size) None else Some("size")
+            }
+        )
+      )
+
+    assertEquals(node.provide(Config(false)).unsafeRun(List(1, 1, 2)), List(1, 2))
+    intercept[ValidationException](node.provide(Config(true)).unsafeRun(List(1, 1, 2)))
+  }
+
+  test("Reader ensure automatically lifts plain functions") {
+    case class Config(min: Int)
+
+    val checkPositive = (x: Int) => if (x > 0) None else Some("must be positive")
+    val checkNotEmpty = (s: String) => if (s.nonEmpty) None else Some("empty")
+
+    val node = Reader[Config, Node[Int, String]] { _ => Node(_.toString) }
+      .ensure(
+        input = Seq(
+          (cfg: Config) => (x: Int) => if (x >= cfg.min) None else Some("too small"),
+          checkPositive
+        ),
+        output = Seq(
+          checkNotEmpty
+        )
+      )
+
+    val config = Config(10)
+    assertEquals(node.provide(config).unsafeRun(50), "50")
+    intercept[ValidationException](node.provide(config).unsafeRun(5))
+    intercept[ValidationException](node.provide(config).unsafeRun(-5))
+  }
+
+}
