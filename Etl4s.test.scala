@@ -1489,3 +1489,522 @@ class ValidationSpecs extends munit.FunSuite {
   }
 
 }
+
+class ConditionalBranchingSpecs extends munit.FunSuite {
+
+  test("basic when-elseIf-else branching") {
+    val toNegative = Node[Int, String](_ => "negative")
+    val toZero     = Node[Int, String](_ => "zero")
+    val toPositive = Node[Int, String](_ => "positive")
+
+    val classify = Node[Int, Int](identity)
+      .when(_ < 0)(toNegative)
+      .elseIf(_ == 0)(toZero)
+      .otherwise(toPositive)
+
+    assertEquals(classify.unsafeRun(-5), "negative")
+    assertEquals(classify.unsafeRun(0), "zero")
+    assertEquals(classify.unsafeRun(10), "positive")
+  }
+
+  test("when-elseIf-otherwise branching") {
+    val toShort  = Node[String, String](_ => "short")
+    val toMedium = Node[String, String](_ => "medium")
+    val toLong   = Node[String, String](_ => "long")
+
+    val sizeClassifier = Node[String, String](identity)
+      .when(_.length < 5)(toShort)
+      .elseIf(_.length < 10)(toMedium)
+      .otherwise(toLong)
+
+    assertEquals(sizeClassifier.unsafeRun("hi"), "short")
+    assertEquals(sizeClassifier.unsafeRun("hello"), "medium")
+    assertEquals(sizeClassifier.unsafeRun("hello world!"), "long")
+  }
+
+  test("conditional branching with complex nodes") {
+    val formatNegative =
+      Node[Int, String](n => s"Negative: ${n.abs}") ~> Node[String, String](_.toUpperCase)
+    val formatZero     = Node[Int, String](_ => "Zero value")
+    val formatPositive = Node[Int, String](n => s"Positive: $n") ~> Node[String, String](_ + "!")
+
+    val processNumber = Node[Int, Int](identity)
+      .when(_ < 0)(formatNegative)
+      .elseIf(_ == 0)(formatZero)
+      .otherwise(formatPositive)
+
+    assertEquals(processNumber.unsafeRun(-5), "NEGATIVE: 5")
+    assertEquals(processNumber.unsafeRun(0), "Zero value")
+    assertEquals(processNumber.unsafeRun(10), "Positive: 10!")
+  }
+
+  test("conditional branching in ETL pipeline") {
+    case class User(name: String, age: Int)
+    case class ProcessedUser(name: String, category: String)
+
+    val extract = Extract[String, User] { input =>
+      val parts = input.split(",")
+      User(parts(0), parts(1).toInt)
+    }
+
+    val toMinor  = Transform[User, ProcessedUser](u => ProcessedUser(u.name, "minor"))
+    val toAdult  = Transform[User, ProcessedUser](u => ProcessedUser(u.name, "adult"))
+    val toSenior = Transform[User, ProcessedUser](u => ProcessedUser(u.name, "senior"))
+
+    val categorize = Transform[User, User](identity)
+      .when(_.age < 18)(toMinor)
+      .elseIf(_.age < 65)(toAdult)
+      .otherwise(toSenior)
+
+    val pipeline = extract ~> categorize
+
+    assertEquals(pipeline.unsafeRun("Alice,15"), ProcessedUser("Alice", "minor"))
+    assertEquals(pipeline.unsafeRun("Bob,30"), ProcessedUser("Bob", "adult"))
+    assertEquals(pipeline.unsafeRun("Charlie,70"), ProcessedUser("Charlie", "senior"))
+  }
+
+  test("conditional branching with multiple elseIf clauses") {
+    val gradeA = Node[Int, String](_ => "A")
+    val gradeB = Node[Int, String](_ => "B")
+    val gradeC = Node[Int, String](_ => "C")
+    val gradeD = Node[Int, String](_ => "D")
+    val gradeF = Node[Int, String](_ => "F")
+
+    val gradeClassifier = Node[Int, Int](identity)
+      .when(_ >= 90)(gradeA)
+      .elseIf(_ >= 80)(gradeB)
+      .elseIf(_ >= 70)(gradeC)
+      .elseIf(_ >= 60)(gradeD)
+      .otherwise(gradeF)
+
+    assertEquals(gradeClassifier.unsafeRun(95), "A")
+    assertEquals(gradeClassifier.unsafeRun(85), "B")
+    assertEquals(gradeClassifier.unsafeRun(75), "C")
+    assertEquals(gradeClassifier.unsafeRun(65), "D")
+    assertEquals(gradeClassifier.unsafeRun(55), "F")
+  }
+
+  test("conditional branching with side effects") {
+    var logMessages = List.empty[String]
+
+    val logger = Node[Int, Int](identity)
+      .when(_ < 0)(
+        Node[Int, String] { n =>
+          logMessages = logMessages :+ "negative"
+          s"neg:$n"
+        }
+      )
+      .otherwise(
+        Node[Int, String] { n =>
+          logMessages = logMessages :+ "positive"
+          s"pos:$n"
+        }
+      )
+
+    logger.unsafeRun(-5)
+    logger.unsafeRun(10)
+
+    assertEquals(logMessages, List("negative", "positive"))
+  }
+
+  test("conditional branching evaluates first matching condition") {
+    var evaluations = List.empty[String]
+
+    val node = Node[Int, Int](identity)
+      .when { n =>
+        evaluations = evaluations :+ "cond1"
+        n > 5
+      }(Node[Int, String](_ => "first"))
+      .elseIf { n =>
+        evaluations = evaluations :+ "cond2"
+        n > 3
+      }(Node[Int, String](_ => "second"))
+      .otherwise(Node[Int, String](_ => "third"))
+
+    val result = node.unsafeRun(10)
+    assertEquals(result, "first")
+    // Only first condition should be evaluated
+    assertEquals(evaluations, List("cond1"))
+
+    evaluations = List.empty
+    val result2 = node.unsafeRun(4)
+    assertEquals(result2, "second")
+    // First condition false, second condition true
+    assertEquals(evaluations, List("cond1", "cond2"))
+  }
+
+  test("conditional branching with parallel composition") {
+    val branch1 = Node[Int, Int](identity)
+      .when(_ % 2 == 0)(Node[Int, String](n => s"even:$n"))
+      .otherwise(Node[Int, String](n => s"odd:$n"))
+
+    val branch2 = Node[Int, Int](identity)
+      .when(_ > 0)(Node[Int, String](_ => "positive"))
+      .otherwise(Node[Int, String](_ => "non-positive"))
+
+    val combined = branch1 & branch2
+
+    assertEquals(combined.unsafeRun(4), ("even:4", "positive"))
+    assertEquals(combined.unsafeRun(-3), ("odd:-3", "non-positive"))
+  }
+
+  test("non-exhaustive conditional throws on build") {
+    val partial = Node[Int, Int](identity)
+      .when(_ < 0)(Node[Int, String](_ => "negative"))
+      .elseIf(_ > 0)(Node[Int, String](_ => "positive"))
+
+    // Should throw when trying to use it without else
+    intercept[IllegalStateException] {
+      partial.build.unsafeRun(0)
+    }
+  }
+
+  test("conditional branching with tap for debugging") {
+    var tappedValue: Option[Int] = None
+
+    val pipeline = Node[Int, Int](identity)
+      .tap(n => tappedValue = Some(n))
+      .when(_ < 10)(Node[Int, String](n => s"small:$n"))
+      .otherwise(Node[Int, String](n => s"large:$n"))
+
+    val result = pipeline.unsafeRun(5)
+    assertEquals(result, "small:5")
+    assertEquals(tappedValue, Some(5))
+  }
+
+  test("conditional branching with error handling") {
+    val safeProcessor = Node[String, String](identity)
+      .when(_.isEmpty)(
+        Node[String, String](_ => throw new RuntimeException("Empty!"))
+          .onFailure(_ => "error:empty")
+      )
+      .otherwise(
+        Node[String, String](s => s.toUpperCase)
+      )
+
+    assertEquals(safeProcessor.unsafeRun(""), "error:empty")
+    assertEquals(safeProcessor.unsafeRun("hello"), "HELLO")
+  }
+
+  test("conditional branching with different output types") {
+    sealed trait Result
+    case class Success(value: Int)    extends Result
+    case class Failure(error: String) extends Result
+
+    val processor = Node[Int, Int](identity)
+      .when(_ < 0)(Node[Int, Result](n => Failure(s"Negative: $n")))
+      .otherwise(Node[Int, Result](n => Success(n * 2)))
+
+    val result1 = processor.unsafeRun(-5)
+    assert(result1.isInstanceOf[Failure])
+    assertEquals(result1.asInstanceOf[Failure].error, "Negative: -5")
+
+    val result2 = processor.unsafeRun(10)
+    assert(result2.isInstanceOf[Success])
+    assertEquals(result2.asInstanceOf[Success].value, 20)
+  }
+
+  test("conditional branching composition with ~>") {
+    val classify = Node[Int, Int](identity)
+      .when(_ < 0)(Node[Int, String](_ => "negative"))
+      .elseIf(_ == 0)(Node[Int, String](_ => "zero"))
+      .otherwise(Node[Int, String](_ => "positive"))
+
+    val format = Node[String, String](s => s"Result: $s")
+
+    val pipeline = classify ~> format
+
+    assertEquals(pipeline.unsafeRun(-5), "Result: negative")
+    assertEquals(pipeline.unsafeRun(0), "Result: zero")
+    assertEquals(pipeline.unsafeRun(10), "Result: positive")
+  }
+
+  test("nested conditional branching") {
+    val outerClassifier = Node[Int, Int](identity)
+      .when(_ < 0)(
+        Node[Int, Int](n => n.abs)
+          .when(_ < 10)(Node[Int, String](n => s"small negative: $n"))
+          .otherwise(Node[Int, String](n => s"large negative: $n"))
+      )
+      .otherwise(
+        Node[Int, Int](identity)
+          .when(_ < 10)(Node[Int, String](n => s"small positive: $n"))
+          .otherwise(Node[Int, String](n => s"large positive: $n"))
+      )
+
+    assertEquals(outerClassifier.unsafeRun(-5), "small negative: 5")
+    assertEquals(outerClassifier.unsafeRun(-15), "large negative: 15")
+    assertEquals(outerClassifier.unsafeRun(5), "small positive: 5")
+    assertEquals(outerClassifier.unsafeRun(15), "large positive: 15")
+  }
+
+  test("if syntax with backticks") {
+    // The `if` method is also available using backticks for those who prefer it
+    val classify = Node[Int, Int](identity)
+      .`if`(_ < 0)(Node[Int, String](_ => "negative"))
+      .elseIf(_ == 0)(Node[Int, String](_ => "zero"))
+      .`else`(Node[Int, String](_ => "positive"))
+
+    assertEquals(classify.unsafeRun(-5), "negative")
+    assertEquals(classify.unsafeRun(0), "zero")
+    assertEquals(classify.unsafeRun(10), "positive")
+  }
+
+  test("Reader conditional with context-aware condition") {
+    case class Config(threshold: Int)
+
+    val source      = Reader[Config, Node[Int, Int]] { _ => Node[Int, Int](identity) }
+    val formatBelow = Reader[Config, Node[Int, String]] { _ => Node(n => s"below:$n") }
+    val formatAbove = Reader[Config, Node[Int, String]] { _ => Node(n => s"above:$n") }
+
+    val pipeline = source
+      .when((cfg: Config) => (n: Int) => n < cfg.threshold)(formatBelow)
+      .otherwise(formatAbove)
+
+    val config = Config(10)
+    assertEquals(pipeline.provide(config).unsafeRun(5), "below:5")
+    assertEquals(pipeline.provide(config).unsafeRun(15), "above:15")
+  }
+
+  test("Reader conditional ignoring context") {
+    case class Config(multiplier: Int)
+
+    val source = Reader[Config, Node[Int, Int]] { _ => Node[Int, Int](identity) }
+    val formatNegative = Reader[Config, Node[Int, String]] { cfg =>
+      Node(n => s"negative:${n * cfg.multiplier}")
+    }
+    val formatPositive = Reader[Config, Node[Int, String]] { cfg =>
+      Node(n => s"positive:${n * cfg.multiplier}")
+    }
+
+    val pipeline = source
+      .when(_ => (n: Int) => n < 0)(formatNegative)
+      .otherwise(formatPositive)
+
+    val config = Config(2)
+    assertEquals(pipeline.provide(config).unsafeRun(-5), "negative:-10")
+    assertEquals(pipeline.provide(config).unsafeRun(10), "positive:20")
+  }
+
+  test("Reader conditional with multiple elseIf and context") {
+    case class Config(min: Int, max: Int)
+
+    val source     = Reader[Config, Node[Int, Int]] { _ => Node[Int, Int](identity) }
+    val formatLow  = Reader[Config, Node[Int, String]] { _ => Node(n => s"too-low:$n") }
+    val formatHigh = Reader[Config, Node[Int, String]] { _ => Node(n => s"too-high:$n") }
+    val formatOk   = Reader[Config, Node[Int, String]] { _ => Node(n => s"ok:$n") }
+
+    val classifier = source
+      .when((cfg: Config) => (n: Int) => n < cfg.min)(formatLow)
+      .elseIf((cfg: Config) => (n: Int) => n > cfg.max)(formatHigh)
+      .otherwise(formatOk)
+
+    val config = Config(10, 100)
+    assertEquals(classifier.provide(config).unsafeRun(5), "too-low:5")
+    assertEquals(classifier.provide(config).unsafeRun(50), "ok:50")
+    assertEquals(classifier.provide(config).unsafeRun(150), "too-high:150")
+  }
+
+  test("Reader conditional mixing context-aware and context-ignoring conditions") {
+    case class Config(threshold: Int)
+
+    val source      = Reader[Config, Node[Int, Int]] { _ => Node[Int, Int](identity) }
+    val formatZero  = Reader[Config, Node[Int, String]] { _ => Node[Int, String](_ => "zero") }
+    val formatBelow = Reader[Config, Node[Int, String]] { _ => Node(n => s"below:$n") }
+    val formatAbove = Reader[Config, Node[Int, String]] { _ => Node(n => s"above:$n") }
+
+    val pipeline = source
+      .when(_ => (n: Int) => n == 0)(formatZero)
+      .elseIf((cfg: Config) => (n: Int) => n < cfg.threshold)(formatBelow)
+      .otherwise(formatAbove)
+
+    val config = Config(10)
+    assertEquals(pipeline.provide(config).unsafeRun(0), "zero")
+    assertEquals(pipeline.provide(config).unsafeRun(5), "below:5")
+    assertEquals(pipeline.provide(config).unsafeRun(15), "above:15")
+  }
+
+  test("Reader conditional in ETL pipeline") {
+    case class Config(adultAge: Int, seniorAge: Int)
+    case class User(name: String, age: Int)
+    case class ProcessedUser(name: String, category: String)
+
+    val extract = Reader[Config, Node[String, User]] { _ =>
+      Node { input =>
+        val parts = input.split(",")
+        User(parts(0), parts(1).toInt)
+      }
+    }
+
+    val source = Reader[Config, Node[User, User]] { _ => Node[User, User](identity) }
+    val toMinor = Reader[Config, Node[User, ProcessedUser]] { _ =>
+      Node(u => ProcessedUser(u.name, "minor"))
+    }
+    val toAdult = Reader[Config, Node[User, ProcessedUser]] { _ =>
+      Node(u => ProcessedUser(u.name, "adult"))
+    }
+    val toSenior = Reader[Config, Node[User, ProcessedUser]] { _ =>
+      Node(u => ProcessedUser(u.name, "senior"))
+    }
+
+    val categorize = source
+      .when((cfg: Config) => (u: User) => u.age < cfg.adultAge)(toMinor)
+      .elseIf((cfg: Config) => (u: User) => u.age < cfg.seniorAge)(toAdult)
+      .otherwise(toSenior)
+
+    val pipeline = extract ~> categorize
+    val config   = Config(18, 65)
+
+    assertEquals(pipeline.provide(config).unsafeRun("Alice,15"), ProcessedUser("Alice", "minor"))
+    assertEquals(pipeline.provide(config).unsafeRun("Bob,30"), ProcessedUser("Bob", "adult"))
+    assertEquals(
+      pipeline.provide(config).unsafeRun("Charlie,70"),
+      ProcessedUser("Charlie", "senior")
+    )
+  }
+
+  test("Reader conditional with nested branching") {
+    case class Config(threshold: Int)
+
+    val outer = Reader[Config, Node[Int, Int]] { _ => Node[Int, Int](identity) }
+      .when(_ => (n: Int) => n < 0)(
+        Reader[Config, Node[Int, Int]] { _ => Node(n => n.abs) }
+          .when((cfg: Config) => (n: Int) => n < cfg.threshold)(
+            Reader[Config, Node[Int, String]] { _ => Node(n => s"small-neg:$n") }
+          )
+          .otherwise(
+            Reader[Config, Node[Int, String]] { _ => Node(n => s"large-neg:$n") }
+          )
+      )
+      .otherwise(
+        Reader[Config, Node[Int, Int]] { _ => Node[Int, Int](identity) }
+          .when((cfg: Config) => (n: Int) => n < cfg.threshold)(
+            Reader[Config, Node[Int, String]] { _ => Node(n => s"small-pos:$n") }
+          )
+          .otherwise(
+            Reader[Config, Node[Int, String]] { _ => Node(n => s"large-pos:$n") }
+          )
+      )
+
+    val config = Config(10)
+    assertEquals(outer.provide(config).unsafeRun(-5), "small-neg:5")
+    assertEquals(outer.provide(config).unsafeRun(-15), "large-neg:15")
+    assertEquals(outer.provide(config).unsafeRun(5), "small-pos:5")
+    assertEquals(outer.provide(config).unsafeRun(15), "large-pos:15")
+  }
+
+  test("Reader conditional with parallel composition") {
+    case class Config(threshold: Int)
+
+    val source1 = Reader[Config, Node[Int, Int]] { _ => Node[Int, Int](identity) }
+    val toEven  = Reader[Config, Node[Int, String]] { _ => Node(n => s"even:$n") }
+    val toOdd   = Reader[Config, Node[Int, String]] { _ => Node(n => s"odd:$n") }
+
+    val branch1: Reader[Config, Node[Int, String]] = source1
+      .when(_ => (n: Int) => n % 2 == 0)(toEven)
+      .otherwise(toOdd)
+
+    val source2 = Reader[Config, Node[Int, Int]] { _ => Node[Int, Int](identity) }
+    val toBelow = Reader[Config, Node[Int, String]] { _ => Node[Int, String](_ => "below") }
+    val toAbove = Reader[Config, Node[Int, String]] { _ => Node[Int, String](_ => "above") }
+
+    val branch2: Reader[Config, Node[Int, String]] = source2
+      .when((cfg: Config) => (n: Int) => n < cfg.threshold)(toBelow)
+      .otherwise(toAbove)
+
+    val combined = branch1 & branch2
+    val config   = Config(10)
+
+    assertEquals(combined.provide(config).unsafeRun(4), ("even:4", "below"))
+    assertEquals(combined.provide(config).unsafeRun(15), ("odd:15", "above"))
+  }
+
+  test("Reader conditional with plain Node branches") {
+    case class Config(threshold: Int)
+
+    val source     = Reader[Config, Node[Int, Int]] { _ => Node[Int, Int](identity) }
+    val toNegative = Node[Int, String](n => s"negative:$n")
+    val toZero     = Node[Int, String](_ => "zero")
+    val toPositive = Node[Int, String](n => s"positive:$n")
+
+    val pipeline = source
+      .when(_ => (n: Int) => n < 0)(toNegative)
+      .elseIf(_ => (n: Int) => n == 0)(toZero)
+      .otherwise(toPositive)
+
+    val config = Config(10)
+    assertEquals(pipeline.provide(config).unsafeRun(-5), "negative:-5")
+    assertEquals(pipeline.provide(config).unsafeRun(0), "zero")
+    assertEquals(pipeline.provide(config).unsafeRun(10), "positive:10")
+  }
+
+  test("Reader conditional mixing plain Node and Reader branches") {
+    case class Config(multiplier: Int)
+
+    val source     = Reader[Config, Node[Int, Int]] { _ => Node[Int, Int](identity) }
+    val toNegative = Node[Int, String](n => s"negative:$n")
+    val toZero     = Reader[Config, Node[Int, String]] { _ => Node[Int, String](_ => "zero") }
+    val toPositive = Reader[Config, Node[Int, String]] { cfg =>
+      Node(n => s"positive:${n * cfg.multiplier}")
+    }
+
+    val pipeline = source
+      .when(_ => (n: Int) => n < 0)(toNegative)
+      .elseIf(_ => (n: Int) => n == 0)(toZero)
+      .otherwise(toPositive)
+
+    val config = Config(2)
+    assertEquals(pipeline.provide(config).unsafeRun(-5), "negative:-5")
+    assertEquals(pipeline.provide(config).unsafeRun(0), "zero")
+    assertEquals(pipeline.provide(config).unsafeRun(10), "positive:20")
+  }
+
+  test("Reader conditional with plain Node branches and context-aware conditions") {
+    case class Config(threshold: Int)
+
+    val source      = Reader[Config, Node[Int, Int]] { _ => Node[Int, Int](identity) }
+    val formatBelow = Node[Int, String](n => s"below:$n")
+    val formatAbove = Node[Int, String](n => s"above:$n")
+
+    val pipeline = source
+      .when((cfg: Config) => (n: Int) => n < cfg.threshold)(formatBelow)
+      .otherwise(formatAbove)
+
+    val config = Config(10)
+    assertEquals(pipeline.provide(config).unsafeRun(5), "below:5")
+    assertEquals(pipeline.provide(config).unsafeRun(15), "above:15")
+  }
+
+  test("Reader conditional with nested plain Node branches") {
+    case class Config(threshold: Int)
+
+    val source = Reader[Config, Node[Int, Int]] { _ => Node[Int, Int](identity) }
+
+    val toAbs      = Reader[Config, Node[Int, Int]] { _ => Node[Int, Int](n => n.abs) }
+    val toSmallNeg = Node[Int, String](n => s"small-neg:$n")
+    val toLargeNeg = Node[Int, String](n => s"large-neg:$n")
+
+    val negBranch = toAbs
+      .when((cfg: Config) => (n: Int) => n < cfg.threshold)(toSmallNeg)
+      .otherwise(toLargeNeg)
+
+    val toIdentity = Reader[Config, Node[Int, Int]] { _ => Node[Int, Int](identity) }
+    val toSmallPos = Node[Int, String](n => s"small-pos:$n")
+    val toLargePos = Node[Int, String](n => s"large-pos:$n")
+
+    val posBranch = toIdentity
+      .when((cfg: Config) => (n: Int) => n < cfg.threshold)(toSmallPos)
+      .otherwise(toLargePos)
+
+    val outer = source
+      .when(_ => (n: Int) => n < 0)(negBranch)
+      .otherwise(posBranch)
+
+    val config = Config(10)
+    assertEquals(outer.provide(config).unsafeRun(-5), "small-neg:5")
+    assertEquals(outer.provide(config).unsafeRun(-15), "large-neg:15")
+    assertEquals(outer.provide(config).unsafeRun(5), "small-pos:5")
+    assertEquals(outer.provide(config).unsafeRun(15), "large-pos:15")
+  }
+
+}

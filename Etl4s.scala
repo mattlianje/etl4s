@@ -1921,6 +1921,157 @@ package object etl4s {
   }
 
   /**
+   * Non-exhaustive conditional builder for Nodes.
+   */
+  case class PartialConditionalBuilder[A, B, C](
+    sourceNode: Node[A, B],
+    branches: List[(B => Boolean, Node[B, C])]
+  ) {
+    def elseIf(condition: B => Boolean)(branch: Node[B, C]): PartialConditionalBuilder[A, B, C] =
+      PartialConditionalBuilder(sourceNode, branches :+ (condition, branch))
+
+    def otherwise(branch: Node[B, C]): CompleteConditionalBuilder[A, B, C] =
+      CompleteConditionalBuilder(sourceNode, branches, branch)
+
+    def `else`(branch: Node[B, C]): CompleteConditionalBuilder[A, B, C] = otherwise(branch)
+
+    def build: Node[A, C] =
+      throw new IllegalStateException("Non-exhaustive conditional. Add .otherwise() clause.")
+  }
+
+  /**
+   * Exhaustive conditional builder for Nodes.
+   */
+  case class CompleteConditionalBuilder[A, B, C](
+    sourceNode: Node[A, B],
+    branches: List[(B => Boolean, Node[B, C])],
+    defaultBranch: Node[B, C]
+  ) {
+    def elseIf(condition: B => Boolean)(branch: Node[B, C]): CompleteConditionalBuilder[A, B, C] =
+      CompleteConditionalBuilder(sourceNode, branches :+ (condition, branch), defaultBranch)
+
+    def build: Node[A, C] = Node { a =>
+      val b = sourceNode.f(a)
+      branches.find(_._1(b)).map(_._2.f(b)).getOrElse(defaultBranch.f(b))
+    }
+  }
+
+  /**
+   * Conditional branching for Nodes.
+   */
+  implicit class NodeConditionalOps[A, B](val node: Node[A, B]) {
+    def when[C](condition: B => Boolean)(branch: Node[B, C]): PartialConditionalBuilder[A, B, C] =
+      PartialConditionalBuilder(node, List((condition, branch)))
+
+    def `if`[C](condition: B => Boolean)(branch: Node[B, C]): PartialConditionalBuilder[A, B, C] =
+      when(condition)(branch)
+  }
+
+  implicit def conditionalBuilderToNode[A, B, C](
+    builder: CompleteConditionalBuilder[A, B, C]
+  ): Node[A, C] =
+    builder.build
+
+  /**
+   * Type class for lifting branches (Node or Reader) to Reader.
+   */
+  trait BranchLift[T, B, C, Branch] {
+    def lift(branch: Branch): Reader[T, Node[B, C]]
+  }
+
+  object BranchLift extends BranchLiftLowPriority {
+    implicit def nodeToReader[T, B, C]: BranchLift[T, B, C, Node[B, C]] =
+      new BranchLift[T, B, C, Node[B, C]] {
+        def lift(branch: Node[B, C]): Reader[T, Node[B, C]] = Reader.pure(branch)
+      }
+
+    implicit def readerIdentity[T, B, C]: BranchLift[T, B, C, Reader[T, Node[B, C]]] =
+      new BranchLift[T, B, C, Reader[T, Node[B, C]]] {
+        def lift(branch: Reader[T, Node[B, C]]): Reader[T, Node[B, C]] = branch
+      }
+  }
+
+  trait BranchLiftLowPriority {
+    implicit def builderToReader[T, B, X, C]
+      : BranchLift[T, B, C, ReaderCompleteConditionalBuilder[T, B, X, C]] =
+      new BranchLift[T, B, C, ReaderCompleteConditionalBuilder[T, B, X, C]] {
+        def lift(builder: ReaderCompleteConditionalBuilder[T, B, X, C]): Reader[T, Node[B, C]] =
+          builder.build
+      }
+  }
+
+  /**
+   * Non-exhaustive conditional builder for Reader-wrapped nodes.
+   */
+  case class ReaderPartialConditionalBuilder[T, A, B, C](
+    sourceReader: Reader[T, Node[A, B]],
+    branches: List[(T => B => Boolean, Reader[T, Node[B, C]])]
+  ) {
+    def elseIf[Branch](condition: T => B => Boolean)(branch: Branch)(implicit
+      lift: BranchLift[T, B, C, Branch]
+    ): ReaderPartialConditionalBuilder[T, A, B, C] =
+      ReaderPartialConditionalBuilder(sourceReader, branches :+ (condition, lift.lift(branch)))
+
+    def otherwise[Branch](branch: Branch)(implicit
+      lift: BranchLift[T, B, C, Branch]
+    ): ReaderCompleteConditionalBuilder[T, A, B, C] =
+      ReaderCompleteConditionalBuilder(sourceReader, branches, lift.lift(branch))
+
+    def `else`[Branch](branch: Branch)(implicit
+      lift: BranchLift[T, B, C, Branch]
+    ): ReaderCompleteConditionalBuilder[T, A, B, C] = otherwise(branch)
+  }
+
+  /**
+   * Exhaustive conditional builder for Reader-wrapped nodes.
+   */
+  case class ReaderCompleteConditionalBuilder[T, A, B, C](
+    sourceReader: Reader[T, Node[A, B]],
+    branches: List[(T => B => Boolean, Reader[T, Node[B, C]])],
+    defaultBranch: Reader[T, Node[B, C]]
+  ) {
+    def elseIf[Branch](condition: T => B => Boolean)(branch: Branch)(implicit
+      lift: BranchLift[T, B, C, Branch]
+    ): ReaderCompleteConditionalBuilder[T, A, B, C] =
+      ReaderCompleteConditionalBuilder(
+        sourceReader,
+        branches :+ (condition, lift.lift(branch)),
+        defaultBranch
+      )
+
+    def build: Reader[T, Node[A, C]] = Reader { ctx =>
+      val sourceNode = sourceReader.run(ctx)
+      val evaluatedBranches = branches.map { case (check, readerBranch) =>
+        (check(ctx), readerBranch.run(ctx))
+      }
+      val evaluatedDefault = defaultBranch.run(ctx)
+
+      Node { a =>
+        val b = sourceNode.f(a)
+        evaluatedBranches.find(_._1(b)).map(_._2.f(b)).getOrElse(evaluatedDefault.f(b))
+      }
+    }
+  }
+
+  implicit def readerConditionalBuilderToReader[T, A, B, C](
+    builder: ReaderCompleteConditionalBuilder[T, A, B, C]
+  ): Reader[T, Node[A, C]] = builder.build
+
+  /**
+   * Conditional branching for Reader-wrapped Nodes.
+   */
+  implicit class ReaderConditionalOps[T, A, B](val reader: Reader[T, Node[A, B]]) {
+    def when[C, Branch](condition: T => B => Boolean)(branch: Branch)(implicit
+      lift: BranchLift[T, B, C, Branch]
+    ): ReaderPartialConditionalBuilder[T, A, B, C] =
+      ReaderPartialConditionalBuilder(reader, List((condition, lift.lift(branch))))
+
+    def `if`[C, Branch](condition: T => B => Boolean)(branch: Branch)(implicit
+      lift: BranchLift[T, B, C, Branch]
+    ): ReaderPartialConditionalBuilder[T, A, B, C] = when(condition)(branch)
+  }
+
+  /**
    * Extension methods for adding validation to Reader-wrapped Nodes.
    * 
    * Validation functions use curried form (T => A => Option[String]) to match
