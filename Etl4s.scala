@@ -23,6 +23,7 @@ package object etl4s {
   import scala.concurrent.duration._
   import scala.concurrent.Await
   import scala.util.Try
+  import scala.reflect.ClassTag
 
   /**
    * The core abstraction of etl4s: a composable wrapper around a function `A => B`.
@@ -257,6 +258,62 @@ package object etl4s {
     }
 
     /**
+     * Assigns a name to this node for pipeline visualization.
+     *
+     * This is a convenience method for creating simple lineage with just a name.
+     * The name will be used when generating pipeline diagrams with actual type information.
+     *
+     * @param name the name to assign to this node
+     * @return a new Node with the name and type info attached as lineage
+     *
+     * @example
+     * {{{
+     * val extract = Node[String, User](parseUser).named("extract-users")
+     * val transform = Node[User, EnrichedUser](enrich).named("enrich-users")
+     * val pipeline = extract ~> transform
+     * 
+     * // Generate diagram showing the flow with actual types
+     * pipeline.toDot
+     * }}}
+     */
+    def named(name: String)(implicit
+      aTag: ClassTag[A],
+      bTag: ClassTag[B]
+    ): Node[A, B] = {
+      val inputType       = formatTypeName(aTag.runtimeClass.getName)
+      val outputType      = formatTypeName(bTag.runtimeClass.getName)
+      val currentF        = this.f
+      val currentMetadata = this.metadata
+
+      new Node[A, B] {
+        val f: A => B                            = currentF
+        override val metadata: Any               = currentMetadata
+        override def getLineage: Option[Lineage] = Some(Lineage(name = name))
+
+        // Store type information for visualization
+        private[etl4s] val typeInfo: (String, String) = (inputType, outputType)
+      }
+    }
+
+    private def formatTypeName(className: String): String = {
+      val simple = if (className.contains("$")) {
+        // Handle inner classes and objects
+        className.split('$').last
+      } else if (className.contains(".")) {
+        // Get simple name from fully qualified name
+        className.split('.').last
+      } else {
+        className
+      }
+
+      // Clean up common prefixes
+      simple
+        .replaceAll("java\\.lang\\.", "")
+        .replaceAll("scala\\.Predef\\.", "")
+        .replaceAll("scala\\.package\\.", "")
+    }
+
+    /**
      * Functorial mapping: transforms the output of this node.
      *
      * @tparam C the new output type
@@ -308,7 +365,20 @@ package object etl4s {
      * pipeline("hello") // returns "Length: 5"
      * }}}
      */
-    def ~>[C](next: Node[B, C]): Node[A, C] = Node(a => next(f(a)))
+    def ~>[C](next: Node[B, C]): Node[A, C] = {
+      val currentF = this.f
+      val nextF    = next.f
+      // Preserve lineage tracking for pipeline introspection
+      new Node[A, C] {
+        val f: A => C                            = (a: A) => nextF(currentF(a))
+        override val metadata: Any               = None
+        override def getLineage: Option[Lineage] = None
+
+        // Track the components of this composition
+        private[etl4s] val leftNode: Node[A, B]  = Node.this
+        private[etl4s] val rightNode: Node[B, C] = next
+      }
+    }
 
     /**
      * Alias for `~>` with more explicit naming.
@@ -372,8 +442,19 @@ package object etl4s {
      * val getBoth = getName & getAge  // returns (String, Int)
      * }}}
      */
-    def &[C](that: Node[A, C]): Node[A, (B, C)] = Node { a =>
-      (f(a), that(a))
+    def &[C](that: Node[A, C]): Node[A, (B, C)] = {
+      val leftF  = this.f
+      val rightF = that.f
+
+      new Node[A, (B, C)] {
+        val f: A => (B, C)                       = (a: A) => (leftF(a), rightF(a))
+        override val metadata: Any               = None
+        override def getLineage: Option[Lineage] = None
+
+        private[etl4s] val leftNode: Node[A, B]  = Node.this
+        private[etl4s] val rightNode: Node[A, C] = that
+        private[etl4s] val isParallel: Boolean   = true
+      }
     }
 
     /**
@@ -404,14 +485,28 @@ package object etl4s {
      */
     def &>[C](that: Node[A, C])(implicit
       ec: ExecutionContext
-    ): Node[A, (B, C)] = Node { a =>
-      val f1 = Future(f(a))
-      val f2 = Future(that(a))
-      val combined = for {
-        r1 <- f1
-        r2 <- f2
-      } yield (r1, r2)
-      Await.result(combined, Duration.Inf)
+    ): Node[A, (B, C)] = {
+      val leftF  = this.f
+      val rightF = that.f
+
+      new Node[A, (B, C)] {
+        val f: A => (B, C) = (a: A) => {
+          val f1 = Future(leftF(a))
+          val f2 = Future(rightF(a))
+          val combined = for {
+            r1 <- f1
+            r2 <- f2
+          } yield (r1, r2)
+          Await.result(combined, Duration.Inf)
+        }
+        override val metadata: Any               = None
+        override def getLineage: Option[Lineage] = None
+
+        private[etl4s] val leftNode: Node[A, B]  = Node.this
+        private[etl4s] val rightNode: Node[A, C] = that
+        private[etl4s] val isParallel: Boolean   = true
+        private[etl4s] val isConcurrent: Boolean = true
+      }
     }
 
     /**
@@ -542,8 +637,52 @@ package object etl4s {
      */
     def zip[BB >: B, Out](implicit
       flattener: Flatten.Aux[BB, Out]
-    ): Node[A, Out] =
-      Node { a => flattener(f(a)) }
+    ): Node[A, Out] = {
+      val currentF    = this.f
+      val currentNode = this
+
+      try {
+        val clazz           = this.getClass
+        val isParallelField = clazz.getDeclaredField("isParallel")
+        isParallelField.setAccessible(true)
+        val isParallel = isParallelField.get(this).asInstanceOf[Boolean]
+
+        if (isParallel) {
+          val leftField  = clazz.getDeclaredField("leftNode")
+          val rightField = clazz.getDeclaredField("rightNode")
+          leftField.setAccessible(true)
+          rightField.setAccessible(true)
+
+          val left  = leftField.get(this)
+          val right = rightField.get(this)
+
+          val wasConcurrent =
+            try {
+              val field = clazz.getDeclaredField("isConcurrent")
+              field.setAccessible(true)
+              field.get(this).asInstanceOf[Boolean]
+            } catch {
+              case _: NoSuchFieldException => false
+            }
+
+          new Node[A, Out] {
+            val f: A => Out                          = (a: A) => flattener(currentF(a))
+            override val metadata: Any               = None
+            override def getLineage: Option[Lineage] = None
+
+            private[etl4s] val leftNode: Any         = left
+            private[etl4s] val rightNode: Any        = right
+            private[etl4s] val isParallel: Boolean   = true
+            private[etl4s] val isConcurrent: Boolean = wasConcurrent
+          }
+        } else {
+          Node { a => flattener(currentF(a)) }
+        }
+      } catch {
+        case _: NoSuchFieldException | _: IllegalAccessException =>
+          Node { a => flattener(currentF(a)) }
+      }
+    }
   }
 
   /** Node companion object with factory methods */
@@ -1613,6 +1752,45 @@ package object etl4s {
         Lineage(name, inputs, outputs, upstreams, schedule, cluster)
       )
     }
+
+    /**
+     * Generates a DOT graph representation of this node or pipeline.
+     * 
+     * If the node is a composed pipeline (created with ~>, &, or &>), this will show
+     * the entire flow including parallel groups. Otherwise, it shows a single node.
+     *
+     * @return DOT graph string that can be visualized with Graphviz
+     */
+    def toDot: String = {
+      val structure = PipelineIntrospection.extractStructure(node)
+      PipelineIntrospection.generateDotFromStructure(structure)
+    }
+
+    /**
+     * Generates a Mermaid graph representation of this node or pipeline.
+     * 
+     * If the node is a composed pipeline (created with ~>, &, or &>), this will show
+     * the entire flow including parallel groups. Otherwise, it shows a single node.
+     *
+     * @return Mermaid graph string that can be visualized in GitHub, etc.
+     */
+    def toMermaid: String = {
+      val structure = PipelineIntrospection.extractStructure(node)
+      PipelineIntrospection.generateMermaidFromStructure(structure)
+    }
+
+    /**
+     * Generates a JSON representation of this node or pipeline.
+     * 
+     * If the node is a composed pipeline (created with ~>, &, or &>), this will show
+     * the entire flow including parallel groups. Otherwise, it shows a single node.
+     *
+     * @return JSON string with pipeline structure information
+     */
+    def toJson: String = {
+      val structure = PipelineIntrospection.extractStructure(node)
+      PipelineIntrospection.generateJsonFromStructure(structure)
+    }
   }
 
   /**
@@ -1642,6 +1820,118 @@ package object etl4s {
       reader.withLineage(
         Lineage(name, inputs, outputs, upstreams, schedule, cluster)
       )
+    }
+
+    /**
+     * Assigns a name to this reader for pipeline visualization.
+     *
+     * @param name the name to assign to this reader
+     * @return a new Reader with the name attached as lineage
+     */
+    def named(name: String)(implicit rTag: ClassTag[R]): Reader[R, A] = {
+      val readerTypeName = formatReaderTypeName(rTag.runtimeClass.getName)
+      val updatedReader  = reader.withLineage(Lineage(name = name))
+      updatedReader.copy(metadata = (updatedReader.metadata, readerTypeName))
+    }
+
+    private def formatReaderTypeName(className: String): String = {
+      val simple = if (className.contains("$")) {
+        className.split('$').last
+      } else if (className.contains(".")) {
+        className.split('.').last
+      } else {
+        className
+      }
+      simple
+        .replaceAll("java\\.lang\\.", "")
+        .replaceAll("scala\\.Predef\\.", "")
+        .replaceAll("scala\\.package\\.", "")
+    }
+  }
+
+  /**
+   * Extension methods for Reader-wrapped Nodes to support pipeline visualization.
+   */
+  implicit class ReaderNodeLineageOps[R, A, B](val reader: Reader[R, Node[A, B]]) {
+
+    /**
+     * Assigns a name to this reader-wrapped node for pipeline visualization.
+     */
+    def named(name: String)(implicit
+      rTag: ClassTag[R],
+      aTag: ClassTag[A],
+      bTag: ClassTag[B]
+    ): Reader[R, Node[A, B]] = {
+      val readerTypeName = formatReaderTypeName(rTag.runtimeClass.getName)
+      val inputType      = formatTypeName(aTag.runtimeClass.getName)
+      val outputType     = formatTypeName(bTag.runtimeClass.getName)
+
+      val wrappedRun: R => Node[A, B] = (ctx: R) => {
+        val node = reader.run(ctx)
+        new Node[A, B] {
+          val f: A => B                            = node.f
+          override val metadata: Any               = node.metadata
+          override def getLineage: Option[Lineage] = Some(Lineage(name = name))
+
+          // Store type information for visualization
+          private[etl4s] val typeInfo: (String, String) = (inputType, outputType)
+          private[etl4s] val readerType: String         = readerTypeName
+        }
+      }
+
+      Reader(wrappedRun).withLineage(Lineage(name = name))
+    }
+
+    /**
+     * Generates a DOT graph representation of this reader-wrapped pipeline.
+     */
+    def toDot(ctx: R): String = {
+      val node = reader.run(ctx)
+      node.toDot
+    }
+
+    /**
+     * Generates a Mermaid graph representation of this reader-wrapped pipeline.
+     */
+    def toMermaid(ctx: R): String = {
+      val node = reader.run(ctx)
+      node.toMermaid
+    }
+
+    /**
+     * Generates a JSON representation of this reader-wrapped pipeline.
+     */
+    def toJson(ctx: R): String = {
+      val node = reader.run(ctx)
+      node.toJson
+    }
+
+    private def formatReaderTypeName(className: String): String = {
+      val simple = if (className.contains("$")) {
+        className.split('$').last
+      } else if (className.contains(".")) {
+        className.split('.').last
+      } else {
+        className
+      }
+      simple
+        .replaceAll("java\\.lang\\.", "")
+        .replaceAll("scala\\.Predef\\.", "")
+        .replaceAll("scala\\.package\\.", "")
+    }
+
+    private def formatTypeName(className: String): String = {
+      val simple = if (className.contains("$")) {
+        className.split('$').last
+      } else if (className.contains(".")) {
+        className.split('.').last
+      } else {
+        className
+      }
+      simple
+        .replaceAll("java\\.lang\\.", "")
+        .replaceAll("scala\\.Predef\\.", "")
+        .replaceAll("scala\\.package\\.", "")
     }
   }
 
@@ -2507,6 +2797,498 @@ package object etl4s {
       val ind = "    " * indent
       builder.append(s"""${ind}"$name" [shape=ellipse, style=filled,""" + "\n")
       builder.append(s"""${ind}    fillcolor="#f3e5f5", color="#7b1fa2", fontsize=10];""" + "\n")
+    }
+  }
+
+  /**
+   * Represents a component in a pipeline for visualization purposes.
+   */
+  case class PipelineComponent(
+    name: String,
+    inputType: String,
+    outputType: String,
+    readerType: Option[String] = None
+  )
+
+  /**
+   * Utilities for introspecting pipeline structure and generating visualizations.
+   */
+  object PipelineIntrospection {
+
+    /**
+     * Represents the structure of a pipeline including parallel groups.
+     */
+    sealed trait PipelineStructure
+    case class SequentialNode(component: PipelineComponent) extends PipelineStructure
+    case class ParallelGroup(
+      components: List[PipelineComponent],
+      aggregateOutput: String,
+      isConcurrent: Boolean = false
+    ) extends PipelineStructure
+
+    /**
+     * Extracts all components from a node, recursively decomposing composed pipelines.
+     */
+    def extractComponents[A, B](node: Node[A, B]): List[PipelineComponent] = {
+      val structure = extractStructure(node)
+      flattenStructure(structure)
+    }
+
+    /**
+     * Extracts the structure of a pipeline, preserving parallel groups.
+     */
+    def extractStructure[A, B](node: Node[A, B]): List[PipelineStructure] = {
+      try {
+        val clazz = node.getClass
+
+        val isParallelField =
+          try {
+            val field = clazz.getDeclaredField("isParallel")
+            field.setAccessible(true)
+            field.get(node).asInstanceOf[Boolean]
+          } catch {
+            case _: NoSuchFieldException => false
+          }
+
+        if (isParallelField) {
+          val leftField  = clazz.getDeclaredField("leftNode")
+          val rightField = clazz.getDeclaredField("rightNode")
+          leftField.setAccessible(true)
+          rightField.setAccessible(true)
+
+          val left  = leftField.get(node).asInstanceOf[Node[_, _]]
+          val right = rightField.get(node).asInstanceOf[Node[_, _]]
+
+          val leftStructure  = extractStructure(left.asInstanceOf[Node[Any, Any]])
+          val rightStructure = extractStructure(right.asInstanceOf[Node[Any, Any]])
+
+          val allComponents = scala.collection.mutable.ListBuffer[PipelineComponent]()
+
+          leftStructure.foreach {
+            case SequentialNode(comp)       => allComponents += comp
+            case ParallelGroup(comps, _, _) => allComponents ++= comps
+          }
+
+          rightStructure.foreach {
+            case SequentialNode(comp)       => allComponents += comp
+            case ParallelGroup(comps, _, _) => allComponents ++= comps
+          }
+
+          val aggregateOutput = inferAggregateOutputType(node, allComponents.toList)
+
+          val isConcurrent =
+            try {
+              val field = clazz.getDeclaredField("isConcurrent")
+              field.setAccessible(true)
+              field.get(node).asInstanceOf[Boolean]
+            } catch {
+              case _: NoSuchFieldException => false
+            }
+
+          List(ParallelGroup(allComponents.toList, aggregateOutput, isConcurrent))
+        } else {
+          val leftField  = clazz.getDeclaredField("leftNode")
+          val rightField = clazz.getDeclaredField("rightNode")
+          leftField.setAccessible(true)
+          rightField.setAccessible(true)
+
+          val left  = leftField.get(node).asInstanceOf[Node[_, _]]
+          val right = rightField.get(node).asInstanceOf[Node[_, _]]
+
+          val leftStructure  = extractStructure(left.asInstanceOf[Node[Any, Any]])
+          val rightStructure = extractStructure(right.asInstanceOf[Node[Any, Any]])
+
+          leftStructure ++ rightStructure
+        }
+      } catch {
+        case _: NoSuchFieldException | _: IllegalAccessException =>
+          List(SequentialNode(nodeToComponent(node)))
+      }
+    }
+
+    /**
+     * Flattens the structure into a list of components.
+     */
+    private def flattenStructure(structure: List[PipelineStructure]): List[PipelineComponent] = {
+      structure.flatMap {
+        case SequentialNode(comp)       => List(comp)
+        case ParallelGroup(comps, _, _) => comps
+      }
+    }
+
+    /**
+     * Infers the aggregate output type of a parallel composition.
+     */
+    private def inferAggregateOutputType[A, B](
+      node: Node[A, B],
+      components: List[PipelineComponent]
+    ): String = {
+      if (components.size >= 2) {
+        val outputTypes = components.map(_.outputType).filter(_ != "?")
+        if (outputTypes.nonEmpty) {
+          return s"(${outputTypes.mkString(", ")})"
+        }
+      }
+      val (_, outputType) =
+        try {
+          val clazz         = node.getClass
+          val typeInfoField = clazz.getDeclaredField("typeInfo")
+          typeInfoField.setAccessible(true)
+          typeInfoField.get(node).asInstanceOf[(String, String)]
+        } catch {
+          case _: NoSuchFieldException | _: IllegalAccessException =>
+            inferTypesFromFunction(node)
+        }
+
+      // Clean up tuple type names
+      outputType
+        .replaceAll("Tuple2", "")
+        .replaceAll("scala\\.Tuple2", "")
+    }
+
+    /**
+     * Converts a single node to a pipeline component.
+     */
+    private def nodeToComponent[A, B](node: Node[A, B]): PipelineComponent = {
+      val name = node.getLineage.map(_.name).getOrElse("???")
+
+      val (inputType, outputType) =
+        try {
+          val clazz         = node.getClass
+          val typeInfoField = clazz.getDeclaredField("typeInfo")
+          typeInfoField.setAccessible(true)
+          typeInfoField.get(node).asInstanceOf[(String, String)]
+        } catch {
+          case _: NoSuchFieldException | _: IllegalAccessException =>
+            inferTypesFromFunction(node)
+        }
+
+      val readerType =
+        try {
+          val clazz           = node.getClass
+          val readerTypeField = clazz.getDeclaredField("readerType")
+          readerTypeField.setAccessible(true)
+          Some(readerTypeField.get(node).asInstanceOf[String])
+        } catch {
+          case _: NoSuchFieldException | _: IllegalAccessException =>
+            None
+        }
+
+      PipelineComponent(name, inputType, outputType, readerType)
+    }
+
+    /**
+     * Attempts to infer input/output types from the node's function.
+     */
+    private def inferTypesFromFunction[A, B](node: Node[A, B]): (String, String) = {
+      try {
+        val fMethod     = node.getClass.getMethod("f")
+        val functionObj = fMethod.invoke(node)
+
+        if (functionObj != null) {
+          val functionClass = functionObj.getClass
+          val applyMethods  = functionClass.getMethods.filter(_.getName == "apply")
+
+          if (applyMethods.nonEmpty) {
+            val applyMethod = applyMethods.head
+            val paramTypes  = applyMethod.getParameterTypes
+            val returnType  = applyMethod.getReturnType
+
+            val inputType = if (paramTypes.nonEmpty) {
+              formatClassName(paramTypes(0).getName)
+            } else "?"
+
+            val outputType = formatClassName(returnType.getName)
+
+            (inputType, outputType)
+          } else {
+            ("?", "?")
+          }
+        } else {
+          ("?", "?")
+        }
+      } catch {
+        case _: Exception => ("?", "?")
+      }
+    }
+
+    /**
+     * Formats a class name to be more readable.
+     */
+    private def formatClassName(className: String): String = {
+      val simple = if (className.contains("$")) {
+        className.split('$').last
+      } else if (className.contains(".")) {
+        className.split('.').last
+      } else {
+        className
+      }
+
+      simple
+        .replaceAll("java\\.lang\\.", "")
+        .replaceAll("scala\\.Predef\\.", "")
+        .replaceAll("scala\\.package\\.", "")
+        .replaceAll("scala\\.runtime\\.BoxedUnit", "Unit")
+        .replaceAll("Tuple2", "(_, _)")
+        .replaceAll("Tuple3", "(_, _, _)")
+        .replaceAll("Tuple4", "(_, _, _, _)")
+    }
+
+    /**
+     * Generates a DOT graph from pipeline structure.
+     */
+    def generateDotFromStructure(structure: List[PipelineStructure]): String = {
+      val builder = new StringBuilder
+      builder.append("digraph Pipeline {\n")
+      builder.append("    rankdir=LR; bgcolor=\"transparent\";\n")
+      builder.append(
+        "    node [fontsize=12, fontname=\"Arial\", shape=box, style=\"filled,rounded\"];\n"
+      )
+      builder.append("    edge [fontsize=10, arrowsize=0.8];\n\n")
+
+      var nodeCounter = 0
+      val connectionPoints =
+        scala.collection.mutable.ListBuffer[(String, String)]() // (entryPoint, exitPoint)
+      var lastAggregateOutput: Option[String] = None
+
+      structure.foreach {
+        case SequentialNode(comp) =>
+          val nodeId = s"node$nodeCounter"
+          // If this node follows a parallel group, use the aggregate output as its input type
+          val adjustedComp = lastAggregateOutput match {
+            case Some(aggType) if comp.inputType.contains("Tuple") || comp.inputType == "(_, _)" =>
+              comp.copy(inputType = aggType)
+            case _ => comp
+          }
+          val label = buildDotLabel(adjustedComp)
+          builder.append(s"""    $nodeId [$label, fillcolor="#e3f2fd", color="#1976d2"];\n""")
+          connectionPoints += ((nodeId, nodeId))
+          lastAggregateOutput = None
+          nodeCounter += 1
+
+        case ParallelGroup(comps, aggregateOutput, isConcurrent) =>
+          val groupId    = s"group$nodeCounter"
+          val groupStart = nodeCounter
+
+          builder.append(s"\n    subgraph cluster_$groupId {\n")
+          builder.append(s"""        label="";\n""")
+          builder.append(s"""        style="dashed";\n""")
+          builder.append(s"""        color="#9c27b0";\n\n""")
+
+          val entryPoint = s"entry$groupStart"
+          builder.append(
+            s"""        $entryPoint [label="", shape=point, width=0.01, height=0.01];\n"""
+          )
+
+          comps.foreach { comp =>
+            val nodeId = s"node$nodeCounter"
+            val label  = buildDotLabel(comp)
+            builder.append(s"""        $nodeId [$label, fillcolor="#f3e5f5", color="#9c27b0"];\n""")
+            builder.append(s"        $entryPoint -> $nodeId [style=invis];\n")
+            nodeCounter += 1
+          }
+
+          val aggregateId = s"aggregate$groupStart"
+          builder.append(
+            s"""\n        $aggregateId [label=<$aggregateOutput>, shape=diamond, style=filled, fillcolor="#fff3e0", color="#ff6f00", fontsize=8];\n"""
+          )
+
+          for (i <- groupStart until nodeCounter) {
+            builder.append(s"        node$i -> $aggregateId;\n")
+          }
+
+          builder.append("    }\n\n")
+
+          connectionPoints += ((entryPoint, aggregateId))
+          lastAggregateOutput = Some(aggregateOutput)
+      }
+
+      for (i <- 0 until connectionPoints.size - 1) {
+        val (_, exitPoint)  = connectionPoints(i)
+        val (entryPoint, _) = connectionPoints(i + 1)
+        builder.append(s"    $exitPoint -> $entryPoint;\n")
+      }
+
+      builder.append("}\n")
+      builder.toString
+    }
+
+    /**
+     * Generates a DOT graph from pipeline components (legacy).
+     */
+    def generateDot(components: List[PipelineComponent]): String = {
+      val structure = components.map(c => SequentialNode(c))
+      generateDotFromStructure(structure)
+    }
+
+    /**
+     * Builds a DOT label with HTML formatting for smaller type signatures.
+     */
+    private def buildDotLabel(comp: PipelineComponent): String = {
+      val typeInfo = if (comp.inputType != "?" && comp.outputType != "?") {
+        s"""<BR/><FONT POINT-SIZE="9" COLOR="#666666">${comp.inputType} =&gt; ${comp.outputType}</FONT>"""
+      } else {
+        ""
+      }
+      val readerInfo = comp.readerType
+        .map(rt => s"""<BR/><FONT POINT-SIZE="9" COLOR="#9c27b0">Reader[$rt]</FONT>""")
+        .getOrElse("")
+
+      s"""label=<${comp.name}$typeInfo$readerInfo>"""
+    }
+
+    /**
+     * Generates a Mermaid graph from pipeline structure.
+     */
+    def generateMermaidFromStructure(structure: List[PipelineStructure]): String = {
+      val builder = new StringBuilder
+      builder.append("graph LR\n")
+      builder.append(
+        "    classDef nodeStyle fill:#e1f5fe,stroke:#01579b,stroke-width:2px,color:#000\n"
+      )
+      builder.append(
+        "    classDef parallelStyle fill:#f3e5f5,stroke:#9c27b0,stroke-width:2px,color:#000\n"
+      )
+      builder.append(
+        "    classDef aggregateStyle fill:#fff3e0,stroke:#ff6f00,stroke-width:2px,color:#000\n\n"
+      )
+
+      var nodeCounter = 0
+      val connectionPoints =
+        scala.collection.mutable.ListBuffer[(List[String], String)]() // (entryPoints, exitPoint)
+      var lastAggregateOutput: Option[String] = None
+
+      structure.foreach {
+        case SequentialNode(comp) =>
+          val nodeId = s"node$nodeCounter"
+          // If this node follows a parallel group, use the aggregate output as its input type
+          val adjustedComp = lastAggregateOutput match {
+            case Some(aggType) if comp.inputType.contains("Tuple") || comp.inputType == "(_, _)" =>
+              comp.copy(inputType = aggType)
+            case _ => comp
+          }
+          val mainLabel = adjustedComp.name
+          val typeInfo = if (adjustedComp.inputType != "?" && adjustedComp.outputType != "?") {
+            s"<br/><small>${adjustedComp.inputType} => ${adjustedComp.outputType}</small>"
+          } else {
+            ""
+          }
+          val readerInfo =
+            adjustedComp.readerType.map(rt => s"<br/><small>Reader[$rt]</small>").getOrElse("")
+
+          builder.append(s"""    $nodeId["$mainLabel$typeInfo$readerInfo"]\n""")
+          connectionPoints += ((List(nodeId), nodeId))
+          lastAggregateOutput = None
+          nodeCounter += 1
+
+        case ParallelGroup(comps, aggregateOutput, isConcurrent) =>
+          val groupStart      = nodeCounter
+          val parallelNodeIds = scala.collection.mutable.ListBuffer[String]()
+
+          comps.foreach { comp =>
+            val nodeId = s"node$nodeCounter"
+            parallelNodeIds += nodeId
+            val mainLabel = comp.name
+            val typeInfo = if (comp.inputType != "?" && comp.outputType != "?") {
+              s"<br/><small>${comp.inputType} => ${comp.outputType}</small>"
+            } else {
+              ""
+            }
+            val parallelLabel = if (isConcurrent) " &gt;" else " &"
+
+            builder.append(s"""    $nodeId["$mainLabel$parallelLabel$typeInfo"]\n""")
+            nodeCounter += 1
+          }
+
+          // Add aggregate output node
+          val aggregateId = s"aggregate$groupStart"
+          builder.append(s"""    $aggregateId{{$aggregateOutput}}\n""")
+
+          // Connect parallel nodes to aggregate
+          for (i <- groupStart until nodeCounter) {
+            builder.append(s"    node$i --> $aggregateId\n")
+          }
+
+          // Entry points are all the parallel nodes, exit point is the aggregate
+          connectionPoints += ((parallelNodeIds.toList, aggregateId))
+          // Store the aggregate output for the next sequential node
+          lastAggregateOutput = Some(aggregateOutput)
+      }
+
+      builder.append("\n")
+
+      // Connect sequential nodes and groups
+      for (i <- 0 until connectionPoints.size - 1) {
+        val (_, exitPoint)   = connectionPoints(i)
+        val (entryPoints, _) = connectionPoints(i + 1)
+
+        // Connect to all entry points of the next stage
+        entryPoints.foreach { entryPoint =>
+          builder.append(s"    $exitPoint --> $entryPoint\n")
+        }
+      }
+
+      builder.append("\n")
+      // Apply styles
+      for (i <- 0 until nodeCounter) {
+        builder.append(s"    class node$i nodeStyle\n")
+      }
+
+      builder.toString
+    }
+
+    /**
+     * Generates a Mermaid graph from pipeline components (legacy).
+     */
+    def generateMermaid(components: List[PipelineComponent]): String = {
+      val structure = components.map(c => SequentialNode(c))
+      generateMermaidFromStructure(structure)
+    }
+
+    /**
+     * Generates a JSON representation from pipeline structure.
+     */
+    def generateJsonFromStructure(structure: List[PipelineStructure]): String = {
+      val structureJson = structure
+        .map {
+          case SequentialNode(comp) =>
+            val readerPart = comp.readerType.map(rt => s""","readerType":"$rt"""").getOrElse("")
+            s"""{"type":"sequential","name":"${comp.name}","inputType":"${comp.inputType}","outputType":"${comp.outputType}"$readerPart}"""
+
+          case ParallelGroup(comps, aggregateOutput, isConcurrent) =>
+            val compsJson = comps
+              .map { comp =>
+                val readerPart = comp.readerType.map(rt => s""","readerType":"$rt"""").getOrElse("")
+                s"""{"name":"${comp.name}","inputType":"${comp.inputType}","outputType":"${comp.outputType}"$readerPart}"""
+              }
+              .mkString("[", ",", "]")
+            s"""{"type":"parallel","concurrent":$isConcurrent,"nodes":$compsJson,"aggregateOutput":"$aggregateOutput"}"""
+        }
+        .mkString("[", ",", "]")
+
+      s"""{"pipeline":$structureJson}"""
+    }
+
+    /**
+     * Generates a JSON representation from pipeline components (legacy).
+     */
+    def generateJson(components: List[PipelineComponent]): String = {
+      val structure = components.map(c => SequentialNode(c))
+      generateJsonFromStructure(structure)
+    }
+
+    /**
+     * Builds a label for a node showing name and types.
+     */
+    private def buildNodeLabel(comp: PipelineComponent, html: Boolean = true): String = {
+      val separator = if (html) "\\n" else "<br/>"
+      val typeInfo = if (comp.inputType != "?" && comp.outputType != "?") {
+        s"${separator}${comp.inputType} => ${comp.outputType}"
+      } else {
+        ""
+      }
+      val readerInfo = comp.readerType.map(rt => s"${separator}Reader[$rt]").getOrElse("")
+      s"${comp.name}$typeInfo$readerInfo"
     }
   }
 

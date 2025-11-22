@@ -1147,6 +1147,263 @@ class TelSpecs extends munit.FunSuite {
     assert(r.toMermaid.contains("r"))
   }
 
+  test("pipeline introspection - named nodes") {
+    val extract   = Node[String, Int](_.length).named("extract-length")
+    val transform = Node[Int, String](n => s"Length: $n").named("transform-format")
+    val load      = Node[String, Unit](println).named("load-print")
+
+    val pipeline = extract ~> transform ~> load
+
+    val dot = pipeline.toDot
+    assert(dot.contains("extract-length"))
+    assert(dot.contains("transform-format"))
+    assert(dot.contains("load-print"))
+    assert(dot.contains("->"))
+
+    val mermaid = pipeline.toMermaid
+    assert(mermaid.contains("extract-length"))
+    assert(mermaid.contains("transform-format"))
+    assert(mermaid.contains("load-print"))
+    assert(mermaid.contains("-->"))
+
+    val json = pipeline.toJson
+    assert(json.contains("extract-length"))
+    assert(json.contains("transform-format"))
+    assert(json.contains("load-print"))
+  }
+
+  test("pipeline introspection - shows actual types") {
+    val extract   = Node[String, Int](_.length).named("extract-length")
+    val transform = Node[Int, Double](_ * 2.5).named("transform-double")
+
+    val pipeline = extract ~> transform
+
+    val dot = pipeline.toDot
+    // Should show actual type names, not just A => B
+    assert(dot.contains("String") || dot.contains("Int") || dot.contains("Double"))
+
+    val json = pipeline.toJson
+    // Verify JSON contains type information
+    assert(json.contains("inputType"))
+    assert(json.contains("outputType"))
+  }
+
+  test("pipeline introspection - unnamed nodes show ??? but with types") {
+    val node1    = Node[String, Int](_.toInt)
+    val node2    = Node[Int, Double](_ * 2.5)
+    val pipeline = node1 ~> node2
+
+    val dot = pipeline.toDot
+    // Should show ??? for name
+    assert(dot.contains("???"))
+    // But should still show types (String, Int, Double, etc.)
+    assert(dot.contains("String") || dot.contains("Integer") || dot.contains("Int"))
+
+    val json = pipeline.toJson
+    assert(json.contains("???"))
+    // Types should be present in JSON
+    assert(json.contains("inputType"))
+    assert(json.contains("outputType"))
+  }
+
+  test("pipeline introspection - single node") {
+    val singleNode = Node[String, String](_.toUpperCase).named("uppercase")
+
+    val mermaid = singleNode.toMermaid
+    assert(mermaid.contains("uppercase"))
+    assert(mermaid.contains("graph LR"))
+  }
+
+  test("pipeline introspection - preserves execution") {
+    val extract   = Node[String, Int](_.length).named("extract")
+    val transform = Node[Int, String](n => s"Length: $n").named("transform")
+    val pipeline  = extract ~> transform
+
+    // Generate lineage shouldn't affect execution
+    val _      = pipeline.toDot
+    val result = pipeline.unsafeRun("hello")
+    assertEquals(result, "Length: 5")
+  }
+
+  test("pipeline introspection - complex pipeline") {
+    case class User(name: String, age: Int)
+    case class EnrichedUser(name: String, age: Int, category: String)
+
+    val parseUser = Node[String, User] { line =>
+      val parts = line.split(",")
+      User(parts(0), parts(1).toInt)
+    }.named("parse-user")
+
+    val enrichUser = Node[User, EnrichedUser] { user =>
+      val category = if (user.age < 18) "minor" else "adult"
+      EnrichedUser(user.name, user.age, category)
+    }.named("enrich-user")
+
+    val formatOutput = Node[EnrichedUser, String] { user =>
+      s"${user.name} (${user.age}) - ${user.category}"
+    }.named("format-output")
+
+    val pipeline = parseUser ~> enrichUser ~> formatOutput
+
+    val json = pipeline.toJson
+    assert(json.contains("parse-user"))
+    assert(json.contains("enrich-user"))
+    assert(json.contains("format-output"))
+
+    // Verify execution still works
+    val result = pipeline.unsafeRun("Alice,25")
+    assertEquals(result, "Alice (25) - adult")
+  }
+
+  test("pipeline introspection - Reader with named") {
+    case class Config(prefix: String)
+
+    val reader = Reader[Config, Node[String, String]] { config =>
+      Node[String, String](s => config.prefix + s)
+    }.named("prefixer")
+
+    // Reader should have lineage
+    assert(reader.getLineage.isDefined)
+    assertEquals(reader.getLineage.get.name, "prefixer")
+  }
+
+  test("pipeline introspection - Reader-wrapped nodes") {
+    case class Config(multiplier: Int)
+
+    val extract = Reader[Config, Node[String, Int]] { _ =>
+      Node[String, Int](_.length)
+    }.named("extract-length")
+
+    val transform = Reader[Config, Node[Int, Int]] { config =>
+      Node[Int, Int](_ * config.multiplier)
+    }.named("transform-multiply")
+
+    val pipeline = extract ~> transform
+    val config   = Config(10)
+    val node     = pipeline.provide(config)
+
+    // Should be able to generate lineage from the provided node
+    val dot = node.toDot
+    assert(dot.contains("extract-length"))
+    assert(dot.contains("transform-multiply"))
+
+    // Execution should still work
+    val result = node.unsafeRun("hello")
+    assertEquals(result, 50) // "hello".length * 10
+  }
+
+  test("pipeline introspection - Reader-wrapped with visualization") {
+    case class DbConfig(connectionString: String)
+
+    val reader = Reader[DbConfig, Node[String, String]] { config =>
+      Node[String, String](s => config.connectionString + ":" + s)
+    }.named("db-connector")
+
+    val config = DbConfig("localhost")
+
+    // Should be able to call visualization methods
+    val dot = reader.toDot(config)
+    assert(dot.contains("db-connector"))
+
+    val mermaid = reader.toMermaid(config)
+    assert(mermaid.contains("db-connector"))
+
+    val json = reader.toJson(config)
+    assert(json.contains("db-connector"))
+  }
+
+  test("pipeline introspection - type signatures are smaller") {
+    val extract = Node[String, Int](_.length).named("extract")
+    val dot     = extract.toDot
+
+    // DOT should use smaller font for types (POINT-SIZE="9")
+    assert(dot.contains("POINT-SIZE=\"9\"") || dot.contains("FONT"))
+  }
+
+  test("pipeline introspection - parallel composition with &") {
+    case class Person(name: String, age: Int)
+
+    val getName  = Node[Person, String](_.name).named("get-name")
+    val getAge   = Node[Person, Int](_.age).named("get-age")
+    val parallel = getName & getAge
+
+    val dot = parallel.toDot
+    assert(dot.contains("get-name"))
+    assert(dot.contains("get-age"))
+    assert(dot.contains("cluster"))
+    assert(dot.contains("diamond"))
+
+    val json = parallel.toJson
+    assert(json.contains("parallel"))
+    assert(json.contains("get-name"))
+    assert(json.contains("get-age"))
+
+    // Execution should still work
+    val result = parallel.unsafeRun(Person("Alice", 30))
+    assertEquals(result, ("Alice", 30))
+  }
+
+  test("pipeline introspection - concurrent parallel composition with &>") {
+    import scala.concurrent.ExecutionContext.Implicits.global
+
+    val slow1 = Node[String, Int](s => { Thread.sleep(10); s.length }).named("slow-length")
+    val slow2 = Node[String, String](s => { Thread.sleep(10); s.toUpperCase }).named("slow-upper")
+    val concurrent = slow1 &> slow2
+
+    val mermaid = concurrent.toMermaid
+    // Should show both nodes
+    assert(mermaid.contains("slow-length"))
+    assert(mermaid.contains("slow-upper"))
+    // Should indicate concurrent execution
+    assert(mermaid.contains("&gt;") || mermaid.contains("Concurrent"))
+
+    // Execution should still work
+    val result = concurrent.unsafeRun("hello")
+    assertEquals(result, (5, "HELLO"))
+  }
+
+  test("pipeline introspection - sequential then parallel") {
+    case class Person(name: String, age: Int)
+
+    val parse = Node[String, Person] { line =>
+      val parts = line.split(",")
+      Person(parts(0), parts(1).toInt)
+    }.named("parse")
+
+    val getName = Node[Person, String](_.name).named("get-name")
+    val getAge  = Node[Person, Int](_.age).named("get-age")
+
+    val pipeline = parse ~> (getName & getAge)
+
+    val dot = pipeline.toDot
+    // Should show all three nodes
+    assert(dot.contains("parse"))
+    assert(dot.contains("get-name"))
+    assert(dot.contains("get-age"))
+    // Should show connection from parse to parallel group
+    assert(dot.contains("->"))
+
+    // Execution should work
+    val result = pipeline.unsafeRun("Alice,30")
+    assertEquals(result, ("Alice", 30))
+  }
+
+  test("pipeline introspection - parallel shows aggregate output type with contents") {
+    val node1    = Node[String, Int](_.length).named("length")
+    val node2    = Node[String, Boolean](_.nonEmpty).named("non-empty")
+    val parallel = node1 & node2
+
+    val json = parallel.toJson
+    assert(json.contains("aggregateOutput"))
+    assert(json.toLowerCase.contains("int"))
+    assert(json.toLowerCase.contains("boolean"))
+    assert(json.contains("(") && json.contains(")"))
+
+    val dot = parallel.toDot
+    assert(dot.toLowerCase.contains("int"))
+    assert(dot.toLowerCase.contains("boolean"))
+  }
+
 }
 
 class ValidationSpecs extends munit.FunSuite {
