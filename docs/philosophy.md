@@ -1,10 +1,12 @@
 # Philosophy
 
-## Design principles
+## Discipline Upon Assignment
 
-**Discipline upon assignment**  
-At the end of the day, pipelines are just functions: but raw composition has limitations and monadic stacks don't impose a
-total discipline over creating new bindings.
+**etl4s** espouses the idea that is is highly beneficial to banish the assignment (`=`) operator
+when stitching together programs of dataflow.
+
+This is born from the fact that raw composition has limitations and monadic stacks
+don't impose a total discipline over the assingment operator and creating new bindings.
 
 Say we have
 ```scala
@@ -32,10 +34,28 @@ for {
 Our eyes now need to do:
 `filterDate > endDate > e > startDate > t > (Back to filterDate) > l > (Back to startDate) > (Back to endDate)`
 
-The limitation of function composition is that in 90% of cases, configuration parameters run orthogonal to the actual dataflow.
-We have something
+## Controlled fan-out with reconvergence
+**etl4s** deliberately channels you into a linearized "Function1 model" of "give me ONE input, I'll give you ONE output".
 
-**Metrics as business logic**  
+That said, it also lets you snap together pipelines with multiple input sources tupled together, easily fork-off conditional
+branches with heterogeneous types, and chain together side-outputs.
+
+The idea is to give the programmer clear little two ended pipes basically,
+not multi-sided puzzle pieces.
+
+Imagine we have:
+```scala
+import et4ls._
+
+val p = (e1 & e2) ~> t ~> log >> saveS3 >> .If(_ > 0)(enrich ~> dbLoad)
+                                           .Else(process ~> purgatoryLoad)
+```
+
+Different branches can have different types and requirements, but once stitched together you have a single node
+that has intersected upstream, and unioned downstream the branch types.
+
+
+## Metrics as business logic
 In OLAP, observability metrics ARE business logic. "Records processed", "validation failures", "data quality scores" - these aren't infrastructure concerns. They're the product. etl4s lets you write metrics inline with `Tel` calls. Zero cost until you provide an implementation.
 
 ## What etl4s is NOT
