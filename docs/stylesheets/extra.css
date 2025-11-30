@@ -2,6 +2,16 @@
 
 :root {
   --mono: "SF Mono", Monaco, "Cascadia Code", Menlo, Consolas, monospace;
+  --sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+}
+
+/* Consistent font everywhere */
+body,
+.md-typeset,
+.md-nav,
+.md-header,
+.md-footer {
+  font-family: var(--sans);
 }
 
 /* Clean typography */
@@ -261,10 +271,20 @@
     width: auto;
     flex: 1 1 50%;
   }
-  
+
   .md-footer__inner {
     display: flex;
     justify-content: space-between;
+  }
+
+  /* Center content when sidebar is hidden */
+  .md-content {
+    margin: 0 auto;
+  }
+
+  .md-content__inner {
+    margin: 0 auto;
+    max-width: 700px;
   }
 }
 

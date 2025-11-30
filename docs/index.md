@@ -5,13 +5,15 @@ hide:
 
 <style>
 /* Keep sidebar but hide TOC on index page */
-.md-sidebar--secondary {
+.md-sidebar--secondary,
+.md-sidebar--primary {
   display: none;
 }
 
 .md-content__inner {
   max-width: 700px !important;
   padding: 0 1rem !important;
+  margin: 0 auto !important;
 }
 
 .intro-header {
@@ -26,6 +28,7 @@ hide:
 
 .intro-header h1 {
   font-size: 2.5rem;
+  font-weight: 300;
   margin: 0.5rem 0;
   border: none !important;
   padding: 0 !important;
@@ -67,16 +70,25 @@ hide:
   opacity: 0.85;
 }
 
+/* Zen dividers */
+.md-typeset hr {
+  margin: 1.25rem auto;
+  border: none;
+  height: 1px;
+  background: var(--md-default-fg-color--lightest);
+  max-width: 120px;
+}
+
 /* Mobile adjustments */
 @media (max-width: 768px) {
   .intro-header h1 {
     font-size: 2rem;
   }
-  
+
   .intro-header p {
     font-size: 1rem;
   }
-  
+
   .intro-buttons {
     flex-direction: column;
     align-items: stretch;
@@ -84,7 +96,7 @@ hide:
     margin-left: auto;
     margin-right: auto;
   }
-  
+
   .intro-buttons a {
     text-align: center;
   }
@@ -94,7 +106,7 @@ hide:
 <div class="intro-header">
   <img src="assets/etl4s-logo.png" alt="etl4s" />
   <h1>etl4s</h1>
-  <p>Whiteboard-style ETL for Scala</p>
+  <p>Powerful, whiteboard-style ETL</p>
   <div class="intro-buttons">
     <a href="installation/" class="btn-primary">Get Started</a>
     <a href="https://scastie.scala-lang.org/mattlianje/1280QhQ5RWODgizeXOIsXA/5" target="_blank" class="btn-secondary">Try in Scastie</a>
@@ -102,117 +114,113 @@ hide:
   </div>
 </div>
 
-```scala
-import etl4s._
+=== "Chain"
 
-/* Define your building blocks */
-val fiveExtract = Extract(5)
-val timesTwo    = Transform[Int, Int](_ * 2)
-val exclaim     = Transform[Int, String](n => s"$n!")
-val consoleLoad = Load[String, Unit](println(_))
+    ```scala
+    import etl4s._
 
-/* Add config with .requires */
-val dbLoad = Load[String, Unit].requires[String] { dbType => s =>
-  println(s"Saving to $dbType DB: $s")
-}
+    val extract = Extract(List(1, 2, 3, 4, 5))
+    val double  = Transform[List[Int], List[Int]](_.map(_ * 2))
+    val sum     = Transform[List[Int], Int](_.sum)
+    val print   = Load[Int, Unit](n => println(s"Result: $n"))
 
-/* Stitch your pipeline */
-val pipeline =
-  fiveExtract ~> timesTwo ~> exclaim ~> (consoleLoad & dbLoad)
+    val pipeline = extract ~> double ~> sum ~> print
 
-/* Provide config, then run */
-pipeline.provide("sqlite").unsafeRun(())
-```
+    pipeline.unsafeRun(())
+    // Result: 30
+    ```
 
-## What
+=== "Parallel"
 
-**etl4s** is a single-file, zero-dependency Scala library for expressing code as whiteboard-style pipelines. Chain operations with `~>`, parallelize with `&`, inject dependencies with `.requires`.
+    ```scala
+    import etl4s._
 
-## Why
+    val extract = Extract(100)
+    val half    = Transform[Int, Int](_ / 2)
+    val double  = Transform[Int, Int](_ * 2)
+    val format  = Transform[(Int, Int), String] { case (h, d) =>
+      s"half=$h, double=$d"
+    }
 
-Ultimately, these nodes and pipelines are just reifications of functions and values with a few extra niceties. But without imposed discipline,
-data-orgs drive themselves to their knees with sprawling, framework coupled analytical codebases.
+    val pipeline = extract ~> (half & double) ~> format
 
-**etl4s** is a lightweight DSL that enforces type-safety, makes dependencies explicit, and lets you build with pure functions.
+    pipeline.unsafeRun(())
+    // "half=50, double=200"
+    ```
 
-## What it does
+=== "Config"
 
-Makes structure explicit. Makes dependencies visible. Makes composition safe.
+    ```scala
+    import etl4s._
 
-**For engineers:**  
-You write `extract ~> transform ~> load`. That's the pipeline. Inject dependencies with `.requires[DbConfig]`.
+    case class DbConfig(host: String, port: Int)
 
-- **Already a pure-fp zealot?** etl4s is an ultralight effect system with no fiber runtime. Easy to vendor or extend since there's just one core abstraction: `Node[In, Out]`.
-- **New to functional programming?** etl4s makes writing and refactoring code feel like snapping Legos together. No category theory jargon required (though you can ease into it).
+    val extract = Extract(List("a", "b", "c"))
+    val save = Load[List[String], Unit].requires[DbConfig] { db => data =>
+      println(s"Saving ${data.size} rows to ${db.host}:${db.port}")
+    }
 
-**For managers:**  
-Impose structure on analytical code that survives people coming and going. Engineers ramp up in days because structure is in the code, not someone's head. New hires (and LLM's) read `e ~> (t1 & t2) ~> l` and just "get it".
+    val pipeline = extract ~> save
 
-You get compile-time generated diagrams of all pipelines for free. When people leave, their work stays readable and modular.
+    pipeline.provide(DbConfig("localhost", 5432)).unsafeRun(())
+    // Saving 3 rows to localhost:5432
+    ```
 
-## Is it a framework?
+=== "Diagram"
 
-No - and never will be. It's an ultralight library that doesn't impose a worldview. Try it zero-cost on one pipeline today.
+    ```scala
+    import etl4s._
 
-## Where to use
+    val e = Extract(1).named("source")
+    val t = Transform[Int, Int](_ + 1).named("increment")
+    val l = Load[Int, Unit](println).named("sink")
 
-Anywhere: local scripts, web servers, alongside any framework like Spark or Flink.
+    val pipeline = e ~> t ~> l
 
-## Production ready?
+    println(pipeline.toMermaid)
+    ```
 
-Yes - it powers the World's grocery deliveries at [Instacart](https://www.instacart.com/).
+    ```mermaid
+    graph LR
+      source["source"] --> increment["increment"]
+      increment["increment"] --> sink["sink"]
+    ```
 
-## How it works
+---
 
-**What is `~>`**
+**Single file. Zero dependencies. Pure Scala.**
 
-`~>` connects pipeline stages. Its an overloaded symbolic operator that works with plain nodes (`Node[In, Out]`) or nodes that need config (`Reader[Env, Node[In, Out]]`).
+A library, not a framework. Without discipline, data teams drown in sprawling, coupled codebases. etl4s imposes one constraint: `extract ~> transform ~> load`. Chain with `~>`, parallelize with `&`, inject config with `.requires`. Works anywhere: scripts, Spark, Flink, your server.
 
-Mix them freely - the operator figures out what environment is needed. If two stages need different configs, it automatically merges them (as long as the config types are compatible).
+---
 
-**Type safety at compile time**  
-`~>` connects nodes. Types must match or it won't compile.
+**Pipelines are values.**
 
-**Config dependencies made visible**  
-Use `.requires[DbConfig]` on any node. Pass it with `.provide(config)` at call site. No globals. No guessing what a pipeline needs.
+Lazy, reified, composable. Pass them around, test them in isolation, generate diagrams from them. Teams share pipelines like Lego bricks. Refactoring is safe because types enforce the boundaries.
 
-**Pipelines as values**  
-Every pipeline is a `Node[In, Out]`. Share them, compose them, test them. Snap together with `~>` and `&`.
-This ability to share and stitch your pipelines as values is the bedrock of self-serve.
+---
 
-**Metrics in business logic**  
-In OLAP, metrics ARE business logic. Sprinkle `Tel` calls in your functions - zero-cost by default, light up in prod with your implementation:
+**For engineers and teams:**
 
-```scala
-val process = Transform[List[User], Int] { users =>
-  Tel.addCounter("users_processed", users.size)
-  users.filter(_.isValid).length
-}
-```
+Write `extract ~> transform ~> load`. Types must match or it won't compile. One core abstraction: `Node[In, Out]`. Structure survives people leaving. New hires read `e ~> (t1 & t2) ~> l` and get it. Auto-generated diagrams document your pipelines.
 
-**Execution visibility**  
-Call `.unsafeRunTrace()` to get full execution context - logs, errors, timing. No manual wiring needed:
+---
 
-```scala
-val trace = pipeline.unsafeRunTrace(data)
-trace.logs                /* everything logged during execution */
-trace.errors              /* all errors encountered */
-trace.timeElapsedMillis   /* how long it took */
-```
+**Under the hood:**
 
-Any stage can log with `Trace.log()` or record errors with `Trace.error()`. Downstream stages see upstream issues automatically via `Trace.current` - no passing state through function parameters.
+A lightweight effect system built on a Reader monad with an overloaded `~>` that infers and merges environments. No fiber runtime, no magic. [Details in FAQ](faq.md#how-it-works).
 
-**Automatic lineage**  
-Nodes are objects. Attach custom metadata at compile time (impossible with raw functions), then call `.toMermaid` or `.toDot` for diagrams.
+---
 
-## Next steps
+<p style="text-align: center; opacity: 0.8; margin: 2rem 0;">
+  Battle-tested at <a href="https://www.instacart.com/">Instacart</a> 🥕
+</p>
 
-**[Installation](installation.md)** - Add to your project
+---
 
-**[Core Concepts](core-concepts.md)** - Node, `~>`, `&`, `.requires`
+## Get started
 
-**[Your First Pipeline](first-pipeline.md)** - Build something in 5 minutes
-
-**[Examples](examples.md)** - Common patterns and recipes
-
-**[API Reference](operators.md)** - All the operators and methods
+- **[Installation](installation.md)**: Add to your project
+- **[Your First Pipeline](first-pipeline.md)**: Build something in 5 minutes
+- **[Core Concepts](core-concepts.md)**: Node, `~>`, `&`, `.requires`
+- **[Examples](examples.md)**: Common patterns
