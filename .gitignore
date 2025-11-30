@@ -1,0 +1,25 @@
+# Scala build tools
+.bsp/
+.scala-build/
+.metals/
+.bloop/
+project/target/
+project/project/
+target/
+
+# IDE
+.idea/
+.vscode/
+*.iml
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+
+# Temporary files
+*.swp
+*.swo
+*~
