@@ -978,6 +978,52 @@ package object etl4s {
   def tap[A](f: A => Any): Node[A, A] = Node[A, A](a => { f(a); a })
 
   /**
+   * Implicit conversion from Function1 to Node.
+   * 
+   * This allows you to use plain functions directly as Nodes without wrapping.
+   * 
+   * @example
+   * {{{
+   * val length: String => Int = _.length
+   * val upper: String => String = _.toUpperCase
+   * 
+   * // Can use directly without Node(...)
+   * val pipeline = length ~> upper
+   * }}}
+   */
+  implicit def function1ToNode[A, B](f: A => B): Node[A, B] = Node(f)
+
+  /**
+   * Marker trait for validation checks that can be used in Reader.ensure()
+   */
+  sealed trait ValidationCheck[T, A] {
+    def toCurried: T => A => Option[String]
+  }
+
+  /**
+   * Context-aware validation check (already curried)
+   */
+  case class CurriedCheck[T, A](f: T => A => Option[String]) extends ValidationCheck[T, A] {
+    def toCurried: T => A => Option[String] = f
+  }
+
+  /**
+   * Plain validation check (will be lifted to ignore context)
+   */
+  case class PlainCheck[T, A](f: A => Option[String]) extends ValidationCheck[T, A] {
+    def toCurried: T => A => Option[String] = _ => f
+  }
+
+  /**
+   * Implicit conversions for validation checks
+   */
+  implicit def curriedToCheck[T, A](f: T => A => Option[String]): ValidationCheck[T, A] =
+    CurriedCheck(f)
+
+  implicit def plainToCheck[T, A](f: A => Option[String]): ValidationCheck[T, A] =
+    PlainCheck(f)
+
+  /**
    * Access to current pipeline execution state.
    * 
    * Provides unified access to the currently executing pipeline's runtime state,
@@ -1665,6 +1711,465 @@ package object etl4s {
       jsonField("to", quote(e.to)),
       jsonField("isDependency", e.isDependency.toString)
     )
+  }
+
+  /**
+   * Exception thrown when validation fails.
+   */
+  class ValidationException(message: String) extends RuntimeException(message)
+
+  /**
+   * Extension methods for adding validation to Nodes.
+   * 
+   * Validation functions return None if valid, Some(errorMessage) if invalid.
+   * All validation errors are collected and logged to Trace before throwing.
+   */
+  implicit class NodeValidationOps[A, B](val node: Node[A, B]) {
+
+    private def validateInput(a: A, checks: Seq[A => Option[String]], parallel: Boolean)(implicit
+      ec: ExecutionContext
+    ): Unit = {
+      val errors = if (parallel) {
+        val futures = checks.map(check => Future(check(a)))
+        Await.result(Future.sequence(futures), Duration.Inf).flatten
+      } else {
+        checks.flatMap(_(a))
+      }
+      if (errors.nonEmpty) {
+        val errorMsg = s"Input validation failed:\n${errors.map(e => s"  - $e").mkString("\n")}"
+        Trace.error(errorMsg)
+        throw new ValidationException(errorMsg)
+      }
+    }
+
+    private def validateOutput(b: B, checks: Seq[B => Option[String]], parallel: Boolean)(implicit
+      ec: ExecutionContext
+    ): Unit = {
+      val errors = if (parallel) {
+        val futures = checks.map(check => Future(check(b)))
+        Await.result(Future.sequence(futures), Duration.Inf).flatten
+      } else {
+        checks.flatMap(_(b))
+      }
+      if (errors.nonEmpty) {
+        val errorMsg = s"Output validation failed:\n${errors.map(e => s"  - $e").mkString("\n")}"
+        Trace.error(errorMsg)
+        throw new ValidationException(errorMsg)
+      }
+    }
+
+    private def validateChange(
+      pair: (A, B),
+      checks: Seq[((A, B)) => Option[String]],
+      parallel: Boolean
+    )(implicit
+      ec: ExecutionContext
+    ): Unit = {
+      val errors = if (parallel) {
+        val futures = checks.map(check => Future(check(pair)))
+        Await.result(Future.sequence(futures), Duration.Inf).flatten
+      } else {
+        checks.flatMap(_(pair))
+      }
+      if (errors.nonEmpty) {
+        val errorMsg = s"Change validation failed:\n${errors.map(e => s"  - $e").mkString("\n")}"
+        Trace.error(errorMsg)
+        throw new ValidationException(errorMsg)
+      }
+    }
+
+    private def warnInput(a: A, checks: Seq[A => Option[String]], parallel: Boolean)(implicit
+      ec: ExecutionContext
+    ): Unit = logWarnings("Input", checks, a, parallel)
+
+    private def warnOutput(b: B, checks: Seq[B => Option[String]], parallel: Boolean)(implicit
+      ec: ExecutionContext
+    ): Unit = logWarnings("Output", checks, b, parallel)
+
+    private def warnChange(
+      pair: (A, B),
+      checks: Seq[((A, B)) => Option[String]],
+      parallel: Boolean
+    )(implicit
+      ec: ExecutionContext
+    ): Unit = logWarnings("Change", checks, pair, parallel)
+
+    private def logWarnings[V](
+      stage: String,
+      checks: Seq[V => Option[String]],
+      value: V,
+      parallel: Boolean
+    )(implicit
+      ec: ExecutionContext
+    ): Unit = {
+      val errors = if (parallel) {
+        val futures = checks.map(check => Future(check(value)))
+        Await.result(Future.sequence(futures), Duration.Inf).flatten
+      } else {
+        checks.flatMap(_(value))
+      }
+      if (errors.nonEmpty) {
+        Trace.log(s"$stage validation warning:\n${errors.map(e => s"  - $e").mkString("\n")}")
+      }
+    }
+
+    /**
+     * Adds multiple validation checks in one call.
+     * 
+     * @param input validation functions for input
+     * @param output validation functions for output
+     * @param change validation functions for the transformation
+     * @return a new Node with all validations applied
+     * 
+     * @example
+     * {{{
+     * val process = Node[Int, String](n => s"Value: $n")
+     *   .ensure(
+     *     input = Seq(x => if (x > 0) None else Some("Must be positive")),
+     *     output = Seq(s => if (s.nonEmpty) None else Some("Must not be empty"))
+     *   )
+     * }}}
+     */
+    def ensure(
+      input: Seq[A => Option[String]] = Nil,
+      output: Seq[B => Option[String]] = Nil,
+      change: Seq[((A, B)) => Option[String]] = Nil
+    ): Node[A, B] =
+      if (input.isEmpty && output.isEmpty && change.isEmpty) node
+      else
+        Node { a =>
+          if (input.nonEmpty) validateInput(a, input, parallel = false)(ExecutionContext.global)
+          val result = node.f(a)
+          if (output.nonEmpty)
+            validateOutput(result, output, parallel = false)(ExecutionContext.global)
+          if (change.nonEmpty)
+            validateChange((a, result), change, parallel = false)(ExecutionContext.global)
+          result
+        }
+
+    /**
+     * Adds multiple validation checks in one call with parallel execution.
+     * 
+     * @param input validation functions for input
+     * @param output validation functions for output
+     * @param change validation functions for the transformation
+     * @param ec ExecutionContext for parallel execution
+     * @return a new Node with all validations applied
+     */
+    def ensurePar(
+      input: Seq[A => Option[String]] = Nil,
+      output: Seq[B => Option[String]] = Nil,
+      change: Seq[((A, B)) => Option[String]] = Nil
+    )(implicit ec: ExecutionContext = ExecutionContext.global): Node[A, B] =
+      if (input.isEmpty && output.isEmpty && change.isEmpty) node
+      else
+        Node { a =>
+          if (input.nonEmpty) validateInput(a, input, parallel = true)
+          val result = node.f(a)
+          if (output.nonEmpty) validateOutput(result, output, parallel = true)
+          if (change.nonEmpty) validateChange((a, result), change, parallel = true)
+          result
+        }
+
+    /**
+     * Adds validation checks that log warnings instead of throwing exceptions.
+     * 
+     * @param input validation functions for input
+     * @param output validation functions for output
+     * @param change validation functions for the transformation
+     * @return a new Node with all validations applied
+     */
+    def ensureWarn(
+      input: Seq[A => Option[String]] = Nil,
+      output: Seq[B => Option[String]] = Nil,
+      change: Seq[((A, B)) => Option[String]] = Nil
+    ): Node[A, B] =
+      if (input.isEmpty && output.isEmpty && change.isEmpty) node
+      else
+        Node { a =>
+          if (input.nonEmpty) warnInput(a, input, parallel = false)(ExecutionContext.global)
+          val result = node.f(a)
+          if (output.nonEmpty) warnOutput(result, output, parallel = false)(ExecutionContext.global)
+          if (change.nonEmpty)
+            warnChange((a, result), change, parallel = false)(ExecutionContext.global)
+          result
+        }
+
+    /**
+     * Adds validation checks with parallel execution that log warnings instead of throwing exceptions.
+     * 
+     * @param input validation functions for input
+     * @param output validation functions for output
+     * @param change validation functions for the transformation
+     * @param ec ExecutionContext for parallel execution
+     * @return a new Node with all validations applied
+     */
+    def ensureParWarn(
+      input: Seq[A => Option[String]] = Nil,
+      output: Seq[B => Option[String]] = Nil,
+      change: Seq[((A, B)) => Option[String]] = Nil
+    )(implicit ec: ExecutionContext = ExecutionContext.global): Node[A, B] =
+      if (input.isEmpty && output.isEmpty && change.isEmpty) node
+      else
+        Node { a =>
+          if (input.nonEmpty) warnInput(a, input, parallel = true)
+          val result = node.f(a)
+          if (output.nonEmpty) warnOutput(result, output, parallel = true)
+          if (change.nonEmpty) warnChange((a, result), change, parallel = true)
+          result
+        }
+  }
+
+  /**
+   * Non-exhaustive conditional builder for Nodes.
+   */
+  case class PartialConditionalBuilder[A, B, C](
+    sourceNode: Node[A, B],
+    branches: List[(B => Boolean, Node[B, C])]
+  ) {
+    def elseIf(condition: B => Boolean)(branch: Node[B, C]): PartialConditionalBuilder[A, B, C] =
+      PartialConditionalBuilder(sourceNode, branches :+ (condition, branch))
+
+    def otherwise(branch: Node[B, C]): CompleteConditionalBuilder[A, B, C] =
+      CompleteConditionalBuilder(sourceNode, branches, branch)
+
+    def `else`(branch: Node[B, C]): CompleteConditionalBuilder[A, B, C] = otherwise(branch)
+
+    def build: Node[A, C] =
+      throw new IllegalStateException("Non-exhaustive conditional. Add .otherwise() clause.")
+  }
+
+  /**
+   * Exhaustive conditional builder for Nodes.
+   */
+  case class CompleteConditionalBuilder[A, B, C](
+    sourceNode: Node[A, B],
+    branches: List[(B => Boolean, Node[B, C])],
+    defaultBranch: Node[B, C]
+  ) {
+    def elseIf(condition: B => Boolean)(branch: Node[B, C]): CompleteConditionalBuilder[A, B, C] =
+      CompleteConditionalBuilder(sourceNode, branches :+ (condition, branch), defaultBranch)
+
+    def build: Node[A, C] = Node { a =>
+      val b = sourceNode.f(a)
+      branches.find(_._1(b)).map(_._2.f(b)).getOrElse(defaultBranch.f(b))
+    }
+  }
+
+  /**
+   * Conditional branching for Nodes.
+   */
+  implicit class NodeConditionalOps[A, B](val node: Node[A, B]) {
+    def when[C](condition: B => Boolean)(branch: Node[B, C]): PartialConditionalBuilder[A, B, C] =
+      PartialConditionalBuilder(node, List((condition, branch)))
+
+    def `if`[C](condition: B => Boolean)(branch: Node[B, C]): PartialConditionalBuilder[A, B, C] =
+      when(condition)(branch)
+  }
+
+  implicit def conditionalBuilderToNode[A, B, C](
+    builder: CompleteConditionalBuilder[A, B, C]
+  ): Node[A, C] =
+    builder.build
+
+  /**
+   * Type class for lifting branches (Node or Reader) to Reader.
+   */
+  trait BranchLift[T, B, C, Branch] {
+    def lift(branch: Branch): Reader[T, Node[B, C]]
+  }
+
+  object BranchLift extends BranchLiftLowPriority {
+    implicit def nodeToReader[T, B, C]: BranchLift[T, B, C, Node[B, C]] =
+      new BranchLift[T, B, C, Node[B, C]] {
+        def lift(branch: Node[B, C]): Reader[T, Node[B, C]] = Reader.pure(branch)
+      }
+
+    implicit def readerIdentity[T, B, C]: BranchLift[T, B, C, Reader[T, Node[B, C]]] =
+      new BranchLift[T, B, C, Reader[T, Node[B, C]]] {
+        def lift(branch: Reader[T, Node[B, C]]): Reader[T, Node[B, C]] = branch
+      }
+  }
+
+  trait BranchLiftLowPriority {
+    implicit def builderToReader[T, B, X, C]
+      : BranchLift[T, B, C, ReaderCompleteConditionalBuilder[T, B, X, C]] =
+      new BranchLift[T, B, C, ReaderCompleteConditionalBuilder[T, B, X, C]] {
+        def lift(builder: ReaderCompleteConditionalBuilder[T, B, X, C]): Reader[T, Node[B, C]] =
+          builder.build
+      }
+  }
+
+  /**
+   * Non-exhaustive conditional builder for Reader-wrapped nodes.
+   */
+  case class ReaderPartialConditionalBuilder[T, A, B, C](
+    sourceReader: Reader[T, Node[A, B]],
+    branches: List[(T => B => Boolean, Reader[T, Node[B, C]])]
+  ) {
+    def elseIf[Branch](condition: T => B => Boolean)(branch: Branch)(implicit
+      lift: BranchLift[T, B, C, Branch]
+    ): ReaderPartialConditionalBuilder[T, A, B, C] =
+      ReaderPartialConditionalBuilder(sourceReader, branches :+ (condition, lift.lift(branch)))
+
+    def otherwise[Branch](branch: Branch)(implicit
+      lift: BranchLift[T, B, C, Branch]
+    ): ReaderCompleteConditionalBuilder[T, A, B, C] =
+      ReaderCompleteConditionalBuilder(sourceReader, branches, lift.lift(branch))
+
+    def `else`[Branch](branch: Branch)(implicit
+      lift: BranchLift[T, B, C, Branch]
+    ): ReaderCompleteConditionalBuilder[T, A, B, C] = otherwise(branch)
+  }
+
+  /**
+   * Exhaustive conditional builder for Reader-wrapped nodes.
+   */
+  case class ReaderCompleteConditionalBuilder[T, A, B, C](
+    sourceReader: Reader[T, Node[A, B]],
+    branches: List[(T => B => Boolean, Reader[T, Node[B, C]])],
+    defaultBranch: Reader[T, Node[B, C]]
+  ) {
+    def elseIf[Branch](condition: T => B => Boolean)(branch: Branch)(implicit
+      lift: BranchLift[T, B, C, Branch]
+    ): ReaderCompleteConditionalBuilder[T, A, B, C] =
+      ReaderCompleteConditionalBuilder(
+        sourceReader,
+        branches :+ (condition, lift.lift(branch)),
+        defaultBranch
+      )
+
+    def build: Reader[T, Node[A, C]] = Reader { ctx =>
+      val sourceNode = sourceReader.run(ctx)
+      val evaluatedBranches = branches.map { case (check, readerBranch) =>
+        (check(ctx), readerBranch.run(ctx))
+      }
+      val evaluatedDefault = defaultBranch.run(ctx)
+
+      Node { a =>
+        val b = sourceNode.f(a)
+        evaluatedBranches.find(_._1(b)).map(_._2.f(b)).getOrElse(evaluatedDefault.f(b))
+      }
+    }
+  }
+
+  implicit def readerConditionalBuilderToReader[T, A, B, C](
+    builder: ReaderCompleteConditionalBuilder[T, A, B, C]
+  ): Reader[T, Node[A, C]] = builder.build
+
+  /**
+   * Conditional branching for Reader-wrapped Nodes.
+   */
+  implicit class ReaderConditionalOps[T, A, B](val reader: Reader[T, Node[A, B]]) {
+    def when[C, Branch](condition: T => B => Boolean)(branch: Branch)(implicit
+      lift: BranchLift[T, B, C, Branch]
+    ): ReaderPartialConditionalBuilder[T, A, B, C] =
+      ReaderPartialConditionalBuilder(reader, List((condition, lift.lift(branch))))
+
+    def `if`[C, Branch](condition: T => B => Boolean)(branch: Branch)(implicit
+      lift: BranchLift[T, B, C, Branch]
+    ): ReaderPartialConditionalBuilder[T, A, B, C] = when(condition)(branch)
+  }
+
+  /**
+   * Extension methods for adding validation to Reader-wrapped Nodes.
+   * 
+   * Validation functions use curried form (T => A => Option[String]) to match
+   * the Reader pattern. This allows validations to be context-aware and composable.
+   * 
+   * For context-independent checks, use `(_: T) => ...` to ignore the context.
+   */
+  implicit class ReaderValidationOps[T, A, B](val fa: Reader[T, Node[A, B]]) {
+
+    /**
+     * Adds multiple validation checks in one call.
+     * 
+     * Accepts both curried (T => A => Option[String]) and plain (A => Option[String]) checks.
+     * Plain checks are automatically lifted to ignore the context.
+     * 
+     * @param input validation functions for input
+     * @param output validation functions for output
+     * @param change validation functions for the transformation
+     * @return a new Reader[T, Node[A, B]] with all validations applied
+     * 
+     * @example
+     * {{{
+     * val checkPositive = (x: Int) => if (x > 0) None else Some("must be positive")
+     * 
+     * val node = Reader[Config, Node[Int, String]] { _ => Node(_.toString) }
+     *   .ensure(
+     *     input = Seq(
+     *       (cfg: Config) => (x: Int) => if (x >= cfg.min) None else Some("too small"),
+     *       checkPositive  // plain function - automatically lifted!
+     *     ),
+     *     output = Seq(
+     *       (s: String) => if (s.nonEmpty) None else Some("empty")  // also works!
+     *     )
+     *   )
+     * }}}
+     */
+    def ensure(
+      input: Seq[ValidationCheck[T, A]] = Nil,
+      output: Seq[ValidationCheck[T, B]] = Nil,
+      change: Seq[ValidationCheck[T, (A, B)]] = Nil
+    ): Reader[T, Node[A, B]] =
+      if (input.isEmpty && output.isEmpty && change.isEmpty) fa
+      else
+        Reader { ctx =>
+          val node = fa.run(ctx)
+          Node { a =>
+            def validate[V](checks: Seq[ValidationCheck[T, V]], value: V, stage: String): Unit = {
+              val errors = checks.flatMap(_.toCurried(ctx)(value))
+              if (errors.nonEmpty) {
+                val errorMsg =
+                  s"$stage validation failed:\n${errors.map(e => s"  - $e").mkString("\n")}"
+                Trace.error(errorMsg)
+                throw new ValidationException(errorMsg)
+              }
+            }
+
+            if (input.nonEmpty) validate(input, a, "Input")
+            val result = node.f(a)
+            if (output.nonEmpty) validate(output, result, "Output")
+            if (change.nonEmpty) validate(change, (a, result), "Change")
+            result
+          }
+        }
+
+    /**
+     * Adds validation checks that log warnings instead of throwing exceptions.
+     * 
+     * @param input validation functions for input
+     * @param output validation functions for output
+     * @param change validation functions for the transformation
+     * @return a new Reader[T, Node[A, B]] with all validations applied
+     */
+    def ensureWarn(
+      input: Seq[ValidationCheck[T, A]] = Nil,
+      output: Seq[ValidationCheck[T, B]] = Nil,
+      change: Seq[ValidationCheck[T, (A, B)]] = Nil
+    ): Reader[T, Node[A, B]] =
+      if (input.isEmpty && output.isEmpty && change.isEmpty) fa
+      else
+        Reader { ctx =>
+          val node = fa.run(ctx)
+          Node { a =>
+            def warn[V](checks: Seq[ValidationCheck[T, V]], value: V, stage: String): Unit = {
+              val errors = checks.flatMap(_.toCurried(ctx)(value))
+              if (errors.nonEmpty) {
+                val errorMsg =
+                  s"$stage validation warning:\n${errors.map(e => s"  - $e").mkString("\n")}"
+                Trace.log(errorMsg)
+              }
+            }
+
+            if (input.nonEmpty) warn(input, a, "Input")
+            val result = node.f(a)
+            if (output.nonEmpty) warn(output, result, "Output")
+            if (change.nonEmpty) warn(change, (a, result), "Change")
+            result
+          }
+        }
   }
 
   /**
