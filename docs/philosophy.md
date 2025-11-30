@@ -2,10 +2,11 @@
 
 ## Discipline Upon Assignment
 
-**etl4s** espouses the idea that is is highly beneficial to banish the assignment (`=`) operator
-when stitching together programs of dataflow.
+**etl4s** espouses the idea that is is beneficial to banish the assignment (`=`) operator
+at the key "wiring" stage of dataflow programs.
 
-This is born from the fact that raw composition has limitations and monadic stacks
+Wiring via raw composition (`g andThen f` style) has limitations: chiefly, config and DI type-slots clutter call-sites
+and run orthogonal to dataflow) and wiring via monadic stacks
 don't impose a total discipline over the assingment operator and creating new bindings.
 
 Say we have
@@ -56,7 +57,11 @@ that has intersected upstream, and unioned downstream the branch types.
 
 
 ## Metrics as business logic
-In OLAP, observability metrics ARE business logic. "Records processed", "validation failures", "data quality scores" - these aren't infrastructure concerns. They're the product. etl4s lets you write metrics inline with `Tel` calls. Zero cost until you provide an implementation.
+In OLAP, observability metrics are not mere infrastructure concerns. Things like "Records processed", "validation failures", "data quality scores"
+tend to be part of your logic-proper.
+
+**etl4s** lets you write metrics inline with `Tel` calls. They are all zero-cost no-ops until you provide an implementation.
+
 
 ## What etl4s is NOT
 
