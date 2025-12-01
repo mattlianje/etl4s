@@ -47,32 +47,34 @@ hide:
 
 .intro-buttons {
   display: flex;
-  gap: 0.75rem;
+  gap: 1.5rem;
   justify-content: center;
   margin-bottom: 2rem;
   flex-wrap: wrap;
 }
 
 .intro-buttons a {
-  padding: 0.5rem 1rem;
-  border-radius: 0.3rem;
+  padding: 0.4rem 0;
   text-decoration: none !important;
   font-size: 0.85rem;
   font-weight: 500;
+  color: var(--md-primary-fg-color);
+  border-bottom: 1.5px solid transparent;
+  transition: border-color 0.2s ease;
 }
 
 .intro-buttons a.btn-primary {
-  background: var(--md-primary-fg-color);
-  color: var(--md-primary-bg-color);
+  color: var(--md-primary-fg-color);
+  border-bottom: 1.5px solid var(--md-primary-fg-color);
 }
 
 .intro-buttons a.btn-secondary {
-  border: 1px solid var(--md-primary-fg-color);
   color: var(--md-primary-fg-color);
+  opacity: 0.8;
 }
 
 .intro-buttons a:hover {
-  opacity: 0.85;
+  border-bottom-color: var(--md-primary-fg-color);
 }
 
 /* Zen dividers */
@@ -108,6 +110,8 @@ hide:
   font-size: 0.85rem;
   font-weight: 600;
   margin: 0 0 0.4rem 0;
+  color: var(--md-default-fg-color) !important;
+  opacity: 1 !important;
 }
 
 .feature-text p {
@@ -129,12 +133,31 @@ hide:
 .feature-visual.quote blockquote {
   margin: 0;
   padding: 1rem 1.25rem;
-  border-left: 3px solid var(--md-primary-fg-color);
-  background: var(--md-code-bg-color);
-  border-radius: 0 0.3rem 0.3rem 0;
+  background: none;
+  border: none;
   font-style: italic;
   font-size: 0.9rem;
   line-height: 1.5;
+  position: relative;
+}
+
+.feature-visual.quote blockquote::before {
+  content: "\201D";
+  position: absolute;
+  top: -1.5rem;
+  left: -0.5rem;
+  font-size: 8rem;
+  font-family: Georgia, serif;
+  color: var(--md-primary-fg-color);
+  opacity: 0.2;
+  line-height: 1;
+  pointer-events: none;
+  z-index: 0;
+}
+
+.feature-visual.quote blockquote > * {
+  position: relative;
+  z-index: 1;
 }
 
 .feature-visual.quote cite {
@@ -323,12 +346,12 @@ val pipeline =
 
 <div class="feature-row reverse">
 <div class="feature-text">
-<h3>Pipelines are values.</h3>
+<h3>Pipelines as values.</h3>
 <p>Lazy, reified, composable. Pass them around, test them in isolation, generate diagrams from them. Teams share pipelines like Lego bricks. Refactoring is safe because types enforce the boundaries.</p>
 </div>
 <div class="feature-visual quote">
 <blockquote>
-"(~>) is just *chef's kiss*. There are so many synergies here, haven't pushed for something this hard in a while."
+(~>) is just *chef's kiss*. There are so many synergies here, haven't pushed for something this hard in a while.
 <cite>— Sr Engineering Manager, Instacart</cite>
 </blockquote>
 </div>
@@ -336,7 +359,7 @@ val pipeline =
 
 <div class="feature-row">
 <div class="feature-text">
-<h3>For engineers and teams.</h3>
+<h3>For engineers & teams.</h3>
 <p>Write <code>e ~> t ~> l</code>. Types must match or it won't compile. One core abstraction: <code>Node[In, Out]</code>. Structure survives people leaving. New hires read <code>e ~> (t1 & t2) ~> l</code> and get it. Auto-generated diagrams document your pipelines.</p>
 </div>
 <div class="feature-visual">
@@ -353,12 +376,12 @@ e ~> l       // ✗ won't compile
 
 <div class="feature-row reverse">
 <div class="feature-text">
-<h3>Under the hood.</h3>
+<h3>Under the hood:</h3>
 <p>A lightweight effect system with one core <code>Node[-In, +Out]</code> abstraction. The <code>~></code> operator infers and merges environments seamlessly. <a href="faq/#how-it-works">Details in FAQ</a>.</p>
 </div>
 <div class="feature-visual quote">
 <blockquote>
-"Seems to provide most of the advantages of full blown "effect systems" without the complexities, and awkward monad syntax!"
+Seems to provide most of the advantages of full blown "effect systems" without the complexities, and awkward monad syntax!
 <cite>— u/RiceBroad4552</cite>
 </blockquote>
 </div>

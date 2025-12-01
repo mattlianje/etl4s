@@ -27,10 +27,12 @@ body,
   margin-top: 0;
   border-bottom: 2px solid #eee;
   padding-bottom: 0.3em;
+  color: rgba(0, 0, 0, 0.8);
 }
 
 [data-md-color-scheme="slate"] .md-typeset h1 {
   border-bottom-color: #333;
+  color: rgba(255, 255, 255, 0.85);
 }
 
 .md-typeset h2 {
@@ -40,16 +42,23 @@ body,
   margin-bottom: 0.5em;
   border-bottom: 1px solid #eee;
   padding-bottom: 0.2em;
+  color: rgba(0, 0, 0, 0.75);
 }
 
 [data-md-color-scheme="slate"] .md-typeset h2 {
   border-bottom-color: #333;
+  color: rgba(255, 255, 255, 0.8);
 }
 
 .md-typeset h3 {
   font-size: 1.2em;
   font-weight: 600;
   margin-top: 1.5em;
+  color: rgba(0, 0, 0, 0.7);
+}
+
+[data-md-color-scheme="slate"] .md-typeset h3 {
+  color: rgba(255, 255, 255, 0.75);
 }
 
 /* Code blocks - highly readable */
