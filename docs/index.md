@@ -24,6 +24,11 @@ hide:
 .intro-header img {
   height: 64px;
   margin-bottom: 1rem;
+  transition: transform 0.2s ease;
+}
+
+.intro-header img:hover {
+  transform: scale(1.05);
 }
 
 .intro-header h1 {
@@ -188,9 +193,11 @@ hide:
 
 ---
 
-**Single file. Zero dependencies. Pure Scala.**
+**Single file. Zero dependencies.**
 
-A library, not a framework. Without discipline, data teams drown in sprawling, coupled codebases. etl4s imposes one constraint: `extract ~> transform ~> load`. Chain with `~>`, parallelize with `&`, inject config with `.requires`. Works anywhere: scripts, Spark, Flink, your server.
+**etl4s** is a header-file lib (not a framework) that lets you structure your code like whiteboard-style diagrams. It was created because without an imposed discipline, data teams drown in sprawling, infra-coupled codebases.
+
+Chain with `~>`, parallelize with `&`, inject config with `.requires`. Works anywhere: scripts, Spark, Flink, your server.
 
 ---
 
@@ -200,15 +207,16 @@ Lazy, reified, composable. Pass them around, test them in isolation, generate di
 
 ---
 
-**For engineers and teams:**
+**For engineers and teams.**
 
 Write `extract ~> transform ~> load`. Types must match or it won't compile. One core abstraction: `Node[In, Out]`. Structure survives people leaving. New hires read `e ~> (t1 & t2) ~> l` and get it. Auto-generated diagrams document your pipelines.
 
 ---
 
-**Under the hood:**
+**Under the hood.**
 
-A lightweight effect system built on a Reader monad with an overloaded `~>` that infers and merges environments. No fiber runtime, no magic. [Details in FAQ](faq.md#how-it-works).
+**etl4s** is a lightweight effect system with one core `Node[-In, +Out]` abstraction. The `~>` operator infers and merges environments and works on `Node`s (regardless or whether they
+are wrapped in `Reader`s). [Details in FAQ](faq.md#how-it-works).
 
 ---
 
@@ -224,3 +232,5 @@ A lightweight effect system built on a Reader monad with an overloaded `~>` that
 - **[Your First Pipeline](first-pipeline.md)**: Build something in 5 minutes
 - **[Core Concepts](core-concepts.md)**: Node, `~>`, `&`, `.requires`
 - **[Examples](examples.md)**: Common patterns
+
+<div style="margin-bottom: 4rem;"></div>

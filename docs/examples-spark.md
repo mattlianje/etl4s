@@ -2,6 +2,10 @@
 
 etl4s works alongside Spark. Use it to structure your Spark job logic - extraction, transformations, and loading stay composable and type-safe.
 
+```bash
+scala-cli repl --dep io.github.mattlianje::etl4s:0.3.1 --dep org.apache.spark::spark-sql:3.5.0
+```
+
 ## Basic pattern
 
 ```scala
@@ -12,7 +16,6 @@ implicit val spark: SparkSession = SparkSession.builder()
   .appName("etl4s-spark")
   .getOrCreate()
 
-// Define your pipeline stages
 val extractUsers = Extract[SparkSession, DataFrame] { spark =>
   spark.read.parquet("s3://data/users")
 }
@@ -29,14 +32,12 @@ val writeResults = Load[DataFrame, Unit] { df =>
   df.write.mode("overwrite").parquet("s3://output/results")
 }
 
-// Compose the pipeline
-val pipeline = 
-  extractUsers ~> 
-  filterActive ~> 
-  aggregateByRegion ~> 
+val pipeline =
+  extractUsers ~>
+  filterActive ~>
+  aggregateByRegion ~>
   writeResults
 
-// Run it
 pipeline.unsafeRun(spark)
 ```
 
@@ -67,7 +68,6 @@ val load = Load[DataFrame, Unit]
 
 val pipeline = extract ~> transform ~> load
 
-// Provide config and run
 val config = SparkConfig(
   inputPath = "s3://data/raw",
   outputPath = "s3://data/processed",
@@ -77,29 +77,7 @@ val config = SparkConfig(
 pipeline.provide(config).unsafeRun(spark)
 ```
 
-## With telemetry
-
-```scala
-val processWithMetrics = Transform[DataFrame, DataFrame] { df =>
-  Tel.withSpan("process_users") {
-    val count = df.count()
-    Tel.addCounter("records_processed", count)
-    
-    val result = df.filter($"age" > 18)
-    val outputCount = result.count()
-    Tel.addCounter("records_output", outputCount)
-    
-    result
-  }
-}
-
-// Provide your telemetry implementation
-implicit val telemetry: Etl4sTelemetry = MySparkMetrics()
-
-pipeline.unsafeRun(spark)
-```
-
-## Pattern: Multiple data sources
+## Multiple data sources
 
 ```scala
 val extractUsers = Extract[SparkSession, DataFrame](
@@ -119,12 +97,13 @@ val pipeline = (extractUsers & extractOrders) ~> join ~> writeResults
 pipeline.unsafeRun(spark)
 ```
 
-## Key points
-
-- etl4s doesn't replace Spark - it structures your Spark job logic
-- Use `.requires` for configuration (no globals)
-- Use `Tel` for business-critical metrics
-- Compose Spark operations just like any other ETL stages
-- Types ensure DataFrame transformations match up correctly
-
-
+!!! note
+    Use `&` not `&>` with Spark - Spark handles parallelism internally. For many sources, use a Map instead of chaining `&`:
+    ```scala
+    val sources = Map(
+      "users" -> spark.read.parquet("s3://users"),
+      "orders" -> spark.read.parquet("s3://orders"),
+      "products" -> spark.read.parquet("s3://products")
+    )
+    val extract = Extract(sources)
+    ```

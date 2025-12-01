@@ -40,19 +40,18 @@ nav:
     - Telemetry: opentelemetry.md
     - Lineage Diagrams: lineage.md
     - Side Outputs: logs.md
-    - Validation: validation.md
+    - Ensurers: validation.md
     - Testing: testing.md
   - Examples:
     - Common Patterns: examples.md
     - etl4s + Spark: examples-spark.md
     - etl4s + Flink: examples-flink.md
-  - Advanced:
-    - Advanced Patterns: advanced-patterns.md
-    - Custom Operators: custom-operators.md
-    - Performance Tips: performance.md
+  - Advanced: advanced.md
   - Philosophy: philosophy.md
   - FAQ: faq.md
 markdown_extensions:
+  - admonition
+  - pymdownx.details
   - pymdownx.tabbed:
       alternate_style: true
   - pymdownx.highlight:

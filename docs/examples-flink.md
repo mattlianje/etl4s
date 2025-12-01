@@ -2,6 +2,10 @@
 
 etl4s structures your Flink job logic. Define extraction, transformation, and sinks as composable, type-safe stages.
 
+```bash
+scala-cli repl --dep io.github.mattlianje::etl4s:0.3.1 --dep org.apache.flink::flink-streaming-scala:1.18.0
+```
+
 ## Basic streaming pattern
 
 ```scala
@@ -33,10 +37,10 @@ val sinkResults = Load[DataStream[(String, Int)], Unit] { stream =>
   stream.addSink(new FlinkKafkaProducer(...))
 }
 
-val pipeline = 
-  extractEvents ~> 
-  filterValid ~> 
-  aggregate ~> 
+val pipeline =
+  extractEvents ~>
+  filterValid ~>
+  aggregate ~>
   sinkResults
 
 pipeline.unsafeRun(env)
@@ -57,7 +61,7 @@ val extract = Extract[StreamExecutionEnvironment, DataStream[Event]]
   .requires[FlinkConfig] { config => env =>
     val props = new Properties()
     props.setProperty("bootstrap.servers", config.kafkaBootstrap)
-    
+
     env.addSource(
       new FlinkKafkaConsumer(config.inputTopic, new EventSchema(), props)
     )
@@ -91,25 +95,7 @@ pipeline.provide(config).unsafeRun(env)
 env.execute()
 ```
 
-## With telemetry
-
-```scala
-val processWithMetrics = Transform[DataStream[Event], DataStream[Event]] { stream =>
-  stream.map { event =>
-    Tel.addCounter("events_processed", 1)
-    if (event.value > 100) {
-      Tel.addCounter("high_value_events", 1)
-    }
-    event
-  }
-}
-
-implicit val telemetry: Etl4sTelemetry = MyFlinkMetrics()
-
-pipeline.unsafeRun(env)
-```
-
-## Pattern: Multiple streams
+## Multiple streams
 
 ```scala
 val extractUsers = Extract[StreamExecutionEnvironment, DataStream[User]](...)
@@ -128,12 +114,13 @@ pipeline.unsafeRun(env)
 env.execute()
 ```
 
-## Key points
-
-- etl4s structures Flink job logic, doesn't replace Flink APIs
-- Use `.requires` for Kafka configs, window sizes, etc.
-- `Tel` metrics can feed into Flink's metrics system
-- Compose stream operations as type-safe pipeline stages
-- Works with both streaming and batch Flink jobs
-
-
+!!! note
+    Use `&` not `&>` with Flink - Flink handles parallelism internally. For many streams, use a Map instead of chaining `&`:
+    ```scala
+    val streams = Map(
+      "users" -> env.addSource(userSource),
+      "events" -> env.addSource(eventSource),
+      "metrics" -> env.addSource(metricsSource)
+    )
+    val extract = Extract(streams)
+    ```

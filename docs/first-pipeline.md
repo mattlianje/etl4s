@@ -1,6 +1,6 @@
 # Your First Pipeline
 
-Let's build a pipeline in 5 minutes. No Spark, no databases - just the basics.
+Let's build a pipeline in 5 minutes.
 
 ## Install
 
