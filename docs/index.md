@@ -84,6 +84,67 @@ hide:
   max-width: 120px;
 }
 
+/* Feature grid - Elm style */
+.feature-grid {
+  margin: 2rem 0;
+}
+
+.feature-row {
+  display: flex;
+  gap: 2rem;
+  align-items: center;
+  margin: 2.5rem 0;
+}
+
+.feature-row.reverse {
+  flex-direction: row-reverse;
+}
+
+.feature-text {
+  flex: 1.2;
+}
+
+.feature-text h3 {
+  font-size: 0.85rem;
+  font-weight: 600;
+  margin: 0 0 0.4rem 0;
+}
+
+.feature-text p {
+  font-size: 0.75rem;
+  line-height: 1.5;
+  margin: 0;
+  opacity: 0.9;
+}
+
+.feature-visual {
+  flex: 0.8;
+}
+
+.feature-visual pre {
+  margin: 0 !important;
+  font-size: 0.8rem !important;
+}
+
+.feature-visual.quote blockquote {
+  margin: 0;
+  padding: 1rem 1.25rem;
+  border-left: 3px solid var(--md-primary-fg-color);
+  background: var(--md-code-bg-color);
+  border-radius: 0 0.3rem 0.3rem 0;
+  font-style: italic;
+  font-size: 0.9rem;
+  line-height: 1.5;
+}
+
+.feature-visual.quote cite {
+  display: block;
+  margin-top: 0.75rem;
+  font-size: 0.8rem;
+  opacity: 0.7;
+  font-style: normal;
+}
+
 /* Mobile adjustments */
 @media (max-width: 768px) {
   .intro-header h1 {
@@ -105,16 +166,27 @@ hide:
   .intro-buttons a {
     text-align: center;
   }
+
+  .feature-row,
+  .feature-row.reverse {
+    flex-direction: column;
+    gap: 1rem;
+  }
+
+  .feature-text,
+  .feature-visual {
+    width: 100%;
+  }
 }
 </style>
 
 <div class="intro-header">
   <img src="assets/etl4s-logo.png" alt="etl4s" />
   <h1>etl4s</h1>
-  <p>Powerful, whiteboard-style ETL</p>
+  <p style="opacity: 0.6; font-size: 0.85rem; margin: 0.5rem 0 1.5rem 0;">Powerful, whiteboard-style ETL</p>
   <div class="intro-buttons">
     <a href="installation/" class="btn-primary">Get Started</a>
-    <a href="https://scastie.scala-lang.org/mattlianje/1280QhQ5RWODgizeXOIsXA/5" target="_blank" class="btn-secondary">Try in Scastie</a>
+    <a href="https://scastie.scala-lang.org/mattlianje/1280QhQ5RWODgizeXOIsXA/5" target="_blank" class="btn-secondary">Try Online</a>
     <a href="https://github.com/mattlianje/etl4s" target="_blank" class="btn-secondary">GitHub</a>
   </div>
 </div>
@@ -187,36 +259,112 @@ hide:
 
     ```mermaid
     graph LR
-      source["source"] --> increment["increment"]
-      increment["increment"] --> sink["sink"]
+      source["source<br><sub>Int</sub>"] --> increment["increment<br><sub>Int → Int</sub>"]
+      increment --> sink["sink<br><sub>Int → Unit</sub>"]
+    ```
+
+=== "Telemetry"
+
+    ```scala
+    import etl4s._
+
+    val process = Transform[List[String], Int] { data =>
+      Tel.withSpan("processing") {
+        Tel.addCounter("items", data.size)
+        data.map(_.length).sum
+      }
+    }
+
+    // Dev: no-ops (zero cost)
+    process.unsafeRun(data)
+
+    // Prod: plug in your backend
+    implicit val tel: Etl4sTelemetry = MyOtelProvider()
+    process.unsafeRun(data)
+    ```
+
+=== "Tracing"
+
+    ```scala
+    import etl4s._
+
+    val process = Transform[String, Int] { s =>
+      Trace.log("Processing")
+      if (s.isEmpty) Trace.error("Empty input!")
+      s.length
+    }
+
+    val trace = process.unsafeRunTrace("hello")
+    // trace.result         -> 5
+    // trace.logs           -> List("Processing")
+    // trace.errors         -> List()
+    // trace.timeElapsedMillis
     ```
 
 ---
 
-**Single file. Zero dependencies.**
+<div class="feature-grid">
 
-**etl4s** is a header-file lib (not a framework) that lets you structure your code like whiteboard-style diagrams. It was created because without an imposed discipline, data teams drown in sprawling, infra-coupled codebases.
+<div class="feature-row">
+<div class="feature-text">
+<h3>Single file. Zero dependencies.</h3>
+<p>A header-file lib (not a framework) that lets you structure code like whiteboard diagrams. Chain with <code>~></code>, parallelize with <code>&</code>, inject config with <code>.requires</code>. Works anywhere: scripts, Spark, Flink, your server.</p>
+</div>
+<div class="feature-visual">
+```scala
+// That's it. One import.
+import etl4s._
 
-Chain with `~>`, parallelize with `&`, inject config with `.requires`. Works anywhere: scripts, Spark, Flink, your server.
+val pipeline =
+  extract ~> transform ~> load
+```
+</div>
+</div>
 
----
+<div class="feature-row reverse">
+<div class="feature-text">
+<h3>Pipelines are values.</h3>
+<p>Lazy, reified, composable. Pass them around, test them in isolation, generate diagrams from them. Teams share pipelines like Lego bricks. Refactoring is safe because types enforce the boundaries.</p>
+</div>
+<div class="feature-visual quote">
+<blockquote>
+"(~>) is just *chef's kiss*. There are so many synergies here, haven't pushed for something this hard in a while."
+<cite>— Sr Engineering Manager, Instacart</cite>
+</blockquote>
+</div>
+</div>
 
-**Pipelines are values.**
+<div class="feature-row">
+<div class="feature-text">
+<h3>For engineers and teams.</h3>
+<p>Write <code>e ~> t ~> l</code>. Types must match or it won't compile. One core abstraction: <code>Node[In, Out]</code>. Structure survives people leaving. New hires read <code>e ~> (t1 & t2) ~> l</code> and get it. Auto-generated diagrams document your pipelines.</p>
+</div>
+<div class="feature-visual">
+```scala
+val e = Extract(1)
+val t = Transform[Int, String](_.toString)
+val l = Load[String, Unit](println)
 
-Lazy, reified, composable. Pass them around, test them in isolation, generate diagrams from them. Teams share pipelines like Lego bricks. Refactoring is safe because types enforce the boundaries.
+e ~> t ~> l  // ✓ compiles
+e ~> l       // ✗ won't compile
+```
+</div>
+</div>
 
----
+<div class="feature-row reverse">
+<div class="feature-text">
+<h3>Under the hood.</h3>
+<p>A lightweight effect system with one core <code>Node[-In, +Out]</code> abstraction. The <code>~></code> operator infers and merges environments seamlessly. <a href="faq/#how-it-works">Details in FAQ</a>.</p>
+</div>
+<div class="feature-visual quote">
+<blockquote>
+"Seems to provide most of the advantages of full blown "effect systems" without the complexities, and awkward monad syntax!"
+<cite>— u/RiceBroad4552</cite>
+</blockquote>
+</div>
+</div>
 
-**For engineers and teams.**
-
-Write `extract ~> transform ~> load`. Types must match or it won't compile. One core abstraction: `Node[In, Out]`. Structure survives people leaving. New hires read `e ~> (t1 & t2) ~> l` and get it. Auto-generated diagrams document your pipelines.
-
----
-
-**Under the hood.**
-
-**etl4s** is a lightweight effect system with one core `Node[-In, +Out]` abstraction. The `~>` operator infers and merges environments and works on `Node`s (regardless or whether they
-are wrapped in `Reader`s). [Details in FAQ](faq.md#how-it-works).
+</div>
 
 ---
 
@@ -228,9 +376,9 @@ are wrapped in `Reader`s). [Details in FAQ](faq.md#how-it-works).
 
 ## Get started
 
-- **[Installation](installation.md)**: Add to your project
-- **[Your First Pipeline](first-pipeline.md)**: Build something in 5 minutes
-- **[Core Concepts](core-concepts.md)**: Node, `~>`, `&`, `.requires`
-- **[Examples](examples.md)**: Common patterns
+- [Installation](installation.md)
+- [First Pipeline](first-pipeline.md)
+- [Core Concepts](core-concepts.md)
+- [Examples](examples.md)
 
 <div style="margin-bottom: 4rem;"></div>
