@@ -407,6 +407,195 @@ body,
   animation: eq-appear 5s ease-in-out infinite !important;
 }
 
+@keyframes branch-input-pulse {
+  0%, 15% { opacity: 0.4; transform: scale(0.9); }
+  25%, 40% { opacity: 1; transform: scale(1); }
+  60%, 100% { opacity: 0.4; transform: scale(0.9); }
+}
+
+@keyframes branch-if-appear {
+  0%, 20% { opacity: 0; transform: translateY(4px); }
+  35%, 55% { opacity: 1; transform: translateY(0); }
+  75%, 100% { opacity: 0; transform: translateY(4px); }
+}
+
+@keyframes branch-else-appear {
+  0%, 25% { opacity: 0; transform: translateY(-4px); }
+  40%, 55% { opacity: 1; transform: translateY(0); }
+  75%, 100% { opacity: 0; transform: translateY(-4px); }
+}
+
+.branch-demo .branch-input {
+  animation: branch-input-pulse 5s ease-in-out infinite !important;
+}
+
+.branch-demo .branch-if {
+  animation: branch-if-appear 5s ease-in-out infinite !important;
+}
+
+.branch-demo .branch-else {
+  animation: branch-else-appear 5s ease-in-out infinite !important;
+}
+
+.branch-demo .merge-eq {
+  animation: eq-appear 5s ease-in-out infinite !important;
+}
+
+.branch-demo .branch-result {
+  animation: env-result-appear 5s ease-in-out infinite !important;
+}
+
+@keyframes drop-to-jvm {
+  0% { top: 32px; left: 50%; opacity: 0; transform: scale(0.5); }
+  8% { opacity: 0.8; transform: scale(1); }
+  95% { opacity: 0.8; transform: scale(1); }
+  100% { top: 80px; left: 15%; opacity: 0; transform: scale(0.5); }
+}
+
+@keyframes drop-to-js {
+  0% { top: 32px; left: 50%; opacity: 0; transform: scale(0.5); }
+  8% { opacity: 0.8; transform: scale(1); }
+  95% { opacity: 0.8; transform: scale(1); }
+  100% { top: 80px; left: 50%; opacity: 0; transform: scale(0.5); }
+}
+
+@keyframes drop-to-native {
+  0% { top: 32px; left: 50%; opacity: 0; transform: scale(0.5); }
+  8% { opacity: 0.8; transform: scale(1); }
+  95% { opacity: 0.8; transform: scale(1); }
+  100% { top: 80px; left: 85%; opacity: 0; transform: scale(0.5); }
+}
+
+/* Type safety animation - flowing dots */
+@keyframes node-t-fade {
+  0%, 42% { opacity: 1; }
+  50%, 88% { opacity: 0; }
+  95%, 100% { opacity: 1; }
+}
+
+@keyframes node-l-move {
+  0%, 42% { left: 180px; }
+  50%, 88% { left: 95px; }
+  95%, 100% { left: 180px; }
+}
+
+@keyframes conn-tl-fade {
+  0%, 42% { opacity: 0.4; }
+  50%, 88% { opacity: 0; }
+  95%, 100% { opacity: 0.4; }
+}
+
+@keyframes conn-et-fade {
+  0%, 42% { opacity: 0.4; color: var(--md-primary-fg-color); }
+  50%, 70% { opacity: 0.6; color: #ef4444; }
+  75%, 88% { opacity: 0.4; color: #ef4444; }
+  95%, 100% { opacity: 0.4; color: var(--md-primary-fg-color); }
+}
+
+@keyframes flow-good {
+  0%, 5% { left: 18px; opacity: 0; }
+  8% { opacity: 0.9; }
+  18% { left: 100px; opacity: 0.9; }
+  32% { left: 185px; opacity: 0.9; }
+  36%, 100% { left: 185px; opacity: 0; }
+}
+
+@keyframes flow-fail {
+  0%, 50% { left: 18px; opacity: 0; }
+  53% { left: 18px; opacity: 0.9; }
+  65% { left: 70px; opacity: 0.9; }
+  70% { left: 75px; opacity: 0; }
+  100% { opacity: 0; }
+}
+
+@keyframes result-ok-anim {
+  0%, 32% { opacity: 0; }
+  38%, 42% { opacity: 1; }
+  47%, 100% { opacity: 0; }
+}
+
+@keyframes result-fail-anim {
+  0%, 68% { opacity: 0; }
+  73%, 88% { opacity: 1; }
+  93%, 100% { opacity: 0; }
+}
+
+@keyframes node-pulse-green {
+  0%, 30% { box-shadow: none; background: var(--md-primary-fg-color); }
+  35%, 42% { box-shadow: 0 0 8px #14b8a6; background: #14b8a6; }
+  47%, 68% { box-shadow: none; background: var(--md-primary-fg-color); }
+  73%, 88% { box-shadow: 0 0 8px #ef4444; background: #ef4444; }
+  93%, 100% { box-shadow: none; background: var(--md-primary-fg-color); }
+}
+
+.type-safety-demo .node-dot { animation: node-pulse-green 6s ease-out infinite !important; }
+.type-safety-demo .node-t { animation: node-t-fade 6s ease-out infinite !important; }
+.type-safety-demo .node-l { animation: node-l-move 6s ease-out infinite !important; }
+.type-safety-demo .conn-tl { animation: conn-tl-fade 6s ease-out infinite !important; }
+.type-safety-demo .conn-et { animation: conn-et-fade 6s ease-out infinite !important; }
+.type-safety-demo .flow-dot-1 { animation: flow-good 6s ease-out infinite !important; }
+.type-safety-demo .flow-dot-2 { animation: flow-good 6s ease-out infinite 0.15s !important; }
+.type-safety-demo .flow-bad { animation: flow-fail 6s ease-out infinite !important; }
+.type-safety-demo .result-fail { animation: result-fail-anim 6s ease-out infinite !important; }
+
+/* Typing animation */
+@keyframes type-line1 {
+  0%, 2% { width: 0; opacity: 1; }
+  12% { width: 24ch; opacity: 1; }
+  85%, 100% { width: 24ch; opacity: 1; }
+}
+
+@keyframes type-line2 {
+  0%, 14% { width: 0; opacity: 0; }
+  15% { width: 0; opacity: 1; }
+  25% { width: 14ch; opacity: 1; }
+  85%, 100% { width: 14ch; opacity: 1; }
+}
+
+@keyframes type-line3 {
+  0%, 27% { width: 0; opacity: 0; }
+  28% { width: 1ch; opacity: 1; }
+  85%, 100% { width: 1ch; opacity: 1; }
+}
+
+@keyframes type-line4 {
+  0%, 30% { width: 0; opacity: 0; }
+  31% { width: 0; opacity: 1; }
+  42% { width: 14ch; opacity: 1; }
+  85%, 100% { width: 14ch; opacity: 1; }
+}
+
+@keyframes type-line5 {
+  0%, 44% { width: 0; opacity: 0; }
+  45% { width: 0; opacity: 1; }
+  65% { width: 100%; opacity: 1; }
+  85%, 100% { width: 100%; opacity: 1; }
+}
+
+.typing-demo .line-1 { animation: type-line1 8s steps(24, end) infinite !important; }
+.typing-demo .line-2 { animation: type-line2 8s steps(14, end) infinite !important; }
+.typing-demo .line-3 { animation: type-line3 8s steps(1, end) infinite !important; }
+.typing-demo .line-4 { animation: type-line4 8s steps(14, end) infinite !important; }
+.typing-demo .line-5 { animation: type-line5 8s steps(28, end) infinite !important; }
+
+/* JVM - left target */
+.platform-demo .drop-jvm-1 { animation: drop-to-jvm 1.6s ease-out infinite !important; }
+.platform-demo .drop-jvm-2 { animation: drop-to-jvm 1.6s ease-out infinite 0.4s !important; }
+.platform-demo .drop-jvm-3 { animation: drop-to-jvm 1.6s ease-out infinite 0.8s !important; }
+.platform-demo .drop-jvm-4 { animation: drop-to-jvm 1.6s ease-out infinite 1.2s !important; }
+
+/* JS - center target */
+.platform-demo .drop-js-1 { animation: drop-to-js 1.6s ease-out infinite 0.13s !important; }
+.platform-demo .drop-js-2 { animation: drop-to-js 1.6s ease-out infinite 0.53s !important; }
+.platform-demo .drop-js-3 { animation: drop-to-js 1.6s ease-out infinite 0.93s !important; }
+.platform-demo .drop-js-4 { animation: drop-to-js 1.6s ease-out infinite 1.33s !important; }
+
+/* Native - right target */
+.platform-demo .drop-native-1 { animation: drop-to-native 1.6s ease-out infinite 0.27s !important; }
+.platform-demo .drop-native-2 { animation: drop-to-native 1.6s ease-out infinite 0.67s !important; }
+.platform-demo .drop-native-3 { animation: drop-to-native 1.6s ease-out infinite 1.07s !important; }
+.platform-demo .drop-native-4 { animation: drop-to-native 1.6s ease-out infinite 1.47s !important; }
+
 /* But keep smooth color transitions for theme toggle */
 body,
 .md-header,

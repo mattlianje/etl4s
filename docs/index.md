@@ -181,21 +181,395 @@ hide:
   90%, 100% { opacity: 0; }
 }
 
-.env-section {
-  text-align: center;
-  margin: 2rem 0;
+/* Branch/union animation */
+.branch-demo {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  font-family: var(--mono, monospace);
+  font-size: 0.65rem;
 }
 
-.env-section h3 {
-  font-size: 0.9rem;
-  font-weight: 600;
-  margin: 0 0 0.3rem 0;
+.branch-demo .dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--md-primary-fg-color);
 }
 
-.env-section p {
-  font-size: 0.75rem;
+.branch-demo .branch-input {
+  animation: branch-input-pulse 5s ease-in-out infinite;
+}
+
+.branch-demo .branch-split {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.branch-demo .branch {
+  display: flex;
+  align-items: center;
+  gap: 0.3rem;
+}
+
+.branch-demo .branch-label {
+  font-size: 0.55rem;
+  opacity: 0.5;
+}
+
+.branch-demo .env-label {
+  font-size: 0.6rem;
+  opacity: 0.6;
+}
+
+.branch-demo .branch-if {
+  animation: branch-if-appear 5s ease-in-out infinite;
+}
+
+.branch-demo .branch-else {
+  animation: branch-else-appear 5s ease-in-out infinite;
+}
+
+.branch-demo .merge-eq {
+  opacity: 0;
+  animation: eq-appear 5s ease-in-out infinite;
+}
+
+.branch-demo .branch-result {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.3rem;
+  animation: env-result-appear 5s ease-in-out infinite;
+}
+
+.branch-demo .branch-result .dot {
+  box-shadow: 0 0 8px var(--md-primary-fg-color);
+}
+
+.branch-demo .branch-result .env-label {
+  opacity: 0.8;
+}
+
+@keyframes branch-input-pulse {
+  0%, 15% { opacity: 0.4; transform: scale(0.9); }
+  25%, 40% { opacity: 1; transform: scale(1); }
+  60%, 100% { opacity: 0.4; transform: scale(0.9); }
+}
+
+@keyframes branch-if-appear {
+  0%, 20% { opacity: 0; transform: translateY(4px); }
+  35%, 55% { opacity: 1; transform: translateY(0); }
+  75%, 100% { opacity: 0; transform: translateY(4px); }
+}
+
+@keyframes branch-else-appear {
+  0%, 25% { opacity: 0; transform: translateY(-4px); }
+  40%, 55% { opacity: 1; transform: translateY(0); }
+  75%, 100% { opacity: 0; transform: translateY(-4px); }
+}
+
+/* Platform animation */
+.platform-demo {
+  position: relative;
+  width: 180px;
+  height: 100px;
+  font-family: var(--mono, monospace);
+  margin: 0 auto;
+}
+
+.platform-demo .logo-source {
+  width: 32px;
+  height: 32px;
+  position: absolute;
+  top: 0;
+  left: 50%;
+  transform: translateX(-50%);
+  opacity: 0.85;
+}
+
+.platform-demo .drop {
+  width: 3px;
+  height: 3px;
+  border-radius: 50%;
+  background: var(--md-primary-fg-color);
+  position: absolute;
+  opacity: 0;
+  box-shadow: 0 0 4px var(--md-primary-fg-color);
+}
+
+/* JVM - left target */
+.platform-demo .drop-jvm-1 { animation: drop-to-jvm 1.6s ease-out infinite; }
+.platform-demo .drop-jvm-2 { animation: drop-to-jvm 1.6s ease-out infinite 0.4s; }
+.platform-demo .drop-jvm-3 { animation: drop-to-jvm 1.6s ease-out infinite 0.8s; }
+.platform-demo .drop-jvm-4 { animation: drop-to-jvm 1.6s ease-out infinite 1.2s; }
+
+/* JS - center target */
+.platform-demo .drop-js-1 { animation: drop-to-js 1.6s ease-out infinite 0.13s; }
+.platform-demo .drop-js-2 { animation: drop-to-js 1.6s ease-out infinite 0.53s; }
+.platform-demo .drop-js-3 { animation: drop-to-js 1.6s ease-out infinite 0.93s; }
+.platform-demo .drop-js-4 { animation: drop-to-js 1.6s ease-out infinite 1.33s; }
+
+/* Native - right target */
+.platform-demo .drop-native-1 { animation: drop-to-native 1.6s ease-out infinite 0.27s; }
+.platform-demo .drop-native-2 { animation: drop-to-native 1.6s ease-out infinite 0.67s; }
+.platform-demo .drop-native-3 { animation: drop-to-native 1.6s ease-out infinite 1.07s; }
+.platform-demo .drop-native-4 { animation: drop-to-native 1.6s ease-out infinite 1.47s; }
+
+.platform-demo .platform {
+  position: absolute;
+  bottom: 0;
+  font-size: 0.7rem;
   opacity: 0.7;
-  margin: 0 0 1.5rem 0;
+}
+
+.platform-demo .platform-jvm { left: 12px; }
+.platform-demo .platform-js { left: 50%; transform: translateX(-50%); }
+.platform-demo .platform-native { right: 12px; }
+
+/* Type safety animation */
+.type-safety-demo {
+  position: relative;
+  width: 220px;
+  height: 85px;
+  font-family: var(--mono, monospace);
+  font-size: 0.55rem;
+  margin: 0 auto;
+}
+
+.type-safety-demo .node {
+  position: absolute;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.1rem;
+}
+
+.type-safety-demo .node-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--md-primary-fg-color);
+}
+
+.type-safety-demo .node-label {
+  font-size: 0.5rem;
+  font-weight: 600;
+  opacity: 0.8;
+}
+
+.type-safety-demo .node-type {
+  font-size: 0.4rem;
+  opacity: 0.5;
+  white-space: nowrap;
+}
+
+.type-safety-demo .node-e { left: 10px; top: 18px; }
+.type-safety-demo .node-t { left: 95px; top: 18px; animation: node-t-fade 6s ease-out infinite; }
+.type-safety-demo .node-l { left: 180px; top: 18px; animation: node-l-move 6s ease-out infinite; }
+
+.type-safety-demo .conn {
+  position: absolute;
+  top: 24px;
+  font-size: 0.5rem;
+  opacity: 0.4;
+  color: var(--md-primary-fg-color);
+}
+
+.type-safety-demo .conn-et { left: 65px; transform: translateX(-50%); animation: conn-et-fade 6s ease-out infinite; }
+.type-safety-demo .conn-tl { left: 152px; transform: translateX(-50%); animation: conn-tl-fade 6s ease-out infinite; }
+
+.type-safety-demo .flow-dot {
+  position: absolute;
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background: var(--md-primary-fg-color);
+  box-shadow: 0 0 6px var(--md-primary-fg-color);
+  opacity: 0;
+  top: 21px;
+}
+
+.type-safety-demo .flow-dot-1 { animation: flow-good 6s ease-out infinite; }
+.type-safety-demo .flow-dot-2 { animation: flow-good 6s ease-out infinite 0.15s; }
+
+.type-safety-demo .flow-bad {
+  position: absolute;
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background: #ef4444;
+  box-shadow: 0 0 6px #ef4444;
+  opacity: 0;
+  top: 21px;
+  animation: flow-fail 6s ease-out infinite;
+}
+
+
+.type-safety-demo .result {
+  position: absolute;
+  top: 60px;
+  font-size: 0.5rem;
+  opacity: 0;
+}
+
+.type-safety-demo .result-fail {
+  left: 60px;
+  top: 68px;
+  color: #ef4444;
+  white-space: nowrap;
+  animation: result-fail-anim 6s ease-out infinite;
+}
+
+.type-safety-demo .node-dot {
+  animation: node-pulse-green 6s ease-out infinite;
+}
+
+@keyframes node-pulse-green {
+  0%, 30% { box-shadow: none; background: var(--md-primary-fg-color); }
+  35%, 42% { box-shadow: 0 0 8px #14b8a6; background: #14b8a6; }
+  47%, 68% { box-shadow: none; background: var(--md-primary-fg-color); }
+  73%, 88% { box-shadow: 0 0 8px #ef4444; background: #ef4444; }
+  93%, 100% { box-shadow: none; background: var(--md-primary-fg-color); }
+}
+
+@keyframes node-t-fade {
+  0%, 42% { opacity: 1; }
+  50%, 88% { opacity: 0; }
+  95%, 100% { opacity: 1; }
+}
+
+@keyframes node-l-move {
+  0%, 42% { left: 180px; }
+  50%, 88% { left: 95px; }
+  95%, 100% { left: 180px; }
+}
+
+@keyframes conn-tl-fade {
+  0%, 42% { opacity: 0.4; }
+  50%, 88% { opacity: 0; }
+  95%, 100% { opacity: 0.4; }
+}
+
+@keyframes conn-et-fade {
+  0%, 42% { opacity: 0.4; color: var(--md-primary-fg-color); }
+  50%, 70% { opacity: 0.6; color: #ef4444; }
+  75%, 88% { opacity: 0.4; color: #ef4444; }
+  95%, 100% { opacity: 0.4; color: var(--md-primary-fg-color); }
+}
+
+@keyframes flow-good {
+  0%, 5% { left: 18px; opacity: 0; }
+  8% { opacity: 0.9; }
+  18% { left: 100px; opacity: 0.9; }
+  32% { left: 185px; opacity: 0.9; }
+  36%, 100% { left: 185px; opacity: 0; }
+}
+
+@keyframes flow-fail {
+  0%, 50% { left: 18px; opacity: 0; }
+  53% { left: 18px; opacity: 0.9; }
+  65% { left: 70px; opacity: 0.9; }
+  70% { left: 75px; opacity: 0; }
+  100% { opacity: 0; }
+}
+
+@keyframes result-ok-anim {
+  0%, 32% { opacity: 0; }
+  38%, 42% { opacity: 1; }
+  47%, 100% { opacity: 0; }
+}
+
+@keyframes result-fail-anim {
+  0%, 68% { opacity: 0; }
+  73%, 88% { opacity: 1; }
+  93%, 100% { opacity: 0; }
+}
+
+/* Typing animation */
+.typing-demo {
+  font-family: var(--mono, monospace);
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--md-code-fg-color);
+  background: var(--md-code-bg-color);
+  border-radius: 4px;
+  padding: 1em 1.2em;
+  overflow: hidden;
+  width: 280px;
+  margin: 0 auto;
+}
+
+.typing-demo .line {
+  white-space: pre;
+  overflow: hidden;
+  width: 0;
+  opacity: 0;
+}
+
+.typing-demo .line-1 { animation: type-line1 8s steps(24, end) infinite; }
+.typing-demo .line-2 { animation: type-line2 8s steps(14, end) infinite; }
+.typing-demo .line-3 { animation: type-line3 8s steps(1, end) infinite; }
+.typing-demo .line-4 { animation: type-line4 8s steps(14, end) infinite; }
+.typing-demo .line-5 { animation: type-line5 8s steps(28, end) infinite; }
+
+.typing-demo .c { color: var(--md-code-hl-comment-color); }
+.typing-demo .k { color: var(--md-code-hl-keyword-color); }
+
+@keyframes type-line1 {
+  0%, 2% { width: 0; opacity: 1; }
+  12% { width: 24ch; opacity: 1; }
+  85%, 100% { width: 24ch; opacity: 1; }
+}
+
+@keyframes type-line2 {
+  0%, 14% { width: 0; opacity: 0; }
+  15% { width: 0; opacity: 1; }
+  25% { width: 14ch; opacity: 1; }
+  85%, 100% { width: 14ch; opacity: 1; }
+}
+
+@keyframes type-line3 {
+  0%, 27% { width: 0; opacity: 0; }
+  28% { width: 1ch; opacity: 1; }
+  85%, 100% { width: 1ch; opacity: 1; }
+}
+
+@keyframes type-line4 {
+  0%, 30% { width: 0; opacity: 0; }
+  31% { width: 0; opacity: 1; }
+  42% { width: 14ch; opacity: 1; }
+  85%, 100% { width: 14ch; opacity: 1; }
+}
+
+@keyframes type-line5 {
+  0%, 44% { width: 0; opacity: 0; }
+  45% { width: 0; opacity: 1; }
+  65% { width: 100%; opacity: 1; }
+  85%, 100% { width: 100%; opacity: 1; }
+}
+
+@keyframes drop-to-jvm {
+  0% { top: 32px; left: 50%; opacity: 0; transform: scale(0.5); }
+  8% { opacity: 0.8; transform: scale(1); }
+  95% { opacity: 0.8; transform: scale(1); }
+  100% { top: 80px; left: 15%; opacity: 0; transform: scale(0.5); }
+}
+
+@keyframes drop-to-js {
+  0% { top: 32px; left: 50%; opacity: 0; transform: scale(0.5); }
+  8% { opacity: 0.8; transform: scale(1); }
+  95% { opacity: 0.8; transform: scale(1); }
+  100% { top: 80px; left: 50%; opacity: 0; transform: scale(0.5); }
+}
+
+@keyframes drop-to-native {
+  0% { top: 32px; left: 50%; opacity: 0; transform: scale(0.5); }
+  8% { opacity: 0.8; transform: scale(1); }
+  95% { opacity: 0.8; transform: scale(1); }
+  100% { top: 80px; left: 85%; opacity: 0; transform: scale(0.5); }
 }
 
 .intro-header h1 {
@@ -377,22 +751,6 @@ hide:
     ```scala
     import etl4s._
 
-    val extract = Extract(List(1, 2, 3, 4, 5))
-    val double  = Transform[List[Int], List[Int]](_.map(_ * 2))
-    val sum     = Transform[List[Int], Int](_.sum)
-    val print   = Load[Int, Unit](n => println(s"Result: $n"))
-
-    val pipeline = extract ~> double ~> sum ~> print
-
-    pipeline.unsafeRun(())
-    // Result: 30
-    ```
-
-=== "Parallel"
-
-    ```scala
-    import etl4s._
-
     val extract = Extract(100)
     val half    = Transform[Int, Int](_ / 2)
     val double  = Transform[Int, Int](_ * 2)
@@ -440,8 +798,7 @@ hide:
 
     ```mermaid
     graph LR
-      source["source<br><sub>Int</sub>"] --> increment["increment<br><sub>Int → Int</sub>"]
-      increment --> sink["sink<br><sub>Int → Unit</sub>"]
+      source --> increment --> sink
     ```
 
 === "Telemetry"
@@ -464,24 +821,6 @@ hide:
     process.unsafeRun(data)
     ```
 
-=== "Tracing"
-
-    ```scala
-    import etl4s._
-
-    val process = Transform[String, Int] { s =>
-      Trace.log("Processing")
-      if (s.isEmpty) Trace.error("Empty input!")
-      s.length
-    }
-
-    val trace = process.unsafeRunTrace("hello")
-    // trace.result         -> 5
-    // trace.logs           -> List("Processing")
-    // trace.errors         -> List()
-    // trace.timeElapsedMillis
-    ```
-
 ---
 
 <div class="feature-grid">
@@ -492,13 +831,13 @@ hide:
 <p>A header-file lib (not a framework) that lets you structure code like whiteboard diagrams. Chain with <code>~></code>, parallelize with <code>&</code>, inject config with <code>.requires</code>. Works anywhere: scripts, Spark, Flink, your server.</p>
 </div>
 <div class="feature-visual">
-```scala
-// That's it. One import.
-import etl4s._
-
-val pipeline =
-  extract ~> transform ~> load
-```
+<div class="typing-demo">
+<div class="line line-1"><span class="c">// That's it. One import.</span></div>
+<div class="line line-2"><span class="k">import</span> etl4s._</div>
+<div class="line line-3"> </div>
+<div class="line line-4"><span class="k">val</span> pipeline =</div>
+<div class="line line-5">  extract ~> transform ~> load</div>
+</div>
 </div>
 </div>
 
@@ -521,14 +860,17 @@ val pipeline =
 <p>Write <code>e ~> t ~> l</code>. Types must match or it won't compile. One core abstraction: <code>Node[In, Out]</code>. Structure survives people leaving. New hires read <code>e ~> (t1 & t2) ~> l</code> and get it. Auto-generated diagrams document your pipelines.</p>
 </div>
 <div class="feature-visual">
-```scala
-val e = Extract(1)
-val t = Transform[Int, String](_.toString)
-val l = Load[String, Unit](println)
-
-e ~> t ~> l  // ✓ compiles
-e ~> l       // ✗ won't compile
-```
+<div class="type-safety-demo">
+  <div class="node node-e"><span class="node-dot"></span><span class="node-label">E</span><span class="node-type">[A, Int]</span></div>
+  <span class="conn conn-et">~></span>
+  <div class="node node-t"><span class="node-dot"></span><span class="node-label">T</span><span class="node-type">[Int, Str]</span></div>
+  <span class="conn conn-tl">~></span>
+  <div class="node node-l"><span class="node-dot"></span><span class="node-label">L</span><span class="node-type">[Str, B]</span></div>
+  <span class="flow-dot flow-dot-1"></span>
+  <span class="flow-dot flow-dot-2"></span>
+  <span class="flow-bad"></span>
+  <span class="result result-fail">won't compile</span>
+</div>
 </div>
 </div>
 
@@ -546,8 +888,6 @@ Seems to provide most of the advantages of full blown "effect systems" without t
 </div>
 
 </div>
-
----
 
 <div class="feature-grid">
 
@@ -572,6 +912,33 @@ Seems to provide most of the advantages of full blown "effect systems" without t
     <span class="dot"></span>
     <span class="env-label">Needs[Db & Api]</span>
   </div>
+</div>
+</div>
+</div>
+
+<div class="feature-row reverse">
+<div class="feature-text">
+<h3>Runs anywhere.</h3>
+<p>Same code compiles to JVM, JavaScript, and Native. No platform-specific APIs.</p>
+</div>
+<div class="feature-visual">
+<div class="platform-demo">
+  <img src="assets/etl4s-logo.png" alt="" class="logo-source" />
+  <span class="drop drop-jvm-1"></span>
+  <span class="drop drop-jvm-2"></span>
+  <span class="drop drop-jvm-3"></span>
+  <span class="drop drop-jvm-4"></span>
+  <span class="drop drop-js-1"></span>
+  <span class="drop drop-js-2"></span>
+  <span class="drop drop-js-3"></span>
+  <span class="drop drop-js-4"></span>
+  <span class="drop drop-native-1"></span>
+  <span class="drop drop-native-2"></span>
+  <span class="drop drop-native-3"></span>
+  <span class="drop drop-native-4"></span>
+  <span class="platform platform-jvm">JVM</span>
+  <span class="platform platform-js">JS</span>
+  <span class="platform platform-native">Native</span>
 </div>
 </div>
 </div>
