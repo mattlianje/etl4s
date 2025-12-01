@@ -320,6 +320,93 @@ body,
   transition: none !important;
 }
 
+/* Allow intro animations */
+@keyframes float {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-6px); }
+}
+
+@keyframes magnet-left {
+  0%, 10% { transform: translateX(-12px); opacity: 0.5; }
+  40%, 60% { transform: translateX(0); opacity: 0.9; }
+  90%, 100% { transform: translateX(-12px); opacity: 0.5; }
+}
+
+@keyframes magnet-right {
+  0%, 10% { transform: translateX(12px); opacity: 0.5; }
+  40%, 60% { transform: translateX(0); opacity: 0.9; }
+  90%, 100% { transform: translateX(12px); opacity: 0.5; }
+}
+
+@keyframes connector-appear {
+  0%, 30% { opacity: 0; }
+  45%, 55% { opacity: 0.6; }
+  70%, 100% { opacity: 0; }
+}
+
+
+.magnet-demo .node-left {
+  animation: magnet-left 3s ease-in-out infinite !important;
+}
+
+.magnet-demo .node-right {
+  animation: magnet-right 3s ease-in-out infinite !important;
+}
+
+.magnet-demo .connector {
+  animation: connector-appear 3s ease-in-out infinite !important;
+}
+
+@keyframes env-drift-left {
+  0%, 15% { transform: translateX(-12px); opacity: 0.3; }
+  40%, 60% { transform: translateX(0); opacity: 1; }
+  85%, 100% { transform: translateX(-12px); opacity: 0.3; }
+}
+
+@keyframes env-drift-right {
+  0%, 15% { transform: translateX(12px); opacity: 0.3; }
+  40%, 60% { transform: translateX(0); opacity: 1; }
+  85%, 100% { transform: translateX(12px); opacity: 0.3; }
+}
+
+@keyframes env-result-appear {
+  0%, 45% { opacity: 0; transform: scale(0.7); }
+  55%, 75% { opacity: 1; transform: scale(1); }
+  90%, 100% { opacity: 0; transform: scale(0.7); }
+}
+
+@keyframes op-pulse {
+  0%, 20% { opacity: 0.2; }
+  40%, 60% { opacity: 0.6; }
+  80%, 100% { opacity: 0.2; }
+}
+
+@keyframes eq-appear {
+  0%, 45% { opacity: 0; }
+  55%, 75% { opacity: 0.6; }
+  90%, 100% { opacity: 0; }
+}
+
+.env-merge-demo .env-a {
+  animation: env-drift-left 5s ease-in-out infinite !important;
+}
+
+.env-merge-demo .env-b {
+  animation: env-drift-right 5s ease-in-out infinite !important;
+}
+
+.env-merge-demo .env-result {
+  animation: env-result-appear 5s ease-in-out infinite !important;
+}
+
+.env-merge-demo .merge-op {
+  animation: op-pulse 5s ease-in-out infinite !important;
+}
+
+.env-merge-demo .merge-eq {
+  animation: eq-appear 5s ease-in-out infinite !important;
+}
+
 /* But keep smooth color transitions for theme toggle */
 body,
 .md-header,

@@ -24,16 +24,183 @@ hide:
 .intro-header img {
   height: 64px;
   margin-bottom: 1rem;
-  transition: transform 0.2s ease;
+  transition: transform 0.8s ease, filter 0.8s ease;
 }
 
 .intro-header img:hover {
-  transform: scale(1.05);
+  transform: scale(1.06);
+  filter: drop-shadow(0 6px 20px rgba(0, 0, 0, 0.12));
+}
+
+@keyframes float {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-6px); }
+}
+
+/* Magnetic snap animation */
+.magnet-demo {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0;
+  margin-bottom: 1.5rem;
+  height: 24px;
+}
+
+.magnet-demo .node {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--md-primary-fg-color);
+  opacity: 0.7;
+}
+
+.magnet-demo .node-left {
+  animation: magnet-left 3s ease-in-out infinite;
+}
+
+.magnet-demo .node-right {
+  animation: magnet-right 3s ease-in-out infinite;
+}
+
+.magnet-demo .connector {
+  font-size: 0.75rem;
+  opacity: 0;
+  font-family: var(--mono, monospace);
+  color: var(--md-primary-fg-color);
+  animation: connector-appear 3s ease-in-out infinite;
+  margin: 0 2px;
+}
+
+@keyframes magnet-left {
+  0%, 10% { transform: translateX(-12px); opacity: 0.5; }
+  40%, 60% { transform: translateX(0); opacity: 0.9; }
+  90%, 100% { transform: translateX(-12px); opacity: 0.5; }
+}
+
+@keyframes magnet-right {
+  0%, 10% { transform: translateX(12px); opacity: 0.5; }
+  40%, 60% { transform: translateX(0); opacity: 0.9; }
+  90%, 100% { transform: translateX(12px); opacity: 0.5; }
+}
+
+@keyframes connector-appear {
+  0%, 30% { opacity: 0; }
+  45%, 55% { opacity: 0.6; }
+  70%, 100% { opacity: 0; }
+}
+
+/* Environment merge animation */
+.env-merge-demo {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.75rem;
+  margin: 2rem 0;
+  font-family: var(--mono, monospace);
+  font-size: 0.65rem;
+}
+
+.env-merge-demo .env {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.env-merge-demo .dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--md-primary-fg-color);
+}
+
+.env-merge-demo .env-label {
+  font-size: 0.6rem;
+  opacity: 0.6;
+  white-space: nowrap;
+}
+
+.env-merge-demo .env-a {
+  animation: env-drift-left 5s ease-in-out infinite;
+}
+
+.env-merge-demo .env-b {
+  animation: env-drift-right 5s ease-in-out infinite;
+}
+
+.env-merge-demo .env-result {
+  animation: env-result-appear 5s ease-in-out infinite;
+}
+
+.env-merge-demo .env-result .dot {
+  box-shadow: 0 0 8px var(--md-primary-fg-color);
+}
+
+.env-merge-demo .env-result .env-label {
+  opacity: 0.8;
+}
+
+.env-merge-demo .merge-op {
+  opacity: 0.4;
+  animation: op-pulse 5s ease-in-out infinite;
+}
+
+.env-merge-demo .merge-eq {
+  opacity: 0;
+  animation: eq-appear 5s ease-in-out infinite;
+}
+
+@keyframes env-drift-left {
+  0%, 15% { transform: translateX(-12px); opacity: 0.3; }
+  40%, 60% { transform: translateX(0); opacity: 1; }
+  85%, 100% { transform: translateX(-12px); opacity: 0.3; }
+}
+
+@keyframes env-drift-right {
+  0%, 15% { transform: translateX(12px); opacity: 0.3; }
+  40%, 60% { transform: translateX(0); opacity: 1; }
+  85%, 100% { transform: translateX(12px); opacity: 0.3; }
+}
+
+@keyframes env-result-appear {
+  0%, 45% { opacity: 0; transform: scale(0.7); }
+  55%, 75% { opacity: 1; transform: scale(1); }
+  90%, 100% { opacity: 0; transform: scale(0.7); }
+}
+
+@keyframes op-pulse {
+  0%, 20% { opacity: 0.2; }
+  40%, 60% { opacity: 0.6; }
+  80%, 100% { opacity: 0.2; }
+}
+
+@keyframes eq-appear {
+  0%, 45% { opacity: 0; }
+  55%, 75% { opacity: 0.6; }
+  90%, 100% { opacity: 0; }
+}
+
+.env-section {
+  text-align: center;
+  margin: 2rem 0;
+}
+
+.env-section h3 {
+  font-size: 0.9rem;
+  font-weight: 600;
+  margin: 0 0 0.3rem 0;
+}
+
+.env-section p {
+  font-size: 0.75rem;
+  opacity: 0.7;
+  margin: 0 0 1.5rem 0;
 }
 
 .intro-header h1 {
   font-size: 2.5rem;
-  font-weight: 300;
+  font-weight: 200;
   margin: 0.5rem 0;
   border: none !important;
   padding: 0 !important;
@@ -54,27 +221,18 @@ hide:
 }
 
 .intro-buttons a {
-  padding: 0.4rem 0;
+  padding: 0.3rem 0;
   text-decoration: none !important;
   font-size: 0.85rem;
   font-weight: 500;
   color: var(--md-primary-fg-color);
   border-bottom: 1.5px solid transparent;
-  transition: border-color 0.2s ease;
-}
-
-.intro-buttons a.btn-primary {
-  color: var(--md-primary-fg-color);
-  border-bottom: 1.5px solid var(--md-primary-fg-color);
-}
-
-.intro-buttons a.btn-secondary {
-  color: var(--md-primary-fg-color);
-  opacity: 0.8;
+  transition: border-color 0.15s ease, opacity 0.15s ease;
 }
 
 .intro-buttons a:hover {
   border-bottom-color: var(--md-primary-fg-color);
+  opacity: 1;
 }
 
 /* Zen dividers */
@@ -206,7 +364,7 @@ hide:
 <div class="intro-header">
   <img src="assets/etl4s-logo.png" alt="etl4s" />
   <h1>etl4s</h1>
-  <p style="opacity: 0.6; font-size: 0.85rem; margin: 0.5rem 0 1.5rem 0;">Powerful, whiteboard-style ETL</p>
+  <p style="opacity: 0.6; font-size: 0.85rem; margin: 0.5rem 0 1.5rem 0;">One file. Zero dependencies. Powerful, whiteboard-style ETL.</p>
   <div class="intro-buttons">
     <a href="installation/" class="btn-primary">Get Started</a>
     <a href="https://scastie.scala-lang.org/mattlianje/1280QhQ5RWODgizeXOIsXA/5" target="_blank" class="btn-secondary">Try Online</a>
@@ -384,6 +542,37 @@ e ~> l       // ✗ won't compile
 Seems to provide most of the advantages of full blown "effect systems" without the complexities, and awkward monad syntax!
 <cite>— u/RiceBroad4552</cite>
 </blockquote>
+</div>
+</div>
+
+</div>
+
+---
+
+<div class="feature-grid">
+
+<div class="feature-row">
+<div class="feature-text">
+<h3>Automatic environment inference.</h3>
+<p>Chain nodes with different dependencies. The compiler figures out what the pipeline needs. No manual wiring.</p>
+</div>
+<div class="feature-visual">
+<div class="env-merge-demo">
+  <div class="env env-a">
+    <span class="dot"></span>
+    <span class="env-label">Needs[Db]</span>
+  </div>
+  <span class="merge-op">~></span>
+  <div class="env env-b">
+    <span class="dot"></span>
+    <span class="env-label">Needs[Api]</span>
+  </div>
+  <span class="merge-eq">=</span>
+  <div class="env env-result">
+    <span class="dot"></span>
+    <span class="env-label">Needs[Db & Api]</span>
+  </div>
+</div>
 </div>
 </div>
 
