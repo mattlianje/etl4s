@@ -446,24 +446,31 @@ body,
 }
 
 @keyframes drop-to-jvm {
-  0% { top: 32px; left: 50%; opacity: 0; transform: scale(0.5); }
+  0% { top: 48px; left: 50%; opacity: 0; transform: scale(0.5); }
   8% { opacity: 0.8; transform: scale(1); }
   95% { opacity: 0.8; transform: scale(1); }
-  100% { top: 80px; left: 15%; opacity: 0; transform: scale(0.5); }
+  100% { top: 110px; left: 10%; opacity: 0; transform: scale(0.5); }
 }
 
 @keyframes drop-to-js {
-  0% { top: 32px; left: 50%; opacity: 0; transform: scale(0.5); }
+  0% { top: 48px; left: 50%; opacity: 0; transform: scale(0.5); }
   8% { opacity: 0.8; transform: scale(1); }
   95% { opacity: 0.8; transform: scale(1); }
-  100% { top: 80px; left: 50%; opacity: 0; transform: scale(0.5); }
+  100% { top: 110px; left: 36%; opacity: 0; transform: scale(0.5); }
 }
 
-@keyframes drop-to-native {
-  0% { top: 32px; left: 50%; opacity: 0; transform: scale(0.5); }
+@keyframes drop-to-wasm {
+  0% { top: 48px; left: 50%; opacity: 0; transform: scale(0.5); }
   8% { opacity: 0.8; transform: scale(1); }
   95% { opacity: 0.8; transform: scale(1); }
-  100% { top: 80px; left: 85%; opacity: 0; transform: scale(0.5); }
+  100% { top: 110px; left: 62%; opacity: 0; transform: scale(0.5); }
+}
+
+@keyframes drop-to-llvm {
+  0% { top: 48px; left: 50%; opacity: 0; transform: scale(0.5); }
+  8% { opacity: 0.8; transform: scale(1); }
+  95% { opacity: 0.8; transform: scale(1); }
+  100% { top: 110px; left: 88%; opacity: 0; transform: scale(0.5); }
 }
 
 /* Type safety animation - flowing dots */
@@ -590,11 +597,17 @@ body,
 .platform-demo .drop-js-3 { animation: drop-to-js 1.6s ease-out infinite 0.93s !important; }
 .platform-demo .drop-js-4 { animation: drop-to-js 1.6s ease-out infinite 1.33s !important; }
 
-/* Native - right target */
-.platform-demo .drop-native-1 { animation: drop-to-native 1.6s ease-out infinite 0.27s !important; }
-.platform-demo .drop-native-2 { animation: drop-to-native 1.6s ease-out infinite 0.67s !important; }
-.platform-demo .drop-native-3 { animation: drop-to-native 1.6s ease-out infinite 1.07s !important; }
-.platform-demo .drop-native-4 { animation: drop-to-native 1.6s ease-out infinite 1.47s !important; }
+/* WASM - center-right target */
+.platform-demo .drop-wasm-1 { animation: drop-to-wasm 1.6s ease-out infinite 0.2s !important; }
+.platform-demo .drop-wasm-2 { animation: drop-to-wasm 1.6s ease-out infinite 0.6s !important; }
+.platform-demo .drop-wasm-3 { animation: drop-to-wasm 1.6s ease-out infinite 1.0s !important; }
+.platform-demo .drop-wasm-4 { animation: drop-to-wasm 1.6s ease-out infinite 1.4s !important; }
+
+/* LLVM - right target */
+.platform-demo .drop-llvm-1 { animation: drop-to-llvm 1.6s ease-out infinite 0.27s !important; }
+.platform-demo .drop-llvm-2 { animation: drop-to-llvm 1.6s ease-out infinite 0.67s !important; }
+.platform-demo .drop-llvm-3 { animation: drop-to-llvm 1.6s ease-out infinite 1.07s !important; }
+.platform-demo .drop-llvm-4 { animation: drop-to-llvm 1.6s ease-out infinite 1.47s !important; }
 
 /* But keep smooth color transitions for theme toggle */
 body,
