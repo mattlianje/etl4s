@@ -392,8 +392,8 @@ hide:
   color: var(--md-primary-fg-color);
 }
 
-.type-safety-demo .conn-et { left: 65px; transform: translateX(-50%); animation: conn-et-fade 6s ease-out infinite; }
-.type-safety-demo .conn-tl { left: 152px; transform: translateX(-50%); animation: conn-tl-fade 6s ease-out infinite; }
+.type-safety-demo .conn-et { left: 72px; transform: translateX(-50%); animation: conn-et-fade 6s ease-out infinite; }
+.type-safety-demo .conn-tl { left: 158px; transform: translateX(-50%); animation: conn-tl-fade 6s ease-out infinite; }
 
 .type-safety-demo .flow-dot {
   position: absolute;
@@ -759,7 +759,7 @@ hide:
 <div class="intro-header">
   <img src="assets/etl4s-logo.png" alt="etl4s" />
   <h1>etl4s</h1>
-  <p style="opacity: 0.6; font-size: 0.85rem; margin: 0.5rem 0 1.5rem 0;">One file. Zero dependencies. Powerful, whiteboard-style ETL.</p>
+  <p style="opacity: 0.6; font-size: 0.85rem; margin: 0.5rem 0 1.5rem 0;">Powerful, whiteboard-style ETL.</p>
   <div class="intro-buttons">
     <a href="installation/" class="btn-primary">Get Started</a>
     <a href="https://scastie.scala-lang.org/mattlianje/1280QhQ5RWODgizeXOIsXA/5" target="_blank" class="btn-secondary">Try Online</a>
@@ -878,7 +878,7 @@ hide:
 <div class="feature-row">
 <div class="feature-text">
 <h3>For engineers & teams.</h3>
-<p>Write <code>e ~> t ~> l</code>. Types must match or it won't compile. One core abstraction: <code>Node[In, Out]</code>. Structure survives people leaving. New hires read <code>e ~> (t1 & t2) ~> l</code> and get it. Auto-generated diagrams document your pipelines.</p>
+<p>Write <code>e ~> t ~> l</code>. Types must match or it won't compile. One core abstraction: <code>Node[In, Out]</code>. Structure survives people leaving. New hires read code and get it. Auto-generated diagrams document your pipelines.</p>
 </div>
 <div class="feature-visual">
 <div class="type-safety-demo">
