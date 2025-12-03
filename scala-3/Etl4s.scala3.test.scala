@@ -4,7 +4,6 @@ package etl4s
 class Scala3Specs extends munit.FunSuite {
 
   test("Reader composition with unrelated types uses intersection") {
-    // Two completely unrelated config traits
     trait DatabaseConfig { def connectionString: String }
     trait ApiConfig      { def apiKey: String           }
 
@@ -16,10 +15,8 @@ class Scala3Specs extends munit.FunSuite {
       Node(input => s"API[${cfg.apiKey}]: $input")
     }
 
-    // Composing unrelated Readers produces Reader[DatabaseConfig & ApiConfig, ...]
     val pipeline = dbReader ~> apiReader
 
-    // Create a value that satisfies both types
     val combined = new DatabaseConfig with ApiConfig {
       val connectionString = "jdbc:mysql://localhost"
       val apiKey           = "secret-key-123"
@@ -29,10 +26,6 @@ class Scala3Specs extends munit.FunSuite {
     assert(result.contains("DB[jdbc:mysql://localhost]"))
     assert(result.contains("API[secret-key-123]"))
   }
-
-  // ============================================================================
-  // Heterogeneous Conditional Branching Tests (Union Types)
-  // ============================================================================
 
   test("Node conditional branching with heterogeneous output types (union)") {
     case class StringResult(value: String)
@@ -45,7 +38,6 @@ class Scala3Specs extends munit.FunSuite {
     val intBranch: Node[Int, IntResult]         = Node(n => IntResult(n * -1))
     val defaultBranch: Node[Int, DefaultResult] = Node(_ => DefaultResult("zero"))
 
-    // Result type is Node[Int, StringResult | IntResult | DefaultResult]
     val conditional = source
       .If(_ > 0)(stringBranch)
       .ElseIf(_ < 0)(intBranch)
@@ -55,7 +47,6 @@ class Scala3Specs extends munit.FunSuite {
     val result2 = conditional.unsafeRun(-3)
     val result3 = conditional.unsafeRun(0)
 
-    // Pattern match on union type
     result1 match {
       case r: StringResult => assertEquals(r.value, "positive: 5")
       case _               => fail("Expected StringResult")
@@ -83,7 +74,6 @@ class Scala3Specs extends munit.FunSuite {
     case class CacheResult(cached: Boolean, data: String)
     case class ApiResult(key: String, data: String)
 
-    // Source just passes through the input unchanged
     val source: Reader[DatabaseConfig, Node[String, String]] = Reader { cfg =>
       Node(input => input)
     }
@@ -100,15 +90,11 @@ class Scala3Specs extends munit.FunSuite {
       Node(s => ApiResult(cfg.apiKey, s))
     }
 
-    // Result: Reader[DatabaseConfig & CacheConfig & ApiConfig, Node[String, DbResult | CacheResult | ApiResult]]
-    // Use ElseIfR/ElseR to introduce new config types into the intersection
-    // ElseIfR takes branch first for better type inference
     val conditional = source
-      .If(cfg => s => s.startsWith("db:"))(dbBranch)
-      .ElseIfR(cacheBranch)(cfg => s => s.startsWith("cache:"))
-      .ElseR(apiBranch)
+      .If((cfg: DatabaseConfig) => (s: String) => s.startsWith("db:"))(dbBranch)
+      .ElseIf((cfg: DatabaseConfig) => (s: String) => s.startsWith("cache:"))(cacheBranch)
+      .Else(apiBranch)
 
-    // Config must satisfy all three traits
     val config = new DatabaseConfig with CacheConfig with ApiConfig {
       val dbUrl        = "jdbc:postgres://localhost"
       val cacheEnabled = true
@@ -153,16 +139,12 @@ class Scala3Specs extends munit.FunSuite {
       Node(_ * cfg.multiplier)
     }
 
-    // Reader branch
     val readerBranch: Reader[Config, Node[Int, ReaderResult]] = Reader { cfg =>
       Node(n => ReaderResult(n + cfg.multiplier))
     }
 
-    // Plain Node branch (no config dependency)
     val nodeBranch: Node[Int, NodeResult] = Node(n => NodeResult(s"node: $n"))
 
-    // Mixing Reader and Node branches
-    // Result: Reader[Config & Any, Node[Int, ReaderResult | NodeResult]] which simplifies to Reader[Config, ...]
     val conditional = source
       .If(cfg => n => n > 10)(readerBranch)
       .Else(nodeBranch)
@@ -170,11 +152,11 @@ class Scala3Specs extends munit.FunSuite {
     val config   = new Config { val multiplier = 2 }
     val pipeline = conditional.provide(config)
 
-    val result1 = pipeline.unsafeRun(10) // 10 * 2 = 20, > 10, takes readerBranch
-    val result2 = pipeline.unsafeRun(3)  // 3 * 2 = 6, <= 10, takes nodeBranch
+    val result1 = pipeline.unsafeRun(10)
+    val result2 = pipeline.unsafeRun(3)
 
     result1 match {
-      case r: ReaderResult => assertEquals(r.value, 22) // 20 + 2
+      case r: ReaderResult => assertEquals(r.value, 22)
       case _               => fail("Expected ReaderResult")
     }
 
@@ -184,9 +166,85 @@ class Scala3Specs extends munit.FunSuite {
     }
   }
 
-  // ============================================================================
-  // Auto-flattening & operator tests (Scala 3 Tuple support)
-  // ============================================================================
+  test("Reader conditional with multiple elseIf") {
+    case class Config(min: Int, max: Int)
+
+    val source     = Reader[Config, Node[Int, Int]] { _ => Node[Int, Int](identity) }
+    val formatLow  = Reader[Config, Node[Int, String]] { _ => Node(n => s"too-low:$n") }
+    val formatHigh = Reader[Config, Node[Int, String]] { _ => Node(n => s"too-high:$n") }
+    val formatOk   = Reader[Config, Node[Int, String]] { _ => Node(n => s"ok:$n") }
+
+    val classifier = source
+      .If((cfg: Config) => (n: Int) => n < cfg.min)(formatLow)
+      .ElseIf((cfg: Config) => (n: Int) => n > cfg.max)(formatHigh)
+      .Else(formatOk)
+
+    val config = Config(10, 100)
+    assertEquals(classifier.provide(config).unsafeRun(5), "too-low:5")
+    assertEquals(classifier.provide(config).unsafeRun(50), "ok:50")
+    assertEquals(classifier.provide(config).unsafeRun(150), "too-high:150")
+  }
+
+  test("Reader conditional mixing plain Node and Reader branches") {
+    case class Config(multiplier: Int)
+
+    val source     = Reader[Config, Node[Int, Int]] { _ => Node[Int, Int](identity) }
+    val toNegative = Node[Int, String](n => s"negative:$n")
+    val toZero     = Reader[Config, Node[Int, String]] { _ => Node[Int, String](_ => "zero") }
+    val toPositive = Reader[Config, Node[Int, String]] { cfg =>
+      Node(n => s"positive:${n * cfg.multiplier}")
+    }
+
+    val pipeline = source
+      .If((cfg: Config) => (n: Int) => n < 0)(toNegative)
+      .ElseIf((cfg: Config) => (n: Int) => n == 0)(toZero)
+      .Else(toPositive)
+
+    val config = Config(2)
+    assertEquals(pipeline.provide(config).unsafeRun(-5), "negative:-5")
+    assertEquals(pipeline.provide(config).unsafeRun(0), "zero")
+    assertEquals(pipeline.provide(config).unsafeRun(10), "positive:20")
+  }
+
+  test("Reader conditional in ETL pipeline") {
+    case class Config(adultAge: Int, seniorAge: Int)
+    case class User(name: String, age: Int)
+    case class ProcessedUser(name: String, category: String)
+
+    val extract = Reader[Config, Node[String, User]] { _ =>
+      Node { input =>
+        val parts = input.split(",")
+        User(parts(0), parts(1).toInt)
+      }
+    }
+
+    val source  = Reader[Config, Node[User, User]] { _ => Node[User, User](identity) }
+    val toMinor = Reader[Config, Node[User, ProcessedUser]] { _ =>
+      Node(u => ProcessedUser(u.name, "minor"))
+    }
+    val toAdult = Reader[Config, Node[User, ProcessedUser]] { _ =>
+      Node(u => ProcessedUser(u.name, "adult"))
+    }
+    val toSenior = Reader[Config, Node[User, ProcessedUser]] { _ =>
+      Node(u => ProcessedUser(u.name, "senior"))
+    }
+
+    // Condition-first syntax works uniformly (same as Scala 2)
+    val categorize = source
+      .If((cfg: Config) => (u: User) => u.age < cfg.adultAge)(toMinor)
+      .ElseIf((cfg: Config) => (u: User) => u.age < cfg.seniorAge)(toAdult)
+      .Else(toSenior)
+
+    val pipeline = extract ~> categorize
+    val config   = Config(18, 65)
+
+    assertEquals(pipeline.provide(config).unsafeRun("Alice,15"), ProcessedUser("Alice", "minor"))
+    assertEquals(pipeline.provide(config).unsafeRun("Bob,30"), ProcessedUser("Bob", "adult"))
+    assertEquals(
+      pipeline.provide(config).unsafeRun("Charlie,70"),
+      ProcessedUser("Charlie", "senior")
+    )
+  }
 
   test("& operator auto-flattens to flat tuples") {
     val getA: Node[Int, String]  = Node(_ => "a")
@@ -194,17 +252,14 @@ class Scala3Specs extends munit.FunSuite {
     val getC: Node[Int, Double]  = Node(_ => 2.0)
     val getD: Node[Int, Boolean] = Node(_ => true)
 
-    // Two elements - normal pair
     val ab                      = getA & getB
     val abResult: (String, Int) = ab.unsafeRun(0)
     assertEquals(abResult, ("a", 1))
 
-    // Three elements - auto-flattened to tuple3
     val abc                              = getA & getB & getC
     val abcResult: (String, Int, Double) = abc.unsafeRun(0)
     assertEquals(abcResult, ("a", 1, 2.0))
 
-    // Four elements - auto-flattened to tuple4
     val abcd                                       = getA & getB & getC & getD
     val abcdResult: (String, Int, Double, Boolean) = abcd.unsafeRun(0)
     assertEquals(abcdResult, ("a", 1, 2.0, true))
@@ -231,7 +286,6 @@ class Scala3Specs extends munit.FunSuite {
     val readerB: Reader[ConfigB, Node[Unit, Int]]    = Reader(cfg => Node(_ => cfg.b))
     val readerC: Reader[ConfigC, Node[Unit, Double]] = Reader(cfg => Node(_ => cfg.c))
 
-    // Combines configs via intersection AND auto-flattens output tuple
     val combined = readerA & readerB & readerC
 
     val config = new ConfigA with ConfigB with ConfigC {

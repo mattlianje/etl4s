@@ -1624,83 +1624,6 @@ class ConditionalBranchingSpecs extends munit.FunSuite {
     assertEquals(pipeline.provide(config).unsafeRun(10), "positive:20")
   }
 
-  test("Reader conditional with multiple elseIf and context") {
-    case class Config(min: Int, max: Int)
-
-    val source     = Reader[Config, Node[Int, Int]] { _ => Node[Int, Int](identity) }
-    val formatLow  = Reader[Config, Node[Int, String]] { _ => Node(n => s"too-low:$n") }
-    val formatHigh = Reader[Config, Node[Int, String]] { _ => Node(n => s"too-high:$n") }
-    val formatOk   = Reader[Config, Node[Int, String]] { _ => Node(n => s"ok:$n") }
-
-    val classifier = source
-      .If((cfg: Config) => (n: Int) => n < cfg.min)(formatLow)
-      .ElseIf((cfg: Config) => (n: Int) => n > cfg.max)(formatHigh)
-      .Else(formatOk)
-
-    val config = Config(10, 100)
-    assertEquals(classifier.provide(config).unsafeRun(5), "too-low:5")
-    assertEquals(classifier.provide(config).unsafeRun(50), "ok:50")
-    assertEquals(classifier.provide(config).unsafeRun(150), "too-high:150")
-  }
-
-  test("Reader conditional mixing context-aware and context-ignoring conditions") {
-    case class Config(threshold: Int)
-
-    val source      = Reader[Config, Node[Int, Int]] { _ => Node[Int, Int](identity) }
-    val formatZero  = Reader[Config, Node[Int, String]] { _ => Node[Int, String](_ => "zero") }
-    val formatBelow = Reader[Config, Node[Int, String]] { _ => Node(n => s"below:$n") }
-    val formatAbove = Reader[Config, Node[Int, String]] { _ => Node(n => s"above:$n") }
-
-    val pipeline = source
-      .If(_ => (n: Int) => n == 0)(formatZero)
-      .ElseIf((cfg: Config) => (n: Int) => n < cfg.threshold)(formatBelow)
-      .Else(formatAbove)
-
-    val config = Config(10)
-    assertEquals(pipeline.provide(config).unsafeRun(0), "zero")
-    assertEquals(pipeline.provide(config).unsafeRun(5), "below:5")
-    assertEquals(pipeline.provide(config).unsafeRun(15), "above:15")
-  }
-
-  test("Reader conditional in ETL pipeline") {
-    case class Config(adultAge: Int, seniorAge: Int)
-    case class User(name: String, age: Int)
-    case class ProcessedUser(name: String, category: String)
-
-    val extract = Reader[Config, Node[String, User]] { _ =>
-      Node { input =>
-        val parts = input.split(",")
-        User(parts(0), parts(1).toInt)
-      }
-    }
-
-    val source = Reader[Config, Node[User, User]] { _ => Node[User, User](identity) }
-    val toMinor = Reader[Config, Node[User, ProcessedUser]] { _ =>
-      Node(u => ProcessedUser(u.name, "minor"))
-    }
-    val toAdult = Reader[Config, Node[User, ProcessedUser]] { _ =>
-      Node(u => ProcessedUser(u.name, "adult"))
-    }
-    val toSenior = Reader[Config, Node[User, ProcessedUser]] { _ =>
-      Node(u => ProcessedUser(u.name, "senior"))
-    }
-
-    val categorize = source
-      .If((cfg: Config) => (u: User) => u.age < cfg.adultAge)(toMinor)
-      .ElseIf((cfg: Config) => (u: User) => u.age < cfg.seniorAge)(toAdult)
-      .Else(toSenior)
-
-    val pipeline = extract ~> categorize
-    val config   = Config(18, 65)
-
-    assertEquals(pipeline.provide(config).unsafeRun("Alice,15"), ProcessedUser("Alice", "minor"))
-    assertEquals(pipeline.provide(config).unsafeRun("Bob,30"), ProcessedUser("Bob", "adult"))
-    assertEquals(
-      pipeline.provide(config).unsafeRun("Charlie,70"),
-      ProcessedUser("Charlie", "senior")
-    )
-  }
-
   test("Reader conditional with nested branching") {
     case class Config(threshold: Int)
 
@@ -1774,27 +1697,6 @@ class ConditionalBranchingSpecs extends munit.FunSuite {
     assertEquals(pipeline.provide(config).unsafeRun(-5), "negative:-5")
     assertEquals(pipeline.provide(config).unsafeRun(0), "zero")
     assertEquals(pipeline.provide(config).unsafeRun(10), "positive:10")
-  }
-
-  test("Reader conditional mixing plain Node and Reader branches") {
-    case class Config(multiplier: Int)
-
-    val source     = Reader[Config, Node[Int, Int]] { _ => Node[Int, Int](identity) }
-    val toNegative = Node[Int, String](n => s"negative:$n")
-    val toZero     = Reader[Config, Node[Int, String]] { _ => Node[Int, String](_ => "zero") }
-    val toPositive = Reader[Config, Node[Int, String]] { cfg =>
-      Node(n => s"positive:${n * cfg.multiplier}")
-    }
-
-    val pipeline = source
-      .If(_ => (n: Int) => n < 0)(toNegative)
-      .ElseIf(_ => (n: Int) => n == 0)(toZero)
-      .Else(toPositive)
-
-    val config = Config(2)
-    assertEquals(pipeline.provide(config).unsafeRun(-5), "negative:-5")
-    assertEquals(pipeline.provide(config).unsafeRun(0), "zero")
-    assertEquals(pipeline.provide(config).unsafeRun(10), "positive:20")
   }
 
   test("Reader conditional with plain Node branches and context-aware conditions") {

@@ -3,7 +3,7 @@
  * |                                 etl4s                                    |
  * |                     Powerful, whiteboard-style ETL                       |
  * |                            Version 1.6.1                                 |
- * |                 Compatible with Scala 2.12, 2.13, and 3                  |
+ * |                         Compatible with Scala 3                          |
  * |                                                                          |
  * | Copyright 2025 Matthieu Court (matthieu.court@protonmail.com)            |
  * | Apache License 2.0                                                       |
@@ -1893,15 +1893,33 @@ package object etl4s {
   ): Node[A, C] = builder.build
 
   /**
+   * Type class for lifting branches (Node or Reader) to Reader.
+   * Given a branch type, determines the config type needed.
+   * For Nodes, config type is Any (no requirement).
+   * For Readers, config type is the Reader's type parameter.
+   */
+  trait BranchLift[B, C, Branch] {
+    type Config
+    def lift(branch: Branch): Reader[Config, Node[B, C]]
+  }
+
+  object BranchLift {
+    // Node branch: no config requirement (Any)
+    given nodeToReader[B, C]: BranchLift[B, C, Node[B, C]] with {
+      type Config = Any
+      def lift(branch: Node[B, C]): Reader[Any, Node[B, C]] = Reader.pure(branch)
+    }
+
+    // Reader branch: uses the Reader's config type
+    given readerLift[T, B, C]: BranchLift[B, C, Reader[T, Node[B, C]]] with {
+      type Config = T
+      def lift(branch: Reader[T, Node[B, C]]): Reader[T, Node[B, C]] = branch
+    }
+  }
+
+  /**
    * Non-exhaustive conditional builder for Reader-wrapped nodes with heterogeneous types.
-   *
-   * - Config types accumulate via intersection: T & T2 & T3
-   * - Output types accumulate via union: C | C2 | C3
-   *
-   * @tparam T accumulated config type (intersection of all branch configs)
-   * @tparam A input type to the source node
-   * @tparam B output type from source node (input to branches)
-   * @tparam C accumulated output type (union of all branch outputs)
+   * Config types accumulate via intersection, output types via union.
    */
   case class ReaderPartialConditionalBuilder[T, A, B, C](
     sourceReader: Reader[T, Node[A, B]],
@@ -1909,121 +1927,42 @@ package object etl4s {
   ) {
 
     /**
-     * Add another conditional branch with a Reader that has the same config type T.
-     * Output types union (C | C2).
+     * Add another conditional branch.
+     * For Node branches: config unchanged, output types union.
+     * For Reader branches: config types intersect, output types union.
      */
-    def ElseIf[C2](
-      condition: T => B => Boolean
-    )(branch: Reader[T, Node[B, C2]]): ReaderPartialConditionalBuilder[T, A, B, C | C2] =
+    def ElseIf[C2, Branch](condition: T => B => Boolean)(branch: Branch)(using
+      lift: BranchLift[B, C2, Branch]
+    ): ReaderPartialConditionalBuilder[T & lift.Config, A, B, C | C2] = {
+      type R   = T & lift.Config
+      type Out = C | C2
       ReaderPartialConditionalBuilder(
-        sourceReader,
-        branches.map { case (cond, r) =>
-          (cond, r.asInstanceOf[Reader[T, Node[B, C | C2]]])
-        } :+ (condition, branch.asInstanceOf[Reader[T, Node[B, C | C2]]])
-      )
-
-    /**
-     * Add another conditional branch with a Reader (different config type T2).
-     * Config types intersect (T & T2), output types union (C | C2).
-     * Use this when the branch has a different config type than the accumulated type.
-     * Branch comes first for better type inference.
-     */
-    def ElseIfR[T2, C2](branch: Reader[T2, Node[B, C2]])(
-      condition: (T & T2) => B => Boolean
-    ): ReaderPartialConditionalBuilder[T & T2, A, B, C | C2] =
-      ReaderPartialConditionalBuilder(
-        sourceReader.asInstanceOf[Reader[T & T2, Node[A, B]]],
-        branches.map { case (cond, r) =>
+        sourceReader.asInstanceOf[Reader[R, Node[A, B]]],
+        branches.map((c, r) =>
+          (c.asInstanceOf[R => B => Boolean], r.asInstanceOf[Reader[R, Node[B, Out]]])
+        ) :+
           (
-            cond.asInstanceOf[(T & T2) => B => Boolean],
-            r.asInstanceOf[Reader[T & T2, Node[B, C | C2]]]
+            condition.asInstanceOf[R => B => Boolean],
+            lift.lift(branch).asInstanceOf[Reader[R, Node[B, Out]]]
           )
-        } :+ (condition, branch.asInstanceOf[Reader[T & T2, Node[B, C | C2]]])
       )
-
-    /**
-     * Add another conditional branch with a plain Node (no additional config).
-     * Output types union (C | C2).
-     */
-    def ElseIf[C2](condition: T => B => Boolean)(
-      branch: Node[B, C2]
-    ): ReaderPartialConditionalBuilder[T, A, B, C | C2] =
-      ReaderPartialConditionalBuilder(
-        sourceReader,
-        branches.map { case (cond, r) =>
-          (cond, r.asInstanceOf[Reader[T, Node[B, C | C2]]])
-        } :+ (condition, Reader.pure(branch).asInstanceOf[Reader[T, Node[B, C | C2]]])
-      )
-
-    /**
-     * Complete the conditional with a Reader default branch (same config type T).
-     * Output types union.
-     */
-    def Else[C2](
-      branch: Reader[T, Node[B, C2]]
-    ): Reader[T, Node[A, C | C2]] = {
-      val castBranches = branches.map { case (cond, r) =>
-        (cond, r.asInstanceOf[Reader[T, Node[B, C | C2]]])
-      }
-      val castDefault = branch.asInstanceOf[Reader[T, Node[B, C | C2]]]
-      Reader { ctx =>
-        val sourceNode        = sourceReader.run(ctx)
-        val evaluatedBranches = castBranches.map { case (check, readerBranch) =>
-          (check(ctx), readerBranch.run(ctx))
-        }
-        val evaluatedDefault = castDefault.run(ctx)
-        Node { a =>
-          val b = sourceNode.f(a)
-          evaluatedBranches.find(_._1(b)).map(_._2.f(b)).getOrElse(evaluatedDefault.f(b))
-        }
-      }
     }
 
-    /**
-     * Complete the conditional with a Reader default branch (different config type T2).
-     * Config types intersect, output types union.
-     */
-    def ElseR[T2, C2](
-      branch: Reader[T2, Node[B, C2]]
-    ): Reader[T & T2, Node[A, C | C2]] = {
-      val castSource   = sourceReader.asInstanceOf[Reader[T & T2, Node[A, B]]]
-      val castBranches = branches.map { case (cond, r) =>
-        (
-          cond.asInstanceOf[(T & T2) => B => Boolean],
-          r.asInstanceOf[Reader[T & T2, Node[B, C | C2]]]
+    /** Complete the conditional with a default branch. */
+    def Else[C2, Branch](branch: Branch)(using
+      lift: BranchLift[B, C2, Branch]
+    ): Reader[T & lift.Config, Node[A, C | C2]] = {
+      type R   = T & lift.Config
+      type Out = C | C2
+      Reader { ctx =>
+        val source    = sourceReader.asInstanceOf[Reader[R, Node[A, B]]].run(ctx)
+        val evaluated = branches.map((c, r) =>
+          (c.asInstanceOf[R => B => Boolean](ctx), r.asInstanceOf[Reader[R, Node[B, Out]]].run(ctx))
         )
-      }
-      val castDefault = branch.asInstanceOf[Reader[T & T2, Node[B, C | C2]]]
-      Reader { ctx =>
-        val sourceNode        = castSource.run(ctx)
-        val evaluatedBranches = castBranches.map { case (check, readerBranch) =>
-          (check(ctx), readerBranch.run(ctx))
-        }
-        val evaluatedDefault = castDefault.run(ctx)
+        val default = lift.lift(branch).asInstanceOf[Reader[R, Node[B, Out]]].run(ctx)
         Node { a =>
-          val b = sourceNode.f(a)
-          evaluatedBranches.find(_._1(b)).map(_._2.f(b)).getOrElse(evaluatedDefault.f(b))
-        }
-      }
-    }
-
-    /**
-     * Complete the conditional with a plain Node default branch.
-     * Output types union.
-     */
-    def Else[C2](branch: Node[B, C2]): Reader[T, Node[A, C | C2]] = {
-      val castBranches = branches.map { case (cond, r) =>
-        (cond, r.asInstanceOf[Reader[T, Node[B, C | C2]]])
-      }
-      val castDefault = branch.asInstanceOf[Node[B, C | C2]]
-      Reader { ctx =>
-        val sourceNode        = sourceReader.run(ctx)
-        val evaluatedBranches = castBranches.map { case (check, readerBranch) =>
-          (check(ctx), readerBranch.run(ctx))
-        }
-        Node { a =>
-          val b = sourceNode.f(a)
-          evaluatedBranches.find(_._1(b)).map(_._2.f(b)).getOrElse(castDefault.f(b))
+          val b = source.f(a)
+          evaluated.find(_._1(b)).map(_._2.f(b)).getOrElse(default.f(b))
         }
       }
     }
@@ -2031,14 +1970,6 @@ package object etl4s {
 
   /**
    * Exhaustive conditional builder for Reader-wrapped nodes with heterogeneous types.
-   * Produces a Reader[T, Node[A, C]] where:
-   * - T is the intersection of all branch config types
-   * - C is the union of all branch output types
-   *
-   * @tparam T accumulated config type (intersection)
-   * @tparam A input type to the source node
-   * @tparam B output type from source node (input to branches)
-   * @tparam C accumulated output type (union)
    */
   case class ReaderCompleteConditionalBuilder[T, A, B, C](
     sourceReader: Reader[T, Node[A, B]],
@@ -2046,65 +1977,32 @@ package object etl4s {
     defaultBranch: Reader[T, Node[B, C]]
   ) {
 
-    /**
-     * Add another conditional branch with a Reader (same config type T) before the default.
-     * Output types union (C | C2).
-     */
-    def ElseIf[C2](condition: T => B => Boolean)(
-      branch: Reader[T, Node[B, C2]]
-    ): ReaderCompleteConditionalBuilder[T, A, B, C | C2] =
+    /** Add another conditional branch before the default. */
+    def ElseIf[C2, Branch](condition: T => B => Boolean)(branch: Branch)(using
+      lift: BranchLift[B, C2, Branch]
+    ): ReaderCompleteConditionalBuilder[T & lift.Config, A, B, C | C2] = {
+      type R   = T & lift.Config
+      type Out = C | C2
       ReaderCompleteConditionalBuilder(
-        sourceReader,
-        branches.map { case (cond, r) =>
-          (cond, r.asInstanceOf[Reader[T, Node[B, C | C2]]])
-        } :+ (condition, branch.asInstanceOf[Reader[T, Node[B, C | C2]]]),
-        defaultBranch.asInstanceOf[Reader[T, Node[B, C | C2]]]
-      )
-
-    /**
-     * Add another conditional branch with a Reader (different config type T2) before the default.
-     * Config types intersect (T & T2), output types union (C | C2).
-     * Branch comes first for better type inference.
-     */
-    def ElseIfR[T2, C2](branch: Reader[T2, Node[B, C2]])(
-      condition: (T & T2) => B => Boolean
-    ): ReaderCompleteConditionalBuilder[T & T2, A, B, C | C2] =
-      ReaderCompleteConditionalBuilder(
-        sourceReader.asInstanceOf[Reader[T & T2, Node[A, B]]],
-        branches.map { case (cond, r) =>
+        sourceReader.asInstanceOf[Reader[R, Node[A, B]]],
+        branches.map((c, r) =>
+          (c.asInstanceOf[R => B => Boolean], r.asInstanceOf[Reader[R, Node[B, Out]]])
+        ) :+
           (
-            cond.asInstanceOf[(T & T2) => B => Boolean],
-            r.asInstanceOf[Reader[T & T2, Node[B, C | C2]]]
-          )
-        } :+ (condition, branch.asInstanceOf[Reader[T & T2, Node[B, C | C2]]]),
-        defaultBranch.asInstanceOf[Reader[T & T2, Node[B, C | C2]]]
+            condition.asInstanceOf[R => B => Boolean],
+            lift.lift(branch).asInstanceOf[Reader[R, Node[B, Out]]]
+          ),
+        defaultBranch.asInstanceOf[Reader[R, Node[B, Out]]]
       )
-
-    /**
-     * Add another conditional branch with a plain Node before the default.
-     * Output types union (C | C2).
-     */
-    def ElseIf[C2](condition: T => B => Boolean)(
-      branch: Node[B, C2]
-    ): ReaderCompleteConditionalBuilder[T, A, B, C | C2] =
-      ReaderCompleteConditionalBuilder(
-        sourceReader,
-        branches.map { case (cond, r) =>
-          (cond, r.asInstanceOf[Reader[T, Node[B, C | C2]]])
-        } :+ (condition, Reader.pure(branch).asInstanceOf[Reader[T, Node[B, C | C2]]]),
-        defaultBranch.asInstanceOf[Reader[T, Node[B, C | C2]]]
-      )
+    }
 
     def build: Reader[T, Node[A, C]] = Reader { ctx =>
-      val sourceNode        = sourceReader.run(ctx)
-      val evaluatedBranches = branches.map { case (check, readerBranch) =>
-        (check(ctx), readerBranch.run(ctx))
-      }
-      val evaluatedDefault = defaultBranch.run(ctx)
-
+      val source    = sourceReader.run(ctx)
+      val evaluated = branches.map((c, r) => (c(ctx), r.run(ctx)))
+      val default   = defaultBranch.run(ctx)
       Node { a =>
-        val b = sourceNode.f(a)
-        evaluatedBranches.find(_._1(b)).map(_._2.f(b)).getOrElse(evaluatedDefault.f(b))
+        val b = source.f(a)
+        evaluated.find(_._1(b)).map(_._2.f(b)).getOrElse(default.f(b))
       }
     }
   }
@@ -2185,7 +2083,8 @@ package object etl4s {
 
     /**
      * Conditional branching for Reader-wrapped Nodes.
-     * Branch with Reader that has the same config type T.
+     * Works with both Reader and plain Node branches.
+     * Config types accumulate via intersection, output types via union.
      *
      * @example
      * {{{
@@ -2193,21 +2092,21 @@ package object etl4s {
      *   .If(cfg => x => x > 0)(readerBranchA)
      *   .ElseIf(cfg => x => x < 0)(readerBranchB)
      *   .Else(nodeBranchC)
-     * // Result: Reader[T, Node[A, OutA | OutB | OutC]]
+     * // Result: Reader[T & ConfigA & ConfigB, Node[A, OutA | OutB | OutC]]
      * }}}
      */
-    def If[C](condition: T => B => Boolean)(
-      branch: Reader[T, Node[B, C]]
-    ): ReaderPartialConditionalBuilder[T, A, B, C] =
-      ReaderPartialConditionalBuilder(fa, List((condition, branch)))
-
-    /**
-     * Conditional branching with a plain Node branch (no additional config requirement).
-     */
-    def If[C](condition: T => B => Boolean)(
-      branch: Node[B, C]
-    ): ReaderPartialConditionalBuilder[T, A, B, C] =
-      ReaderPartialConditionalBuilder(fa, List((condition, Reader.pure(branch))))
+    def If[C, Branch](condition: T => B => Boolean)(branch: Branch)(using
+      lift: BranchLift[B, C, Branch]
+    ): ReaderPartialConditionalBuilder[T & lift.Config, A, B, C] =
+      ReaderPartialConditionalBuilder(
+        fa.asInstanceOf[Reader[T & lift.Config, Node[A, B]]],
+        List(
+          (
+            condition.asInstanceOf[(T & lift.Config) => B => Boolean],
+            lift.lift(branch).asInstanceOf[Reader[T & lift.Config, Node[B, C]]]
+          )
+        )
+      )
 
   }
 

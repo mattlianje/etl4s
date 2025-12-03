@@ -34,9 +34,11 @@ nav:
   - Core Concepts: core-concepts.md
   - Your First Pipeline: first-pipeline.md
   - Operators: operators.md
+  - Conditional Branching: branching.md
   - Configuration: config.md
   - Parallel Execution: tasks.md
   - Handling failures: failures.md
+  - Ensurers: validation.md
   - Side Outputs: logs.md
   - Tracing: trace.md
   - Lineage Diagrams: lineage.md
