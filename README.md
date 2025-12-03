@@ -36,11 +36,11 @@ Battle-tested at [Instacart](https://www.instacart.com/). Part of [d4](https://g
 
 **etl4s** is on MavenCentral and cross-built for Scala, 2.12, 2.13, 3.x
 ```scala
-"xyz.matthieucourt" %% "etl4s" % "1.6.1"
+"xyz.matthieucourt" %% "etl4s" % "1.7.0"
 ```
 Or try in REPL:
 ```bash
-scala-cli repl --scala 3 --dep xyz.matthieucourt:etl4s_3:1.6.1
+scala-cli repl --scala 3 --dep xyz.matthieucourt:etl4s_3:1.7.0
 ```
 
 All you need:
