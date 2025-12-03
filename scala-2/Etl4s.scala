@@ -370,16 +370,19 @@ package object etl4s {
      * val getName = Node[Person, String](_.name)
      * val getAge = Node[Person, Int](_.age)
      * val getBoth = getName & getAge  // returns (String, Int)
+     * val getAll = getName & getAge & getEmail  // returns (String, Int, String) - auto-flattened!
      * }}}
      */
-    def &[C](that: Node[A, C]): Node[A, (B, C)] = Node { a =>
-      (f(a), that(a))
+    def &[C](that: Node[A, C])(implicit ta: TupleAppend[B, C]): Node[A, ta.Out] = Node { a =>
+      ta.append(f(a), that(a))
     }
 
     /**
      * Parallel composition with a Reader-wrapped node.
      */
-    def &[T, C](that: Reader[T, Node[A, C]]): Reader[T, Node[A, (B, C)]] = {
+    def &[T, C](
+      that: Reader[T, Node[A, C]]
+    )(implicit ta: TupleAppend[B, C]): Reader[T, Node[A, ta.Out]] = {
       that.map(thatNode => this & thatNode)
     }
 
@@ -400,17 +403,19 @@ package object etl4s {
      * val fetchUser = Node[UserId, User](id => fetchFromDB(id))
      * val fetchPrefs = Node[UserId, Preferences](id => fetchPrefsFromCache(id))
      * val fetchBoth = fetchUser &> fetchPrefs  // concurrent execution
+     * val fetchAll = fetchUser &> fetchPrefs &> fetchSettings  // auto-flattened!
      * }}}
      */
     def &>[C](that: Node[A, C])(implicit
-      ec: ExecutionContext
-    ): Node[A, (B, C)] = Node { a =>
-      val f1 = Future(f(a))
-      val f2 = Future(that(a))
+      ec: ExecutionContext,
+      ta: TupleAppend[B, C]
+    ): Node[A, ta.Out] = Node { a =>
+      val f1       = Future(f(a))
+      val f2       = Future(that(a))
       val combined = for {
         r1 <- f1
         r2 <- f2
-      } yield (r1, r2)
+      } yield ta.append(r1, r2)
       Await.result(combined, Duration.Inf)
     }
 
@@ -418,8 +423,9 @@ package object etl4s {
      * Concurrent parallel composition with a Reader-wrapped node.
      */
     def &>[T, C](that: Reader[T, Node[A, C]])(implicit
-      ec: ExecutionContext
-    ): Reader[T, Node[A, (B, C)]] = {
+      ec: ExecutionContext,
+      ta: TupleAppend[B, C]
+    ): Reader[T, Node[A, ta.Out]] = {
       that.map(thatNode => this &> thatNode)
     }
 
@@ -844,7 +850,9 @@ package object etl4s {
     /**
       *  &: Reader(Node) & {Reader(Node) | Reader(Node) compat | Node}
       */
-    def &[C](fb: Reader[T1, Node[A, C]]): Reader[T1, Node[A, (B, C)]] = {
+    def &[C](
+      fb: Reader[T1, Node[A, C]]
+    )(implicit ta: TupleAppend[B, C]): Reader[T1, Node[A, ta.Out]] = {
       for {
         nodeA <- fa
         nodeB <- fb
@@ -852,8 +860,9 @@ package object etl4s {
     }
 
     def &[T2, C, R](fb: Reader[T2, Node[A, C]])(implicit
-      compat: ReaderCompat[T1, T2, R]
-    ): Reader[R, Node[A, (B, C)]] = {
+      compat: ReaderCompat[T1, T2, R],
+      ta: TupleAppend[B, C]
+    ): Reader[R, Node[A, ta.Out]] = {
       Reader { (env: R) =>
         val nodeA = fa.run(compat.toT1(env))
         val nodeB = fb.run(compat.toT2(env))
@@ -861,7 +870,7 @@ package object etl4s {
       }
     }
 
-    def &[C](node: Node[A, C]): Reader[T1, Node[A, (B, C)]] = {
+    def &[C](node: Node[A, C])(implicit ta: TupleAppend[B, C]): Reader[T1, Node[A, ta.Out]] = {
       fa.map(readerNode => readerNode & node)
     }
 
@@ -869,8 +878,9 @@ package object etl4s {
       *  &>: Reader(Node) &> {Reader(Node) | Reader(Node) compat | Node}
       */
     def &>[C](fb: Reader[T1, Node[A, C]])(implicit
-      ec: ExecutionContext
-    ): Reader[T1, Node[A, (B, C)]] = {
+      ec: ExecutionContext,
+      ta: TupleAppend[B, C]
+    ): Reader[T1, Node[A, ta.Out]] = {
       for {
         nodeA <- fa
         nodeB <- fb
@@ -879,8 +889,9 @@ package object etl4s {
 
     def &>[T2, C, R](fb: Reader[T2, Node[A, C]])(implicit
       compat: ReaderCompat[T1, T2, R],
-      ec: ExecutionContext
-    ): Reader[R, Node[A, (B, C)]] = {
+      ec: ExecutionContext,
+      ta: TupleAppend[B, C]
+    ): Reader[R, Node[A, ta.Out]] = {
       Reader { (env: R) =>
         val nodeA = fa.run(compat.toT1(env))
         val nodeB = fb.run(compat.toT2(env))
@@ -889,8 +900,9 @@ package object etl4s {
     }
 
     def &>[C](node: Node[A, C])(implicit
-      ec: ExecutionContext
-    ): Reader[T1, Node[A, (B, C)]] = {
+      ec: ExecutionContext,
+      ta: TupleAppend[B, C]
+    ): Reader[T1, Node[A, ta.Out]] = {
       fa.map(readerNode => readerNode &> node)
     }
 
@@ -1292,6 +1304,117 @@ package object etl4s {
 
   object Flatten extends P10 {
     type Aux[A, B] = Flatten[A] { type Out = B }
+  }
+
+  /**
+   * Type class for appending an element to a tuple, building flat tuples.
+   * Used by the & operator to auto-flatten parallel compositions.
+   *
+   * For non-tuple A: A & B => (A, B)
+   * For tuple A: (A1, A2) & B => (A1, A2, B)
+   *
+   * This enables: node1 & node2 & node3 to produce Node[In, (Out1, Out2, Out3)]
+   * instead of Node[In, ((Out1, Out2), Out3)]
+   */
+  trait TupleAppend[A, B] {
+    type Out
+    def append(a: A, b: B): Out
+  }
+
+  trait TupleAppendLowestPriority {
+    // Fallback: when A is not a tuple, create a pair
+    implicit def pairAppend[A, B]: TupleAppend.Aux[A, B, (A, B)] =
+      new TupleAppend[A, B] {
+        type Out = (A, B)
+        def append(a: A, b: B): (A, B) = (a, b)
+      }
+  }
+
+  trait TupleAppendLowPriority extends TupleAppendLowestPriority {
+    implicit def append2[A, B, C]: TupleAppend.Aux[(A, B), C, (A, B, C)] =
+      new TupleAppend[(A, B), C] {
+        type Out = (A, B, C)
+        def append(t: (A, B), c: C): (A, B, C) = (t._1, t._2, c)
+      }
+  }
+
+  trait TupleAppend3 extends TupleAppendLowPriority {
+    implicit def append3[A, B, C, D]: TupleAppend.Aux[(A, B, C), D, (A, B, C, D)] =
+      new TupleAppend[(A, B, C), D] {
+        type Out = (A, B, C, D)
+        def append(t: (A, B, C), d: D): (A, B, C, D) = (t._1, t._2, t._3, d)
+      }
+  }
+
+  trait TupleAppend4 extends TupleAppend3 {
+    implicit def append4[A, B, C, D, E]: TupleAppend.Aux[(A, B, C, D), E, (A, B, C, D, E)] =
+      new TupleAppend[(A, B, C, D), E] {
+        type Out = (A, B, C, D, E)
+        def append(t: (A, B, C, D), e: E): (A, B, C, D, E) = (t._1, t._2, t._3, t._4, e)
+      }
+  }
+
+  trait TupleAppend5 extends TupleAppend4 {
+    implicit def append5[A, B, C, D, E, F]
+      : TupleAppend.Aux[(A, B, C, D, E), F, (A, B, C, D, E, F)] =
+      new TupleAppend[(A, B, C, D, E), F] {
+        type Out = (A, B, C, D, E, F)
+        def append(t: (A, B, C, D, E), f: F): (A, B, C, D, E, F) = (t._1, t._2, t._3, t._4, t._5, f)
+      }
+  }
+
+  trait TupleAppend6 extends TupleAppend5 {
+    implicit def append6[A, B, C, D, E, F, G]
+      : TupleAppend.Aux[(A, B, C, D, E, F), G, (A, B, C, D, E, F, G)] =
+      new TupleAppend[(A, B, C, D, E, F), G] {
+        type Out = (A, B, C, D, E, F, G)
+        def append(t: (A, B, C, D, E, F), g: G): (A, B, C, D, E, F, G) =
+          (t._1, t._2, t._3, t._4, t._5, t._6, g)
+      }
+  }
+
+  trait TupleAppend7 extends TupleAppend6 {
+    implicit def append7[A, B, C, D, E, F, G, H]
+      : TupleAppend.Aux[(A, B, C, D, E, F, G), H, (A, B, C, D, E, F, G, H)] =
+      new TupleAppend[(A, B, C, D, E, F, G), H] {
+        type Out = (A, B, C, D, E, F, G, H)
+        def append(t: (A, B, C, D, E, F, G), h: H): (A, B, C, D, E, F, G, H) =
+          (t._1, t._2, t._3, t._4, t._5, t._6, t._7, h)
+      }
+  }
+
+  trait TupleAppend8 extends TupleAppend7 {
+    implicit def append8[A, B, C, D, E, F, G, H, I]
+      : TupleAppend.Aux[(A, B, C, D, E, F, G, H), I, (A, B, C, D, E, F, G, H, I)] =
+      new TupleAppend[(A, B, C, D, E, F, G, H), I] {
+        type Out = (A, B, C, D, E, F, G, H, I)
+        def append(t: (A, B, C, D, E, F, G, H), i: I): (A, B, C, D, E, F, G, H, I) =
+          (t._1, t._2, t._3, t._4, t._5, t._6, t._7, t._8, i)
+      }
+  }
+
+  trait TupleAppend9 extends TupleAppend8 {
+    implicit def append9[A, B, C, D, E, F, G, H, I, J]
+      : TupleAppend.Aux[(A, B, C, D, E, F, G, H, I), J, (A, B, C, D, E, F, G, H, I, J)] =
+      new TupleAppend[(A, B, C, D, E, F, G, H, I), J] {
+        type Out = (A, B, C, D, E, F, G, H, I, J)
+        def append(t: (A, B, C, D, E, F, G, H, I), j: J): (A, B, C, D, E, F, G, H, I, J) =
+          (t._1, t._2, t._3, t._4, t._5, t._6, t._7, t._8, t._9, j)
+      }
+  }
+
+  trait TupleAppend10 extends TupleAppend9 {
+    implicit def append10[A, B, C, D, E, F, G, H, I, J, K]
+      : TupleAppend.Aux[(A, B, C, D, E, F, G, H, I, J), K, (A, B, C, D, E, F, G, H, I, J, K)] =
+      new TupleAppend[(A, B, C, D, E, F, G, H, I, J), K] {
+        type Out = (A, B, C, D, E, F, G, H, I, J, K)
+        def append(t: (A, B, C, D, E, F, G, H, I, J), k: K): (A, B, C, D, E, F, G, H, I, J, K) =
+          (t._1, t._2, t._3, t._4, t._5, t._6, t._7, t._8, t._9, t._10, k)
+      }
+  }
+
+  object TupleAppend extends TupleAppend10 {
+    type Aux[A, B, O] = TupleAppend[A, B] { type Out = O }
   }
 
   /**
@@ -1927,16 +2050,13 @@ package object etl4s {
     sourceNode: Node[A, B],
     branches: List[(B => Boolean, Node[B, C])]
   ) {
-    def elseIf(condition: B => Boolean)(branch: Node[B, C]): PartialConditionalBuilder[A, B, C] =
+    def ElseIf(condition: B => Boolean)(branch: Node[B, C]): PartialConditionalBuilder[A, B, C] =
       PartialConditionalBuilder(sourceNode, branches :+ (condition, branch))
 
-    def otherwise(branch: Node[B, C]): CompleteConditionalBuilder[A, B, C] =
-      CompleteConditionalBuilder(sourceNode, branches, branch)
-
-    def `else`(branch: Node[B, C]): CompleteConditionalBuilder[A, B, C] = otherwise(branch)
-
-    def build: Node[A, C] =
-      throw new IllegalStateException("Non-exhaustive conditional. Add .otherwise() clause.")
+    def Else(branch: Node[B, C]): Node[A, C] = Node { a =>
+      val b = sourceNode.f(a)
+      branches.find(_._1(b)).map(_._2.f(b)).getOrElse(branch.f(b))
+    }
   }
 
   /**
@@ -1947,7 +2067,7 @@ package object etl4s {
     branches: List[(B => Boolean, Node[B, C])],
     defaultBranch: Node[B, C]
   ) {
-    def elseIf(condition: B => Boolean)(branch: Node[B, C]): CompleteConditionalBuilder[A, B, C] =
+    def ElseIf(condition: B => Boolean)(branch: Node[B, C]): CompleteConditionalBuilder[A, B, C] =
       CompleteConditionalBuilder(sourceNode, branches :+ (condition, branch), defaultBranch)
 
     def build: Node[A, C] = Node { a =>
@@ -1960,11 +2080,8 @@ package object etl4s {
    * Conditional branching for Nodes.
    */
   implicit class NodeConditionalOps[A, B](val node: Node[A, B]) {
-    def when[C](condition: B => Boolean)(branch: Node[B, C]): PartialConditionalBuilder[A, B, C] =
+    def If[C](condition: B => Boolean)(branch: Node[B, C]): PartialConditionalBuilder[A, B, C] =
       PartialConditionalBuilder(node, List((condition, branch)))
-
-    def `if`[C](condition: B => Boolean)(branch: Node[B, C]): PartialConditionalBuilder[A, B, C] =
-      when(condition)(branch)
   }
 
   implicit def conditionalBuilderToNode[A, B, C](
@@ -2007,19 +2124,24 @@ package object etl4s {
     sourceReader: Reader[T, Node[A, B]],
     branches: List[(T => B => Boolean, Reader[T, Node[B, C]])]
   ) {
-    def elseIf[Branch](condition: T => B => Boolean)(branch: Branch)(implicit
+    def ElseIf[Branch](condition: T => B => Boolean)(branch: Branch)(implicit
       lift: BranchLift[T, B, C, Branch]
     ): ReaderPartialConditionalBuilder[T, A, B, C] =
       ReaderPartialConditionalBuilder(sourceReader, branches :+ (condition, lift.lift(branch)))
 
-    def otherwise[Branch](branch: Branch)(implicit
+    def Else[Branch](branch: Branch)(implicit
       lift: BranchLift[T, B, C, Branch]
-    ): ReaderCompleteConditionalBuilder[T, A, B, C] =
-      ReaderCompleteConditionalBuilder(sourceReader, branches, lift.lift(branch))
-
-    def `else`[Branch](branch: Branch)(implicit
-      lift: BranchLift[T, B, C, Branch]
-    ): ReaderCompleteConditionalBuilder[T, A, B, C] = otherwise(branch)
+    ): Reader[T, Node[A, C]] = Reader { ctx =>
+      val sourceNode        = sourceReader.run(ctx)
+      val evaluatedBranches = branches.map { case (check, readerBranch) =>
+        (check(ctx), readerBranch.run(ctx))
+      }
+      val evaluatedDefault = lift.lift(branch).run(ctx)
+      Node { a =>
+        val b = sourceNode.f(a)
+        evaluatedBranches.find(_._1(b)).map(_._2.f(b)).getOrElse(evaluatedDefault.f(b))
+      }
+    }
   }
 
   /**
@@ -2030,7 +2152,7 @@ package object etl4s {
     branches: List[(T => B => Boolean, Reader[T, Node[B, C]])],
     defaultBranch: Reader[T, Node[B, C]]
   ) {
-    def elseIf[Branch](condition: T => B => Boolean)(branch: Branch)(implicit
+    def ElseIf[Branch](condition: T => B => Boolean)(branch: Branch)(implicit
       lift: BranchLift[T, B, C, Branch]
     ): ReaderCompleteConditionalBuilder[T, A, B, C] =
       ReaderCompleteConditionalBuilder(
@@ -2040,7 +2162,7 @@ package object etl4s {
       )
 
     def build: Reader[T, Node[A, C]] = Reader { ctx =>
-      val sourceNode = sourceReader.run(ctx)
+      val sourceNode        = sourceReader.run(ctx)
       val evaluatedBranches = branches.map { case (check, readerBranch) =>
         (check(ctx), readerBranch.run(ctx))
       }
@@ -2061,14 +2183,10 @@ package object etl4s {
    * Conditional branching for Reader-wrapped Nodes.
    */
   implicit class ReaderConditionalOps[T, A, B](val reader: Reader[T, Node[A, B]]) {
-    def when[C, Branch](condition: T => B => Boolean)(branch: Branch)(implicit
+    def If[C, Branch](condition: T => B => Boolean)(branch: Branch)(implicit
       lift: BranchLift[T, B, C, Branch]
     ): ReaderPartialConditionalBuilder[T, A, B, C] =
       ReaderPartialConditionalBuilder(reader, List((condition, lift.lift(branch))))
-
-    def `if`[C, Branch](condition: T => B => Boolean)(branch: Branch)(implicit
-      lift: BranchLift[T, B, C, Branch]
-    ): ReaderPartialConditionalBuilder[T, A, B, C] = when(condition)(branch)
   }
 
   /**
@@ -2432,7 +2550,7 @@ package object etl4s {
         inputEdges ++ outputEdges
       }
 
-      val pipelineOutputs = lineages.map(l => (l.name, l.outputs)).toMap
+      val pipelineOutputs         = lineages.map(l => (l.name, l.outputs)).toMap
       val implicitDependencyEdges = lineages.flatMap { lineage =>
         lineage.inputs.flatMap { input =>
           pipelineOutputs.collectFirst {
@@ -2485,7 +2603,7 @@ package object etl4s {
       pipeline: LineageNode,
       indent: Int
     ): Unit = {
-      val ind = "    " * indent
+      val ind           = "    " * indent
       val scheduleLabel = if (pipeline.schedule.nonEmpty) {
         "<BR/><FONT POINT-SIZE=\"9\" COLOR=\"#d63384\"><I>" + pipeline.schedule + "</I></FONT>"
       } else {

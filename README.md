@@ -246,6 +246,19 @@ val A = Extract[Unit, String](_ => throw new RuntimeException("Boom!"))
 A.unsafeRun(())  /* Returns "Error: Boom!" */
 ```
 
+## Conditional Branching
+
+Route data through different pipelines with `If`, `ElseIf`, and `Else`:
+
+```scala
+val pipeline = extractUser
+  .If(_.tier == "premium")      (validateUser ~> enrichUser ~> toPremiumOffer)
+  .ElseIf(_.tier == "standard") (validateUser ~> toStandardOffer)
+  .Else                         (toGuestNotice)
+```
+
+Read more [here](https://mattlianje.github.io/etl4s/branching/).
+
 ## Side Effects
 Use `.tap()` for side effects without disrupting pipeline flow:
 
