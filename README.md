@@ -265,8 +265,8 @@ Use `.tap()` for side effects without disrupting pipeline flow:
 ```scala
 import etl4s._
 
-val A = Extract(List("a.txt", "b.txt"))
-  .tap(files => println(s"Processing: $files"))
+val A: Extract[Any, List[String]] = Extract(_ => List("a.txt", "b.txt"))
+                                       .tap(files => println(s"Processing: $files"))
 
 val B = Transform[List[String], Int](_.size)
 
