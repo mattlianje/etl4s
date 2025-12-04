@@ -1,53 +1,87 @@
 # Advanced
 
-## Component libraries
+## Reusable Components
+
+Build parameterized transforms that read like business logic:
 
 ```scala
 object CustomerOps {
   def activeOnly = Transform[List[Customer], List[Customer]](_.filter(_.isActive))
   def topSpenders(n: Int) = Transform[List[Customer], List[Customer]](_.sortBy(-_.spend).take(n))
+  def inRegion(region: String) = Transform[List[Customer], List[Customer]](_.filter(_.region == region))
 }
 
 import CustomerOps._
-val pipeline = extract ~> activeOnly ~> topSpenders(100) ~> load
+val pipeline = extract ~> activeOnly ~> inRegion("EU") ~> topSpenders(100) ~> load
 ```
 
-Pipelines read like business logic. Swap implementations for different backends - same pipeline shape, different `CustomerOps`.
-
-## Backend-agnostic transforms
-
-Use typeclasses for transforms that work across List, Spark Dataset, Flink DataStream, etc:
+Group related transforms into domain modules:
 
 ```scala
-case class Sale(region: String, amount: Double)
-
-trait Aggregatable[F[_]] {
-  def groupMapReduce[A, K, V](fa: F[A])(key: A => K)(value: A => V)(reduce: (V, V) => V): Map[K, V]
+object OrderOps {
+  def recent(days: Int) = Transform[List[Order], List[Order]](
+    _.filter(_.date.isAfter(LocalDate.now.minusDays(days)))
+  )
+  def highValue(threshold: Double) = Transform[List[Order], List[Order]](
+    _.filter(_.total > threshold)
+  )
+  def byStatus(status: Status) = Transform[List[Order], List[Order]](
+    _.filter(_.status == status)
+  )
 }
 
-object Aggregatables {
-  implicit val list: Aggregatable[List] = new Aggregatable[List] {
-    def groupMapReduce[A, K, V](fa: List[A])(key: A => K)(value: A => V)(reduce: (V, V) => V) =
-      fa.groupMapReduce(key)(value)(reduce)
-  }
-  implicit val dataset: Aggregatable[Dataset] = new Aggregatable[Dataset] {
-    def groupMapReduce[A, K, V](fa: Dataset[A])(key: A => K)(value: A => V)(reduce: (V, V) => V) =
-      fa.groupByKey(key).mapValues(value).reduceGroups(reduce).collect().toMap
-  }
-}
-
-def sumByRegion[F[_]](implicit F: Aggregatable[F]) =
-  Transform[F[Sale], Map[String, Double]](fa => F.groupMapReduce(fa)(_.region)(_.amount)(_ + _))
+// Compose freely
+val urgentOrders = extract ~> OrderOps.recent(7) ~> OrderOps.highValue(1000) ~> notify
 ```
 
+## Dynamic Pipeline Assembly
+
+Build pipelines based on runtime configuration:
+
 ```scala
-import Aggregatables._
+case class JobConfig(
+  filterInactive: Boolean,
+  topN: Option[Int],
+  regions: List[String]
+)
 
-val extractList = Node[Unit, List[Sale]](_ => sales)
-val extractSpark = Node[Unit, Dataset[Sale]](_ => spark.read...)
+def buildPipeline(config: JobConfig): Node[List[Customer], List[Customer]] = {
+  var pipeline: Node[List[Customer], List[Customer]] = Transform(identity)
 
-val localPipeline = extractList ~> sumByRegion[List] ~> load
-val sparkPipeline = extractSpark ~> sumByRegion[Dataset] ~> load
+  if (config.filterInactive)
+    pipeline = pipeline ~> CustomerOps.activeOnly
+
+  config.regions match {
+    case Nil      => // no filter
+    case r :: Nil => pipeline = pipeline ~> CustomerOps.inRegion(r)
+    case rs       => pipeline = pipeline ~> Transform(_.filter(c => rs.contains(c.region)))
+  }
+
+  config.topN.foreach { n =>
+    pipeline = pipeline ~> CustomerOps.topSpenders(n)
+  }
+
+  pipeline
+}
+
+// Usage
+val config = JobConfig(filterInactive = true, topN = Some(50), regions = List("US", "EU"))
+val pipeline = extract ~> buildPipeline(config) ~> load
+```
+
+Or use fold for a more functional style:
+
+```scala
+def buildPipeline(steps: List[Node[List[Customer], List[Customer]]]): Node[List[Customer], List[Customer]] =
+  steps.foldLeft(Transform[List[Customer], List[Customer]](identity))(_ ~> _)
+
+val steps = List(
+  CustomerOps.activeOnly,
+  CustomerOps.inRegion("US"),
+  CustomerOps.topSpenders(100)
+)
+
+val pipeline = extract ~> buildPipeline(steps) ~> load
 ```
 
 ## Custom operators

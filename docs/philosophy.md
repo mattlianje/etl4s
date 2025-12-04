@@ -35,7 +35,7 @@ for {
 Our eyes now need to do:
 `filterDate > endDate > e > startDate > t > (Back to filterDate) > l > (Back to startDate) > (Back to endDate)`
 
-## Controlled fan-out with reconvergence
+## Linearizability (Controlled fan-out with reconvergence)
 **etl4s** deliberately channels you into a linearized "Function1 model" of "give me ONE input, I'll give you ONE output".
 
 That said, it also lets you snap together pipelines with multiple input sources tupled together, easily fork-off conditional

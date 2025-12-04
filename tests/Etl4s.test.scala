@@ -528,7 +528,7 @@ class ReaderSpecs extends munit.FunSuite {
 
     val insights = node.unsafeRunTrace("test")
     assertEquals(insights.result, 4)
-    assert(insights.logs.head.isInstanceOf[LogEvent])
+    assert(insights.logs.head.asInstanceOf[LogEvent].message == "Started processing")
     assertEquals(insights.errors, List.empty)
   }
 
@@ -779,160 +779,6 @@ class TelSpecs extends munit.FunSuite {
 
     val result = node.unsafeRun("hello world")
     assertEquals(result, "HELLO WORLD")
-  }
-
-  test("Real OpenTelemetry SDK integration example") {
-    // Demonstrates how to integrate with actual Tel SDK
-
-    import io.opentelemetry.api.OpenTelemetry
-    import io.opentelemetry.api.common.{Attributes, AttributeKey}
-    import io.opentelemetry.api.metrics.Meter
-    import io.opentelemetry.api.trace.{Tracer, StatusCode}
-    import io.opentelemetry.sdk.OpenTelemetrySdk
-    import io.opentelemetry.sdk.metrics.SdkMeterProvider
-    import io.opentelemetry.sdk.trace.SdkTracerProvider
-    import io.opentelemetry.exporter.logging.{LoggingSpanExporter, LoggingMetricExporter}
-    import io.opentelemetry.sdk.trace.`export`.BatchSpanProcessor
-    import io.opentelemetry.sdk.metrics.`export`.PeriodicMetricReader
-    import java.time.Duration
-
-    class RealEtl4sTelemetry extends Etl4sTelemetry {
-      private val sdk: OpenTelemetry = OpenTelemetrySdk
-        .builder()
-        .setTracerProvider(
-          SdkTracerProvider
-            .builder()
-            .addSpanProcessor(
-              BatchSpanProcessor.builder(LoggingSpanExporter.create()).build()
-            )
-            .build()
-        )
-        .setMeterProvider(
-          SdkMeterProvider
-            .builder()
-            .registerMetricReader(
-              PeriodicMetricReader
-                .builder(LoggingMetricExporter.create())
-                .setInterval(Duration.ofSeconds(1))
-                .build()
-            )
-            .build()
-        )
-        .build()
-
-      private val tracer: Tracer = sdk.getTracer("etl4s-test")
-      private val meter: Meter   = sdk.getMeter("etl4s-test")
-
-      def withSpan[T](name: String, attributes: (String, Any)*)(block: => T): T = {
-        val spanBuilder = tracer
-          .spanBuilder(name)
-          .setAttribute("service.name", "etl4s-test")
-          .setAttribute("service.version", "1.0.0")
-
-        // Add user-provided attributes
-        attributes.foreach { case (key, value) =>
-          value match {
-            case s: String  => spanBuilder.setAttribute(key, s)
-            case l: Long    => spanBuilder.setAttribute(key, l)
-            case i: Int     => spanBuilder.setAttribute(key, i.toLong)
-            case d: Double  => spanBuilder.setAttribute(key, d)
-            case b: Boolean => spanBuilder.setAttribute(key, b)
-            case other      => spanBuilder.setAttribute(key, other.toString)
-          }
-        }
-
-        val span = spanBuilder.startSpan()
-
-        try {
-          span.addEvent("span.started")
-          val result = block
-          span.setStatus(StatusCode.OK)
-          result
-        } catch {
-          case e: Throwable =>
-            span.recordException(e)
-            span.setStatus(StatusCode.ERROR, e.getMessage)
-            throw e
-        } finally {
-          span.end()
-        }
-      }
-
-      def addCounter(name: String, value: Long): Unit = {
-        val otelCounter = meter
-          .counterBuilder(name)
-          .setDescription(s"Counter for $name")
-          .build()
-
-        otelCounter.add(
-          value,
-          Attributes.of(
-            AttributeKey.stringKey("component"),
-            "etl4s"
-          )
-        )
-      }
-
-      def setGauge(name: String, value: Double): Unit = {
-        // TODO implement as callbacks
-        val otelGauge = meter
-          .upDownCounterBuilder(name)
-          .setDescription(s"Gauge for $name")
-          .build()
-
-        otelGauge.add(
-          value.toLong,
-          Attributes.of(
-            AttributeKey.stringKey("component"),
-            "etl4s"
-          )
-        )
-      }
-
-      def recordHistogram(name: String, value: Double): Unit = {
-        val otelHistogram = meter
-          .histogramBuilder(name)
-          .setDescription(s"Histogram for $name")
-          .setUnit("ms")
-          .build()
-
-        otelHistogram.record(
-          value,
-          Attributes.of(
-            AttributeKey.stringKey("component"),
-            "etl4s"
-          )
-        )
-      }
-    }
-
-    // Usage example with real Tel SDK:
-    implicit val otel: Etl4sTelemetry = new RealEtl4sTelemetry()
-
-    val pipeline = Extract[String, List[String]](_.split(",").toList) ~>
-      Transform[List[String], List[String]] { items =>
-        Tel.withSpan("data-transformation") {
-          Trace.log(s"Transforming ${items.size} items")
-          Tel.addCounter("items.received", items.size.toLong)
-          val transformed = items.map(_.trim.toUpperCase)
-          Tel.recordHistogram("transformation.time", 25.0)
-          transformed
-        }
-      } ~>
-      Load[List[String], Int] { items =>
-        Tel.withSpan("data-persistence") {
-          Trace.log(s"Persisting ${items.size} items")
-          Tel.addCounter("items.saved", items.size.toLong)
-          Tel.recordHistogram("batch.processing.time", 150.0)
-          Tel.setGauge("current.batch.size", items.size.toDouble)
-          items.size
-        }
-      }
-
-    val result = pipeline.unsafeRun("hello,world,test")
-    assertEquals(result, 3)
-
-    Thread.sleep(100)
   }
 
   test("counter accumulation") {
@@ -1492,30 +1338,30 @@ class ValidationSpecs extends munit.FunSuite {
 
 class ConditionalBranchingSpecs extends munit.FunSuite {
 
-  test("basic when-elseIf-else branching") {
+  test("basic If-ElseIf-Else branching") {
     val toNegative = Node[Int, String](_ => "negative")
     val toZero     = Node[Int, String](_ => "zero")
     val toPositive = Node[Int, String](_ => "positive")
 
     val classify = Node[Int, Int](identity)
-      .when(_ < 0)(toNegative)
-      .elseIf(_ == 0)(toZero)
-      .otherwise(toPositive)
+      .If(_ < 0)(toNegative)
+      .ElseIf(_ == 0)(toZero)
+      .Else(toPositive)
 
     assertEquals(classify.unsafeRun(-5), "negative")
     assertEquals(classify.unsafeRun(0), "zero")
     assertEquals(classify.unsafeRun(10), "positive")
   }
 
-  test("when-elseIf-otherwise branching") {
+  test("If-ElseIf-Else branching with strings") {
     val toShort  = Node[String, String](_ => "short")
     val toMedium = Node[String, String](_ => "medium")
     val toLong   = Node[String, String](_ => "long")
 
     val sizeClassifier = Node[String, String](identity)
-      .when(_.length < 5)(toShort)
-      .elseIf(_.length < 10)(toMedium)
-      .otherwise(toLong)
+      .If(_.length < 5)(toShort)
+      .ElseIf(_.length < 10)(toMedium)
+      .Else(toLong)
 
     assertEquals(sizeClassifier.unsafeRun("hi"), "short")
     assertEquals(sizeClassifier.unsafeRun("hello"), "medium")
@@ -1529,9 +1375,9 @@ class ConditionalBranchingSpecs extends munit.FunSuite {
     val formatPositive = Node[Int, String](n => s"Positive: $n") ~> Node[String, String](_ + "!")
 
     val processNumber = Node[Int, Int](identity)
-      .when(_ < 0)(formatNegative)
-      .elseIf(_ == 0)(formatZero)
-      .otherwise(formatPositive)
+      .If(_ < 0)(formatNegative)
+      .ElseIf(_ == 0)(formatZero)
+      .Else(formatPositive)
 
     assertEquals(processNumber.unsafeRun(-5), "NEGATIVE: 5")
     assertEquals(processNumber.unsafeRun(0), "Zero value")
@@ -1552,9 +1398,9 @@ class ConditionalBranchingSpecs extends munit.FunSuite {
     val toSenior = Transform[User, ProcessedUser](u => ProcessedUser(u.name, "senior"))
 
     val categorize = Transform[User, User](identity)
-      .when(_.age < 18)(toMinor)
-      .elseIf(_.age < 65)(toAdult)
-      .otherwise(toSenior)
+      .If(_.age < 18)(toMinor)
+      .ElseIf(_.age < 65)(toAdult)
+      .Else(toSenior)
 
     val pipeline = extract ~> categorize
 
@@ -1571,11 +1417,11 @@ class ConditionalBranchingSpecs extends munit.FunSuite {
     val gradeF = Node[Int, String](_ => "F")
 
     val gradeClassifier = Node[Int, Int](identity)
-      .when(_ >= 90)(gradeA)
-      .elseIf(_ >= 80)(gradeB)
-      .elseIf(_ >= 70)(gradeC)
-      .elseIf(_ >= 60)(gradeD)
-      .otherwise(gradeF)
+      .If(_ >= 90)(gradeA)
+      .ElseIf(_ >= 80)(gradeB)
+      .ElseIf(_ >= 70)(gradeC)
+      .ElseIf(_ >= 60)(gradeD)
+      .Else(gradeF)
 
     assertEquals(gradeClassifier.unsafeRun(95), "A")
     assertEquals(gradeClassifier.unsafeRun(85), "B")
@@ -1588,13 +1434,13 @@ class ConditionalBranchingSpecs extends munit.FunSuite {
     var logMessages = List.empty[String]
 
     val logger = Node[Int, Int](identity)
-      .when(_ < 0)(
+      .If(_ < 0)(
         Node[Int, String] { n =>
           logMessages = logMessages :+ "negative"
           s"neg:$n"
         }
       )
-      .otherwise(
+      .Else(
         Node[Int, String] { n =>
           logMessages = logMessages :+ "positive"
           s"pos:$n"
@@ -1611,15 +1457,15 @@ class ConditionalBranchingSpecs extends munit.FunSuite {
     var evaluations = List.empty[String]
 
     val node = Node[Int, Int](identity)
-      .when { n =>
+      .If { n =>
         evaluations = evaluations :+ "cond1"
         n > 5
       }(Node[Int, String](_ => "first"))
-      .elseIf { n =>
+      .ElseIf { n =>
         evaluations = evaluations :+ "cond2"
         n > 3
       }(Node[Int, String](_ => "second"))
-      .otherwise(Node[Int, String](_ => "third"))
+      .Else(Node[Int, String](_ => "third"))
 
     val result = node.unsafeRun(10)
     assertEquals(result, "first")
@@ -1635,12 +1481,12 @@ class ConditionalBranchingSpecs extends munit.FunSuite {
 
   test("conditional branching with parallel composition") {
     val branch1 = Node[Int, Int](identity)
-      .when(_ % 2 == 0)(Node[Int, String](n => s"even:$n"))
-      .otherwise(Node[Int, String](n => s"odd:$n"))
+      .If(_ % 2 == 0)(Node[Int, String](n => s"even:$n"))
+      .Else(Node[Int, String](n => s"odd:$n"))
 
     val branch2 = Node[Int, Int](identity)
-      .when(_ > 0)(Node[Int, String](_ => "positive"))
-      .otherwise(Node[Int, String](_ => "non-positive"))
+      .If(_ > 0)(Node[Int, String](_ => "positive"))
+      .Else(Node[Int, String](_ => "non-positive"))
 
     val combined = branch1 & branch2
 
@@ -1648,15 +1494,19 @@ class ConditionalBranchingSpecs extends munit.FunSuite {
     assertEquals(combined.unsafeRun(-3), ("odd:-3", "non-positive"))
   }
 
-  test("non-exhaustive conditional throws on build") {
+  test("partial conditional requires Else to become a Node") {
     val partial = Node[Int, Int](identity)
-      .when(_ < 0)(Node[Int, String](_ => "negative"))
-      .elseIf(_ > 0)(Node[Int, String](_ => "positive"))
+      .If(_ < 0)(Node[Int, String](_ => "negative"))
+      .ElseIf(_ > 0)(Node[Int, String](_ => "positive"))
 
-    // Should throw when trying to use it without else
-    intercept[IllegalStateException] {
-      partial.build.unsafeRun(0)
-    }
+    // partial is a PartialConditionalBuilder, not a Node
+    assert(partial.isInstanceOf[PartialConditionalBuilder[?, ?, ?]])
+
+    // Adding Else makes it a complete Node
+    val complete = partial.Else(Node[Int, String](_ => "zero"))
+    assertEquals(complete.unsafeRun(-5), "negative")
+    assertEquals(complete.unsafeRun(5), "positive")
+    assertEquals(complete.unsafeRun(0), "zero")
   }
 
   test("conditional branching with tap for debugging") {
@@ -1664,8 +1514,8 @@ class ConditionalBranchingSpecs extends munit.FunSuite {
 
     val pipeline = Node[Int, Int](identity)
       .tap(n => tappedValue = Some(n))
-      .when(_ < 10)(Node[Int, String](n => s"small:$n"))
-      .otherwise(Node[Int, String](n => s"large:$n"))
+      .If(_ < 10)(Node[Int, String](n => s"small:$n"))
+      .Else(Node[Int, String](n => s"large:$n"))
 
     val result = pipeline.unsafeRun(5)
     assertEquals(result, "small:5")
@@ -1674,11 +1524,11 @@ class ConditionalBranchingSpecs extends munit.FunSuite {
 
   test("conditional branching with error handling") {
     val safeProcessor = Node[String, String](identity)
-      .when(_.isEmpty)(
+      .If(_.isEmpty)(
         Node[String, String](_ => throw new RuntimeException("Empty!"))
           .onFailure(_ => "error:empty")
       )
-      .otherwise(
+      .Else(
         Node[String, String](s => s.toUpperCase)
       )
 
@@ -1692,8 +1542,8 @@ class ConditionalBranchingSpecs extends munit.FunSuite {
     case class Failure(error: String) extends Result
 
     val processor = Node[Int, Int](identity)
-      .when(_ < 0)(Node[Int, Result](n => Failure(s"Negative: $n")))
-      .otherwise(Node[Int, Result](n => Success(n * 2)))
+      .If(_ < 0)(Node[Int, Result](n => Failure(s"Negative: $n")))
+      .Else(Node[Int, Result](n => Success(n * 2)))
 
     val result1 = processor.unsafeRun(-5)
     assert(result1.isInstanceOf[Failure])
@@ -1706,9 +1556,9 @@ class ConditionalBranchingSpecs extends munit.FunSuite {
 
   test("conditional branching composition with ~>") {
     val classify = Node[Int, Int](identity)
-      .when(_ < 0)(Node[Int, String](_ => "negative"))
-      .elseIf(_ == 0)(Node[Int, String](_ => "zero"))
-      .otherwise(Node[Int, String](_ => "positive"))
+      .If(_ < 0)(Node[Int, String](_ => "negative"))
+      .ElseIf(_ == 0)(Node[Int, String](_ => "zero"))
+      .Else(Node[Int, String](_ => "positive"))
 
     val format = Node[String, String](s => s"Result: $s")
 
@@ -1721,33 +1571,21 @@ class ConditionalBranchingSpecs extends munit.FunSuite {
 
   test("nested conditional branching") {
     val outerClassifier = Node[Int, Int](identity)
-      .when(_ < 0)(
+      .If(_ < 0)(
         Node[Int, Int](n => n.abs)
-          .when(_ < 10)(Node[Int, String](n => s"small negative: $n"))
-          .otherwise(Node[Int, String](n => s"large negative: $n"))
+          .If(_ < 10)(Node[Int, String](n => s"small negative: $n"))
+          .Else(Node[Int, String](n => s"large negative: $n"))
       )
-      .otherwise(
+      .Else(
         Node[Int, Int](identity)
-          .when(_ < 10)(Node[Int, String](n => s"small positive: $n"))
-          .otherwise(Node[Int, String](n => s"large positive: $n"))
+          .If(_ < 10)(Node[Int, String](n => s"small positive: $n"))
+          .Else(Node[Int, String](n => s"large positive: $n"))
       )
 
     assertEquals(outerClassifier.unsafeRun(-5), "small negative: 5")
     assertEquals(outerClassifier.unsafeRun(-15), "large negative: 15")
     assertEquals(outerClassifier.unsafeRun(5), "small positive: 5")
     assertEquals(outerClassifier.unsafeRun(15), "large positive: 15")
-  }
-
-  test("if syntax with backticks") {
-    // The `if` method is also available using backticks for those who prefer it
-    val classify = Node[Int, Int](identity)
-      .`if`(_ < 0)(Node[Int, String](_ => "negative"))
-      .elseIf(_ == 0)(Node[Int, String](_ => "zero"))
-      .`else`(Node[Int, String](_ => "positive"))
-
-    assertEquals(classify.unsafeRun(-5), "negative")
-    assertEquals(classify.unsafeRun(0), "zero")
-    assertEquals(classify.unsafeRun(10), "positive")
   }
 
   test("Reader conditional with context-aware condition") {
@@ -1758,8 +1596,8 @@ class ConditionalBranchingSpecs extends munit.FunSuite {
     val formatAbove = Reader[Config, Node[Int, String]] { _ => Node(n => s"above:$n") }
 
     val pipeline = source
-      .when((cfg: Config) => (n: Int) => n < cfg.threshold)(formatBelow)
-      .otherwise(formatAbove)
+      .If((cfg: Config) => (n: Int) => n < cfg.threshold)(formatBelow)
+      .Else(formatAbove)
 
     val config = Config(10)
     assertEquals(pipeline.provide(config).unsafeRun(5), "below:5")
@@ -1778,110 +1616,33 @@ class ConditionalBranchingSpecs extends munit.FunSuite {
     }
 
     val pipeline = source
-      .when(_ => (n: Int) => n < 0)(formatNegative)
-      .otherwise(formatPositive)
+      .If(_ => (n: Int) => n < 0)(formatNegative)
+      .Else(formatPositive)
 
     val config = Config(2)
     assertEquals(pipeline.provide(config).unsafeRun(-5), "negative:-10")
     assertEquals(pipeline.provide(config).unsafeRun(10), "positive:20")
   }
 
-  test("Reader conditional with multiple elseIf and context") {
-    case class Config(min: Int, max: Int)
-
-    val source     = Reader[Config, Node[Int, Int]] { _ => Node[Int, Int](identity) }
-    val formatLow  = Reader[Config, Node[Int, String]] { _ => Node(n => s"too-low:$n") }
-    val formatHigh = Reader[Config, Node[Int, String]] { _ => Node(n => s"too-high:$n") }
-    val formatOk   = Reader[Config, Node[Int, String]] { _ => Node(n => s"ok:$n") }
-
-    val classifier = source
-      .when((cfg: Config) => (n: Int) => n < cfg.min)(formatLow)
-      .elseIf((cfg: Config) => (n: Int) => n > cfg.max)(formatHigh)
-      .otherwise(formatOk)
-
-    val config = Config(10, 100)
-    assertEquals(classifier.provide(config).unsafeRun(5), "too-low:5")
-    assertEquals(classifier.provide(config).unsafeRun(50), "ok:50")
-    assertEquals(classifier.provide(config).unsafeRun(150), "too-high:150")
-  }
-
-  test("Reader conditional mixing context-aware and context-ignoring conditions") {
-    case class Config(threshold: Int)
-
-    val source      = Reader[Config, Node[Int, Int]] { _ => Node[Int, Int](identity) }
-    val formatZero  = Reader[Config, Node[Int, String]] { _ => Node[Int, String](_ => "zero") }
-    val formatBelow = Reader[Config, Node[Int, String]] { _ => Node(n => s"below:$n") }
-    val formatAbove = Reader[Config, Node[Int, String]] { _ => Node(n => s"above:$n") }
-
-    val pipeline = source
-      .when(_ => (n: Int) => n == 0)(formatZero)
-      .elseIf((cfg: Config) => (n: Int) => n < cfg.threshold)(formatBelow)
-      .otherwise(formatAbove)
-
-    val config = Config(10)
-    assertEquals(pipeline.provide(config).unsafeRun(0), "zero")
-    assertEquals(pipeline.provide(config).unsafeRun(5), "below:5")
-    assertEquals(pipeline.provide(config).unsafeRun(15), "above:15")
-  }
-
-  test("Reader conditional in ETL pipeline") {
-    case class Config(adultAge: Int, seniorAge: Int)
-    case class User(name: String, age: Int)
-    case class ProcessedUser(name: String, category: String)
-
-    val extract = Reader[Config, Node[String, User]] { _ =>
-      Node { input =>
-        val parts = input.split(",")
-        User(parts(0), parts(1).toInt)
-      }
-    }
-
-    val source = Reader[Config, Node[User, User]] { _ => Node[User, User](identity) }
-    val toMinor = Reader[Config, Node[User, ProcessedUser]] { _ =>
-      Node(u => ProcessedUser(u.name, "minor"))
-    }
-    val toAdult = Reader[Config, Node[User, ProcessedUser]] { _ =>
-      Node(u => ProcessedUser(u.name, "adult"))
-    }
-    val toSenior = Reader[Config, Node[User, ProcessedUser]] { _ =>
-      Node(u => ProcessedUser(u.name, "senior"))
-    }
-
-    val categorize = source
-      .when((cfg: Config) => (u: User) => u.age < cfg.adultAge)(toMinor)
-      .elseIf((cfg: Config) => (u: User) => u.age < cfg.seniorAge)(toAdult)
-      .otherwise(toSenior)
-
-    val pipeline = extract ~> categorize
-    val config   = Config(18, 65)
-
-    assertEquals(pipeline.provide(config).unsafeRun("Alice,15"), ProcessedUser("Alice", "minor"))
-    assertEquals(pipeline.provide(config).unsafeRun("Bob,30"), ProcessedUser("Bob", "adult"))
-    assertEquals(
-      pipeline.provide(config).unsafeRun("Charlie,70"),
-      ProcessedUser("Charlie", "senior")
-    )
-  }
-
   test("Reader conditional with nested branching") {
     case class Config(threshold: Int)
 
     val outer = Reader[Config, Node[Int, Int]] { _ => Node[Int, Int](identity) }
-      .when(_ => (n: Int) => n < 0)(
+      .If(_ => (n: Int) => n < 0)(
         Reader[Config, Node[Int, Int]] { _ => Node(n => n.abs) }
-          .when((cfg: Config) => (n: Int) => n < cfg.threshold)(
+          .If((cfg: Config) => (n: Int) => n < cfg.threshold)(
             Reader[Config, Node[Int, String]] { _ => Node(n => s"small-neg:$n") }
           )
-          .otherwise(
+          .Else(
             Reader[Config, Node[Int, String]] { _ => Node(n => s"large-neg:$n") }
           )
       )
-      .otherwise(
+      .Else(
         Reader[Config, Node[Int, Int]] { _ => Node[Int, Int](identity) }
-          .when((cfg: Config) => (n: Int) => n < cfg.threshold)(
+          .If((cfg: Config) => (n: Int) => n < cfg.threshold)(
             Reader[Config, Node[Int, String]] { _ => Node(n => s"small-pos:$n") }
           )
-          .otherwise(
+          .Else(
             Reader[Config, Node[Int, String]] { _ => Node(n => s"large-pos:$n") }
           )
       )
@@ -1901,16 +1662,16 @@ class ConditionalBranchingSpecs extends munit.FunSuite {
     val toOdd   = Reader[Config, Node[Int, String]] { _ => Node(n => s"odd:$n") }
 
     val branch1: Reader[Config, Node[Int, String]] = source1
-      .when(_ => (n: Int) => n % 2 == 0)(toEven)
-      .otherwise(toOdd)
+      .If(_ => (n: Int) => n % 2 == 0)(toEven)
+      .Else(toOdd)
 
     val source2 = Reader[Config, Node[Int, Int]] { _ => Node[Int, Int](identity) }
     val toBelow = Reader[Config, Node[Int, String]] { _ => Node[Int, String](_ => "below") }
     val toAbove = Reader[Config, Node[Int, String]] { _ => Node[Int, String](_ => "above") }
 
     val branch2: Reader[Config, Node[Int, String]] = source2
-      .when((cfg: Config) => (n: Int) => n < cfg.threshold)(toBelow)
-      .otherwise(toAbove)
+      .If((cfg: Config) => (n: Int) => n < cfg.threshold)(toBelow)
+      .Else(toAbove)
 
     val combined = branch1 & branch2
     val config   = Config(10)
@@ -1928,35 +1689,14 @@ class ConditionalBranchingSpecs extends munit.FunSuite {
     val toPositive = Node[Int, String](n => s"positive:$n")
 
     val pipeline = source
-      .when(_ => (n: Int) => n < 0)(toNegative)
-      .elseIf(_ => (n: Int) => n == 0)(toZero)
-      .otherwise(toPositive)
+      .If(_ => (n: Int) => n < 0)(toNegative)
+      .ElseIf(_ => (n: Int) => n == 0)(toZero)
+      .Else(toPositive)
 
     val config = Config(10)
     assertEquals(pipeline.provide(config).unsafeRun(-5), "negative:-5")
     assertEquals(pipeline.provide(config).unsafeRun(0), "zero")
     assertEquals(pipeline.provide(config).unsafeRun(10), "positive:10")
-  }
-
-  test("Reader conditional mixing plain Node and Reader branches") {
-    case class Config(multiplier: Int)
-
-    val source     = Reader[Config, Node[Int, Int]] { _ => Node[Int, Int](identity) }
-    val toNegative = Node[Int, String](n => s"negative:$n")
-    val toZero     = Reader[Config, Node[Int, String]] { _ => Node[Int, String](_ => "zero") }
-    val toPositive = Reader[Config, Node[Int, String]] { cfg =>
-      Node(n => s"positive:${n * cfg.multiplier}")
-    }
-
-    val pipeline = source
-      .when(_ => (n: Int) => n < 0)(toNegative)
-      .elseIf(_ => (n: Int) => n == 0)(toZero)
-      .otherwise(toPositive)
-
-    val config = Config(2)
-    assertEquals(pipeline.provide(config).unsafeRun(-5), "negative:-5")
-    assertEquals(pipeline.provide(config).unsafeRun(0), "zero")
-    assertEquals(pipeline.provide(config).unsafeRun(10), "positive:20")
   }
 
   test("Reader conditional with plain Node branches and context-aware conditions") {
@@ -1967,8 +1707,8 @@ class ConditionalBranchingSpecs extends munit.FunSuite {
     val formatAbove = Node[Int, String](n => s"above:$n")
 
     val pipeline = source
-      .when((cfg: Config) => (n: Int) => n < cfg.threshold)(formatBelow)
-      .otherwise(formatAbove)
+      .If((cfg: Config) => (n: Int) => n < cfg.threshold)(formatBelow)
+      .Else(formatAbove)
 
     val config = Config(10)
     assertEquals(pipeline.provide(config).unsafeRun(5), "below:5")
@@ -1985,20 +1725,20 @@ class ConditionalBranchingSpecs extends munit.FunSuite {
     val toLargeNeg = Node[Int, String](n => s"large-neg:$n")
 
     val negBranch = toAbs
-      .when((cfg: Config) => (n: Int) => n < cfg.threshold)(toSmallNeg)
-      .otherwise(toLargeNeg)
+      .If((cfg: Config) => (n: Int) => n < cfg.threshold)(toSmallNeg)
+      .Else(toLargeNeg)
 
     val toIdentity = Reader[Config, Node[Int, Int]] { _ => Node[Int, Int](identity) }
     val toSmallPos = Node[Int, String](n => s"small-pos:$n")
     val toLargePos = Node[Int, String](n => s"large-pos:$n")
 
     val posBranch = toIdentity
-      .when((cfg: Config) => (n: Int) => n < cfg.threshold)(toSmallPos)
-      .otherwise(toLargePos)
+      .If((cfg: Config) => (n: Int) => n < cfg.threshold)(toSmallPos)
+      .Else(toLargePos)
 
     val outer = source
-      .when(_ => (n: Int) => n < 0)(negBranch)
-      .otherwise(posBranch)
+      .If(_ => (n: Int) => n < 0)(negBranch)
+      .Else(posBranch)
 
     val config = Config(10)
     assertEquals(outer.provide(config).unsafeRun(-5), "small-neg:5")

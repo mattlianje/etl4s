@@ -39,7 +39,6 @@ nav:
     - Tracing: trace.md
     - Telemetry: opentelemetry.md
     - Lineage Diagrams: lineage.md
-    - Side Outputs: logs.md
     - Ensurers: validation.md
     - Testing: testing.md
   - Examples:

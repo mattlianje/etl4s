@@ -902,7 +902,7 @@ hide:
 </div>
 <div class="feature-visual quote">
 <blockquote>
-Seems to provide most of the advantages of full blown "effect systems" without the complexities, and awkward monad syntax!
+... most of the advantages of full blown "effect systems" without the complexities, and awkward monad syntax!
 <cite>— u/RiceBroad4552</cite>
 </blockquote>
 </div>
