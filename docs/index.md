@@ -940,7 +940,7 @@ hide:
 <div class="feature-row">
 <div class="feature-text">
 <h3>Automatic environment inference.</h3>
-<p>Chain nodes with different dependencies. The compiler gives you config-driven pipelines for free - with typed, declarative endpoints you can share as black-box abstractions.</p>
+<p>Chain nodes with different dependencies. The compiler gives you config-driven pipelines with typed declarative endpoints for free!</p>
 </div>
 <div class="feature-visual">
 <div class="env-merge-demo">
