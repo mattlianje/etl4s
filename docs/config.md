@@ -1,7 +1,12 @@
-
 # Configuration
 
-Make your pipelines configurable and reusable. Declare what each step needs with `.requires`, then provide config once. The required context is automatically inferred.
+When writing pipelines, you often need to:
+
+- Pass database URLs, API keys, thresholds to various stages
+- Avoid threading config through every function signature
+- Keep stages testable by swapping config at the edge
+
+`.requires` declares what a node needs. `.provide` supplies it once at the top. Config flows through automatically - it's just a Reader monad (`Config => Node[In, Out]`) with some syntax.
 
 ```scala
 import etl4s._
@@ -20,7 +25,7 @@ pipeline.provide(Cfg("secret")).unsafeRun(())  // "secret: data"
 
 ## Config Propagation
 
-Build modular configs with traits. **etl4s** automatically infers what your pipeline needs:
+Build modular configs with traits. etl4s infers what your pipeline needs:
 
 ```scala
 trait HasDb { def dbUrl: String }
@@ -36,52 +41,46 @@ val B = Extract[Unit, String].requires[HasAuth] { cfg => _ =>
 
 val C = Transform[String, String](_.toUpperCase)
 
-// Combined config
 case class AppConfig(dbUrl: String, apiKey: String) extends HasDb with HasAuth
 
 val pipeline = B ~> C ~> A
 
-// Config flows to all steps automatically
 pipeline.provide(AppConfig("jdbc:pg", "secret-key")).unsafeRun(())
 ```
 
 ## Context
 
-`Context[T]` is a trait that provides organized factory methods for config-driven operations. For larger applications, extend it to keep your context-aware pipelines organized:
+`Context[T]` organizes config-driven nodes into modules:
 
 ```scala
 case class DbConfig(url: String, timeout: Int)
 
 object DataPipeline extends Context[DbConfig] {
-  
+
   val fetch = Context.Extract[Unit, String] { cfg => _ =>
     s"Connected to ${cfg.url} with timeout ${cfg.timeout}s"
   }
-  
+
   val save = Context.Load[String, Unit] { cfg => data =>
     println(s"Saving to ${cfg.url}: $data")
   }
-  
+
   val pipeline = fetch ~> save
 }
 
-// Provide config once
 DataPipeline.pipeline.provide(DbConfig("jdbc:pg", 5000)).unsafeRun(())
 ```
 
-## Scala 2.x Note
-
-Use explicit types for better inference:
-
-```scala
-// Scala 2.x
-Transform.requires[Config, String, String] { cfg => input => 
-  cfg.key + input
-}
-
-// Scala 3 (preferred)
-Transform[String, String].requires[Config] { cfg => input => 
-  cfg.key + input
-}
-```
-
+!!! note "Scala 2"
+    Use explicit types for better inference:
+    ```scala
+    Transform.requires[Config, String, String] { cfg => input =>
+      cfg.key + input
+    }
+    ```
+    In Scala 3, the preferred syntax is:
+    ```scala
+    Transform[String, String].requires[Config] { cfg => input =>
+      cfg.key + input
+    }
+    ```

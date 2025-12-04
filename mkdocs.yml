@@ -4,14 +4,12 @@ theme:
   name: material
   logo: assets/etl4s-logo.png
   favicon: assets/etl4s-logo.png
-  font:
-    text: Inter
-    code: JetBrains Mono
+  font: false  # Use system fonts for that raw, fast feel
   palette:
     - media: "(prefers-color-scheme: light)"
       scheme: default
       primary: teal
-      accent: deep purple
+      accent: teal
       toggle:
         icon: material/toggle-switch
         name: Switch to dark mode
@@ -25,27 +23,38 @@ theme:
   features:
     - content.code.copy
     - content.code.annotate
-    - navigation.instant
-    - navigation.tracking
-    - navigation.top
+    - navigation.footer
 nav:
   - Home: index.md
-  - Installation: installation.md
-  - Core Concepts: core-concepts.md
-  - Your First Pipeline: first-pipeline.md
-  - Operators: operators.md
-  - Conditional Branching: branching.md
-  - Configuration: config.md
-  - Parallel Execution: tasks.md
-  - Handling failures: failures.md
-  - Ensurers: validation.md
-  - Side Outputs: logs.md
-  - Tracing: trace.md
-  - Lineage Diagrams: lineage.md
-  - Telemetry: opentelemetry.md
-  - Testing: testing.md
-  - Examples: examples.md
+  - Getting Started:
+    - Installation: installation.md
+    - Your First Pipeline: first-pipeline.md
+  - Guide:
+    - Core Concepts: core-concepts.md
+    - Operators: operators.md
+    - Parallel Execution: tasks.md
+    - Conditional Branching: branching.md
+    - Side Effects: effect.md
+    - Configuration: config.md
+    - Error Handling: failures.md
+    - Ensurers: validation.md
+    - Tracing: trace.md
+    - Telemetry: opentelemetry.md
+    - Lineage Diagrams: lineage.md
+    - Testing: testing.md
+  - Examples:
+    - Common Patterns: examples.md
+    - etl4s + Spark: examples-spark.md
+    - etl4s + Flink: examples-flink.md
+  - Advanced: advanced.md
+  - Tradeoffs: tradeoffs.md
+  - Philosophy: philosophy.md
+  - FAQ: faq.md
 markdown_extensions:
+  - admonition
+  - pymdownx.details
+  - pymdownx.tabbed:
+      alternate_style: true
   - pymdownx.highlight:
       anchor_linenums: true
       use_pygments: true
@@ -68,9 +77,6 @@ repo_name: mattlianje/etl4s
 repo_url: https://github.com/mattlianje/etl4s
 extra:
   generator: false
-  social:
-    - icon: fontawesome/brands/github
-      link: https://github.com/mattlianje/etl4s
 
 extra_css:
   - stylesheets/extra.css

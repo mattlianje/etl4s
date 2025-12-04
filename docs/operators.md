@@ -1,9 +1,9 @@
+# Operators
 
-etl4s uses a few simple operators to build pipelines:
-
-| Operator | Name | Description | Example |
-|----------|------|-------------|---------|
-| `~>` | Connect | Chains operations in sequence | `e1 ~> t1 ~> l1` |
-| `&` | Combine | Group sequential operations with same input | `t1 & t2` |
-| `&>` | Parallel | Group concurrent operations with same input | `t1 &> t2` |
-| `>>` | Sequence | Runs nodes in order with same input | `p1 >> p2` |
+| Operator | Name | What it does | Result type |
+|----------|------|--------------|-------------|
+| `~>` | Chain | `a ~> b` - output of `a` feeds into `b` | `B` |
+| `&` | Fan-out | `a & b` - run both sequentially, same input | `(A, B)` |
+| `&>` | Parallel | `a &> b` - run both concurrently, same input | `(A, B)` |
+| `>>` | Sequence | `a >> b` - run both in order, return `b`'s result | `B` |
+| `.If` / `.ElseIf` / `.Else` | Branch | conditional routing | varies |

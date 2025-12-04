@@ -1,39 +1,658 @@
-/* Code snippets will use the page's natural color scheme */
+/* Simple, readable, no-bullshit documentation */
 
-/* Ensure code font is applied */
-.highlight code,
-.codehilite code,
-pre code {
-  font-family: 'JetBrains Mono', 'Fira Code', 'Consolas', 'Monaco', monospace !important;
-  font-size: 0.85em;
-  line-height: 1.4;
-  text-decoration: none !important;
+:root {
+  --mono: "SF Mono", Monaco, "Cascadia Code", Menlo, Consolas, monospace;
+  --sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
 }
 
-/* Remove any unwanted text decorations from code elements */
-.highlight *,
-.codehilite * {
-  text-decoration: none !important;
+/* Consistent font everywhere */
+body,
+.md-typeset,
+.md-nav,
+.md-header,
+.md-footer {
+  font-family: var(--sans);
 }
 
-/* Use default table styling */
-.md-typeset table code {
-  font-size: 0.75em;
+/* Clean typography */
+.md-typeset {
+  font-size: 16px;
+  line-height: 1.6;
+  max-width: 48rem;
 }
 
-/* Remove double boxing - let Material Design handle the container */
-.highlight,
-.codehilite {
+.md-typeset h1 {
+  font-size: 2.2em;
+  font-weight: 700;
+  margin-top: 0;
+  border-bottom: 2px solid #eee;
+  padding-bottom: 0.3em;
+  color: rgba(0, 0, 0, 0.8);
+}
+
+[data-md-color-scheme="slate"] .md-typeset h1 {
+  border-bottom-color: #333;
+  color: rgba(255, 255, 255, 0.85);
+}
+
+.md-typeset h2 {
+  font-size: 1.6em;
+  font-weight: 600;
+  margin-top: 2em;
+  margin-bottom: 0.5em;
+  border-bottom: 1px solid #eee;
+  padding-bottom: 0.2em;
+  color: rgba(0, 0, 0, 0.75);
+}
+
+[data-md-color-scheme="slate"] .md-typeset h2 {
+  border-bottom-color: #333;
+  color: rgba(255, 255, 255, 0.8);
+}
+
+.md-typeset h3 {
+  font-size: 1.2em;
+  font-weight: 600;
+  margin-top: 1.5em;
+  color: rgba(0, 0, 0, 0.7);
+}
+
+[data-md-color-scheme="slate"] .md-typeset h3 {
+  color: rgba(255, 255, 255, 0.75);
+}
+
+/* Code blocks - highly readable */
+.md-typeset code {
+  font-family: var(--mono);
+  font-size: 0.9em;
+  background: #f5f5f5;
+  padding: 0.15em 0.4em;
+  border-radius: 3px;
+}
+
+[data-md-color-scheme="slate"] .md-typeset code {
+  background: #2d2d2d;
+}
+
+.md-typeset pre {
+  background: #fafafa;
+  border: 1px solid #e0e0e0;
+  border-radius: 4px;
+  padding: 1em;
+  overflow-x: auto;
+}
+
+[data-md-color-scheme="slate"] .md-typeset pre {
+  background: #1e1e1e;
+  border-color: #1e1e1e;
+}
+
+.md-typeset pre code {
+  font-family: var(--mono);
+  font-size: 13px;
+  line-height: 1.5;
+  background: transparent !important;
+  padding: 0;
+}
+
+/* Fix double-boxing in syntax highlighted code blocks */
+.md-typeset .highlight,
+.md-typeset .codehilite {
   background: transparent !important;
   border: none !important;
   padding: 0 !important;
-  margin: 0 !important;
+  margin: 1.5em 0 !important;
 }
 
-/* Ensure the outer code block container has proper styling */
 .md-typeset .highlight pre,
 .md-typeset .codehilite pre {
-  background-color: var(--md-code-bg-color);
-  border-radius: 0.2rem;
-  padding: 0.75rem;
+  background: #fafafa;
+  border: 1px solid #e0e0e0;
+}
+
+[data-md-color-scheme="slate"] .md-typeset .highlight pre,
+[data-md-color-scheme="slate"] .md-typeset .codehilite pre {
+  background: #1e1e1e;
+  border-color: #1e1e1e;
+}
+
+/* Links - obvious */
+.md-typeset a {
+  color: #0066cc;
+  text-decoration: none;
+}
+
+.md-typeset a:hover {
+  text-decoration: underline;
+}
+
+[data-md-color-scheme="slate"] .md-typeset a {
+  color: #66b3ff;
+}
+
+/* Lists */
+.md-typeset ul,
+.md-typeset ol {
+  padding-left: 1.5em;
+}
+
+.md-typeset li {
+  margin: 0.3em 0;
+}
+
+/* Tables */
+.md-typeset table:not([class]) {
+  border-collapse: collapse;
+  width: 100%;
+  margin: 1.5em 0;
+}
+
+.md-typeset table:not([class]) th,
+.md-typeset table:not([class]) td {
+  border: 1px solid #ddd;
+  padding: 0.6em;
+  text-align: left;
+}
+
+[data-md-color-scheme="slate"] .md-typeset table:not([class]) th,
+[data-md-color-scheme="slate"] .md-typeset table:not([class]) td {
+  border-color: #444;
+}
+
+.md-typeset table:not([class]) th {
+  background: #f5f5f5;
+  font-weight: 600;
+}
+
+[data-md-color-scheme="slate"] .md-typeset table:not([class]) th {
+  background: #2d2d2d;
+}
+
+/* Blockquotes */
+.md-typeset blockquote {
+  border-left: 3px solid #ddd;
+  padding-left: 1em;
+  color: #666;
+  margin: 1.5em 0;
+}
+
+[data-md-color-scheme="slate"] .md-typeset blockquote {
+  border-left-color: #555;
+  color: #aaa;
+}
+
+/* Remove sidebar background */
+.md-sidebar {
+  background: transparent;
+}
+
+/* Simplify header - trim padding */
+.md-header {
+  box-shadow: 0 0 0.2rem rgba(0,0,0,0.1);
+  height: 2.5rem;
+  padding: 0;
+}
+
+.md-header__inner {
+  padding: 0 0.5rem;
+  height: 2.5rem;
+}
+
+.md-header__title {
+  font-size: 0.9rem;
+  padding: 0;
+  margin: 0;
+}
+
+/* Navigation - compact and tight */
+.md-nav__link {
+  font-size: 0.7rem;
+  padding: 0.15em 0.6em;
+  line-height: 1.3;
+}
+
+.md-nav__link--active {
+  font-weight: 600;
+}
+
+.md-nav__item {
+  padding: 0;
+  margin: 0;
+}
+
+.md-nav__title {
+  font-size: 0.65rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  padding: 0.4em 0.6em 0.2em 0.6em;
+  margin-top: 0.5em;
+}
+
+.md-nav__title:first-child {
+  margin-top: 0;
+}
+
+/* Table of contents - compact */
+.md-nav--secondary .md-nav__link {
+  font-size: 0.65rem;
+  padding: 0.15em 0.6em;
+  line-height: 1.3;
+}
+
+/* Reduce spacing between nav items */
+.md-nav__list {
+  padding: 0;
+  margin: 0;
+}
+
+.md-nav__item .md-nav__item {
+  padding-left: 0.5em;
+}
+
+/* Footer navigation - simple prev/next, closer together */
+.md-footer__inner {
+  padding: 0.3em 0;
+  gap: 0.5rem;
+}
+
+.md-footer__link {
+  font-size: 0.8rem;
+  padding: 0.4em 0.5em;
+  min-width: 0;
+  flex: 0 1 auto;
+}
+
+.md-footer__title {
+  font-size: 0.75rem;
+  background: transparent;
+  padding: 0;
+}
+
+.md-footer__direction {
+  font-size: 0.65rem;
+  opacity: 0.6;
+}
+
+/* Mobile: ensure both prev and next show */
+@media screen and (max-width: 76.1875em) {
+  .md-footer__link {
+    width: auto;
+    flex: 1 1 50%;
+  }
+
+  .md-footer__inner {
+    display: flex;
+    justify-content: space-between;
+  }
+
+  /* Center content when sidebar is hidden */
+  .md-content {
+    margin: 0 auto;
+  }
+
+  .md-content__inner {
+    margin: 0 auto;
+    max-width: 700px;
+    padding: 0 1rem;
+  }
+}
+
+/* Hide social links in footer */
+.md-footer-meta,
+.md-social {
+  display: none !important;
+}
+
+/* Make site title lowercase */
+.md-header__title,
+.md-nav__title {
+  text-transform: none !important;
+}
+
+.md-header__button.md-logo {
+  margin-right: 0.2rem;
+}
+
+/* Remove animations */
+* {
+  animation: none !important;
+  transition: none !important;
+}
+
+/* Allow intro animations */
+@keyframes float {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-6px); }
+}
+
+@keyframes magnet-left {
+  0%, 10% { transform: translateX(-12px); opacity: 0.5; }
+  40%, 60% { transform: translateX(0); opacity: 0.9; }
+  90%, 100% { transform: translateX(-12px); opacity: 0.5; }
+}
+
+@keyframes magnet-right {
+  0%, 10% { transform: translateX(12px); opacity: 0.5; }
+  40%, 60% { transform: translateX(0); opacity: 0.9; }
+  90%, 100% { transform: translateX(12px); opacity: 0.5; }
+}
+
+@keyframes connector-appear {
+  0%, 30% { opacity: 0; }
+  45%, 55% { opacity: 0.6; }
+  70%, 100% { opacity: 0; }
+}
+
+
+.magnet-demo .node-left {
+  animation: magnet-left 3s ease-in-out infinite !important;
+}
+
+.magnet-demo .node-right {
+  animation: magnet-right 3s ease-in-out infinite !important;
+}
+
+.magnet-demo .connector {
+  animation: connector-appear 3s ease-in-out infinite !important;
+}
+
+@keyframes env-drift-left {
+  0%, 15% { transform: translateX(-12px); opacity: 0.3; }
+  40%, 60% { transform: translateX(0); opacity: 1; }
+  85%, 100% { transform: translateX(-12px); opacity: 0.3; }
+}
+
+@keyframes env-drift-right {
+  0%, 15% { transform: translateX(12px); opacity: 0.3; }
+  40%, 60% { transform: translateX(0); opacity: 1; }
+  85%, 100% { transform: translateX(12px); opacity: 0.3; }
+}
+
+@keyframes env-result-appear {
+  0%, 45% { opacity: 0; transform: scale(0.7); }
+  55%, 75% { opacity: 1; transform: scale(1); }
+  90%, 100% { opacity: 0; transform: scale(0.7); }
+}
+
+@keyframes op-pulse {
+  0%, 20% { opacity: 0.2; }
+  40%, 60% { opacity: 0.6; }
+  80%, 100% { opacity: 0.2; }
+}
+
+@keyframes eq-appear {
+  0%, 45% { opacity: 0; }
+  55%, 75% { opacity: 0.6; }
+  90%, 100% { opacity: 0; }
+}
+
+.env-merge-demo .env-a {
+  animation: env-drift-left 5s ease-in-out infinite !important;
+}
+
+.env-merge-demo .env-b {
+  animation: env-drift-right 5s ease-in-out infinite !important;
+}
+
+.env-merge-demo .env-result {
+  animation: env-result-appear 5s ease-in-out infinite !important;
+}
+
+.env-merge-demo .merge-op {
+  animation: op-pulse 5s ease-in-out infinite !important;
+}
+
+.env-merge-demo .merge-eq {
+  animation: eq-appear 5s ease-in-out infinite !important;
+}
+
+@keyframes branch-input-pulse {
+  0%, 15% { opacity: 0.4; transform: scale(0.9); }
+  25%, 40% { opacity: 1; transform: scale(1); }
+  60%, 100% { opacity: 0.4; transform: scale(0.9); }
+}
+
+@keyframes branch-if-appear {
+  0%, 20% { opacity: 0; transform: translateY(4px); }
+  35%, 55% { opacity: 1; transform: translateY(0); }
+  75%, 100% { opacity: 0; transform: translateY(4px); }
+}
+
+@keyframes branch-else-appear {
+  0%, 25% { opacity: 0; transform: translateY(-4px); }
+  40%, 55% { opacity: 1; transform: translateY(0); }
+  75%, 100% { opacity: 0; transform: translateY(-4px); }
+}
+
+.branch-demo .branch-input {
+  animation: branch-input-pulse 5s ease-in-out infinite !important;
+}
+
+.branch-demo .branch-if {
+  animation: branch-if-appear 5s ease-in-out infinite !important;
+}
+
+.branch-demo .branch-else {
+  animation: branch-else-appear 5s ease-in-out infinite !important;
+}
+
+.branch-demo .merge-eq {
+  animation: eq-appear 5s ease-in-out infinite !important;
+}
+
+.branch-demo .branch-result {
+  animation: env-result-appear 5s ease-in-out infinite !important;
+}
+
+@keyframes drop-to-jvm {
+  0% { top: 48px; left: 50%; opacity: 0; transform: scale(0.5); }
+  8% { opacity: 0.8; transform: scale(1); }
+  95% { opacity: 0.8; transform: scale(1); }
+  100% { top: 110px; left: 10%; opacity: 0; transform: scale(0.5); }
+}
+
+@keyframes drop-to-js {
+  0% { top: 48px; left: 50%; opacity: 0; transform: scale(0.5); }
+  8% { opacity: 0.8; transform: scale(1); }
+  95% { opacity: 0.8; transform: scale(1); }
+  100% { top: 110px; left: 36%; opacity: 0; transform: scale(0.5); }
+}
+
+@keyframes drop-to-wasm {
+  0% { top: 48px; left: 50%; opacity: 0; transform: scale(0.5); }
+  8% { opacity: 0.8; transform: scale(1); }
+  95% { opacity: 0.8; transform: scale(1); }
+  100% { top: 110px; left: 62%; opacity: 0; transform: scale(0.5); }
+}
+
+@keyframes drop-to-llvm {
+  0% { top: 48px; left: 50%; opacity: 0; transform: scale(0.5); }
+  8% { opacity: 0.8; transform: scale(1); }
+  95% { opacity: 0.8; transform: scale(1); }
+  100% { top: 110px; left: 88%; opacity: 0; transform: scale(0.5); }
+}
+
+/* Type safety animation - flowing dots */
+@keyframes node-t-fade {
+  0%, 42% { opacity: 1; }
+  50%, 88% { opacity: 0; }
+  95%, 100% { opacity: 1; }
+}
+
+@keyframes node-l-move {
+  0%, 42% { left: 180px; }
+  50%, 88% { left: 95px; }
+  95%, 100% { left: 180px; }
+}
+
+@keyframes conn-tl-fade {
+  0%, 42% { opacity: 0.4; }
+  50%, 88% { opacity: 0; }
+  95%, 100% { opacity: 0.4; }
+}
+
+@keyframes conn-et-fade {
+  0%, 42% { opacity: 0.4; color: var(--md-primary-fg-color); }
+  50%, 70% { opacity: 0.6; color: #ef4444; }
+  75%, 88% { opacity: 0.4; color: #ef4444; }
+  95%, 100% { opacity: 0.4; color: var(--md-primary-fg-color); }
+}
+
+@keyframes flow-good {
+  0%, 5% { left: 18px; opacity: 0; }
+  8% { opacity: 0.9; }
+  18% { left: 100px; opacity: 0.9; }
+  32% { left: 185px; opacity: 0.9; }
+  36%, 100% { left: 185px; opacity: 0; }
+}
+
+@keyframes flow-fail {
+  0%, 50% { left: 18px; opacity: 0; }
+  53% { left: 18px; opacity: 0.9; }
+  65% { left: 70px; opacity: 0.9; }
+  70% { left: 75px; opacity: 0; }
+  100% { opacity: 0; }
+}
+
+@keyframes result-ok-anim {
+  0%, 32% { opacity: 0; }
+  38%, 42% { opacity: 1; }
+  47%, 100% { opacity: 0; }
+}
+
+@keyframes result-fail-anim {
+  0%, 68% { opacity: 0; }
+  73%, 88% { opacity: 1; }
+  93%, 100% { opacity: 0; }
+}
+
+@keyframes node-pulse-green {
+  0%, 30% { box-shadow: none; background: var(--md-primary-fg-color); }
+  35%, 42% { box-shadow: 0 0 8px #14b8a6; background: #14b8a6; }
+  47%, 68% { box-shadow: none; background: var(--md-primary-fg-color); }
+  73%, 88% { box-shadow: 0 0 8px #ef4444; background: #ef4444; }
+  93%, 100% { box-shadow: none; background: var(--md-primary-fg-color); }
+}
+
+.type-safety-demo .node-dot { animation: node-pulse-green 6s ease-out infinite !important; }
+.type-safety-demo .node-t { animation: node-t-fade 6s ease-out infinite !important; }
+.type-safety-demo .node-l { animation: node-l-move 6s ease-out infinite !important; }
+.type-safety-demo .conn-tl { animation: conn-tl-fade 6s ease-out infinite !important; }
+.type-safety-demo .conn-et { animation: conn-et-fade 6s ease-out infinite !important; }
+.type-safety-demo .flow-dot-1 { animation: flow-good 6s ease-out infinite !important; }
+.type-safety-demo .flow-dot-2 { animation: flow-good 6s ease-out infinite 0.15s !important; }
+.type-safety-demo .flow-bad { animation: flow-fail 6s ease-out infinite !important; }
+.type-safety-demo .result-fail { animation: result-fail-anim 6s ease-out infinite !important; }
+
+/* Typing animation */
+@keyframes type-line1 {
+  0%, 2% { width: 0; opacity: 1; }
+  12% { width: 24ch; opacity: 1; }
+  85%, 100% { width: 24ch; opacity: 1; }
+}
+
+@keyframes type-line2 {
+  0%, 14% { width: 0; opacity: 0; }
+  15% { width: 0; opacity: 1; }
+  25% { width: 14ch; opacity: 1; }
+  85%, 100% { width: 14ch; opacity: 1; }
+}
+
+@keyframes type-line3 {
+  0%, 27% { width: 0; opacity: 0; }
+  28% { width: 1ch; opacity: 1; }
+  85%, 100% { width: 1ch; opacity: 1; }
+}
+
+@keyframes type-line4 {
+  0%, 30% { width: 0; opacity: 0; }
+  31% { width: 0; opacity: 1; }
+  42% { width: 14ch; opacity: 1; }
+  85%, 100% { width: 14ch; opacity: 1; }
+}
+
+@keyframes type-line5 {
+  0%, 44% { width: 0; opacity: 0; }
+  45% { width: 0; opacity: 1; }
+  65% { width: 100%; opacity: 1; }
+  85%, 100% { width: 100%; opacity: 1; }
+}
+
+.typing-demo .line-1 { animation: type-line1 8s steps(24, end) infinite !important; }
+.typing-demo .line-2 { animation: type-line2 8s steps(14, end) infinite !important; }
+.typing-demo .line-3 { animation: type-line3 8s steps(1, end) infinite !important; }
+.typing-demo .line-4 { animation: type-line4 8s steps(14, end) infinite !important; }
+.typing-demo .line-5 { animation: type-line5 8s steps(28, end) infinite !important; }
+
+/* JVM - left target */
+.platform-demo .drop-jvm-1 { animation: drop-to-jvm 1.6s ease-out infinite !important; }
+.platform-demo .drop-jvm-2 { animation: drop-to-jvm 1.6s ease-out infinite 0.4s !important; }
+.platform-demo .drop-jvm-3 { animation: drop-to-jvm 1.6s ease-out infinite 0.8s !important; }
+.platform-demo .drop-jvm-4 { animation: drop-to-jvm 1.6s ease-out infinite 1.2s !important; }
+
+/* JS - center target */
+.platform-demo .drop-js-1 { animation: drop-to-js 1.6s ease-out infinite 0.13s !important; }
+.platform-demo .drop-js-2 { animation: drop-to-js 1.6s ease-out infinite 0.53s !important; }
+.platform-demo .drop-js-3 { animation: drop-to-js 1.6s ease-out infinite 0.93s !important; }
+.platform-demo .drop-js-4 { animation: drop-to-js 1.6s ease-out infinite 1.33s !important; }
+
+/* WASM - center-right target */
+.platform-demo .drop-wasm-1 { animation: drop-to-wasm 1.6s ease-out infinite 0.2s !important; }
+.platform-demo .drop-wasm-2 { animation: drop-to-wasm 1.6s ease-out infinite 0.6s !important; }
+.platform-demo .drop-wasm-3 { animation: drop-to-wasm 1.6s ease-out infinite 1.0s !important; }
+.platform-demo .drop-wasm-4 { animation: drop-to-wasm 1.6s ease-out infinite 1.4s !important; }
+
+/* LLVM - right target */
+.platform-demo .drop-llvm-1 { animation: drop-to-llvm 1.6s ease-out infinite 0.27s !important; }
+.platform-demo .drop-llvm-2 { animation: drop-to-llvm 1.6s ease-out infinite 0.67s !important; }
+.platform-demo .drop-llvm-3 { animation: drop-to-llvm 1.6s ease-out infinite 1.07s !important; }
+.platform-demo .drop-llvm-4 { animation: drop-to-llvm 1.6s ease-out infinite 1.47s !important; }
+
+/* But keep smooth color transitions for theme toggle */
+body,
+.md-header,
+.md-typeset code,
+.md-typeset pre {
+  transition: background-color 0.2s, color 0.2s, border-color 0.2s !important;
+}
+
+/* Mermaid diagrams - centered */
+.md-typeset .mermaid {
+  text-align: center;
+}
+
+/* Mermaid dark mode fix */
+[data-md-color-scheme="slate"] .mermaid {
+  --md-mermaid-label-fg-color: #000;
+  --md-mermaid-label-bg-color: #fff;
+  --md-mermaid-node-fg-color: #000;
+  --md-mermaid-node-bg-color: #e1f5fe;
+  --md-mermaid-edge-color: #fff;
+}
+
+[data-md-color-scheme="slate"] .mermaid text {
+  fill: #000 !important;
+}
+
+[data-md-color-scheme="slate"] .mermaid .label {
+  color: #000 !important;
+}
+
+[data-md-color-scheme="slate"] .mermaid .nodeLabel {
+  color: #000 !important;
+}
+
+[data-md-color-scheme="slate"] .mermaid .node rect,
+[data-md-color-scheme="slate"] .mermaid .node polygon,
+[data-md-color-scheme="slate"] .mermaid .node circle {
+  stroke: #fff !important;
+}
+
+[data-md-color-scheme="slate"] .mermaid .edgePath path {
+  stroke: #aaa !important;
+}
+
+[data-md-color-scheme="slate"] .mermaid marker path {
+  fill: #aaa !important;
 }

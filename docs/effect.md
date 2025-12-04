@@ -1,34 +1,65 @@
-
 # Side Effects
 
-**etl4s** makes it easy to work with side effects in your pipelines.
+## Observing with `.tap()`
 
-## Using `.tap()` for Inline Side Effects
-
-The `.tap()` method lets you perform side effects without disrupting the data flow through your pipeline.
-Perfect for logging, cleanup, debugging, or any operation that shouldn't affect your data.
+Peek at values mid-pipeline without modifying them:
 
 ```scala
 import etl4s._
 
-val fetchData    = Extract[List[String]]{ List("file1.txt", "file2.txt") }
-val processFiles = Transform[List[String], Int](_.size)
+val pipeline = Extract("hello world")
+  .tap(x => println(s"Got: $x"))
+  ~> Transform[String, Array[String]](_.split(" "))
 
-val p = fetchData
-  .tap(files => println(s"Processing ${files.size} files..."))
-  ~> processFiles
+pipeline.unsafeRun(())
+// prints: Got: hello world
+// returns: Array("hello", "world")
 ```
 
-## Wrapping Side Effects in Nodes
+Chain taps at different stages:
 
-For standalone side effects, just wrap them in `Node { ... }`:
+```scala
+val pipeline = fetchData
+  .tap(files => println(s"Fetched ${files.size} files"))
+  ~> processFiles
+  .tap(count => println(s"Processed $count files"))
+```
+
+## Sequential Effects with `>>`
+
+Run multiple nodes in order, same input to each. Only the last result is kept:
+
+```scala
+val logStart = Node[String, Unit](s => println(s"Start: $s"))
+val logEnd   = Node[String, Unit](s => println(s"End: $s"))
+val process  = Node[String, Int](_.length)
+
+val pipeline = logStart >> logEnd >> process
+
+pipeline.unsafeRun("hello")
+// prints: Start: hello
+// prints: End: hello
+// returns: 5
+```
+
+Common for setup/teardown:
 
 ```scala
 val clearCache = Node { println("Clearing cache...") }
-val purgeTemp  = Node { println("More cleanup..") }
+val warmCache  = Node { println("Warming cache...") }
 
-// Chain side effects with >>
-val p = clearCache >> purgeTemp >> fetchData ~> processFiles
+val pipeline = clearCache >> warmCache >> mainPipeline
 ```
 
-Side effects are **lazy** - they only execute when you call `.unsafeRun()`.
+Or audit logging:
+
+```scala
+val auditStart = Node[Request, Unit](r => log(s"Started ${r.id}"))
+val auditEnd   = Node[Request, Unit](r => log(s"Finished ${r.id}"))
+
+val pipeline = auditStart >> processRequest >> auditEnd
+```
+
+## Laziness
+
+Side effects are **lazy** - nothing executes until `.unsafeRun()`. Build and compose freely without triggering effects.

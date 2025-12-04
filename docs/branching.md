@@ -1,21 +1,25 @@
 # Conditional Branching
 
-Route data through different pipelines with `If`, `ElseIf`, and `Else`.
+Route data through different pipelines based on runtime conditions using `If`, `ElseIf`, and `Else`.
 
 ```scala
 import etl4s._
 
-val router = Node[Int, Int](identity)
+val classify = Node[Int, Int](identity)
   .If(_ > 0)     (Node(_ => "positive"))
   .ElseIf(_ < 0) (Node(_ => "negative"))
   .Else          (Node(_ => "zero"))
 
-router.unsafeRun(5)   // "positive"
-router.unsafeRun(-3)  // "negative"
-router.unsafeRun(0)   // "zero"
+classify.unsafeRun(5)   // "positive"
+classify.unsafeRun(-3)  // "negative"
+classify.unsafeRun(0)   // "zero"
 ```
 
-## Pipeline Branches
+The condition is checked against the input, and only the matching branch executes.
+
+## Composing Pipelines in Branches
+
+Each branch can be a full pipeline, not just a single node:
 
 ```scala
 val router = Node[User, User](identity)
@@ -24,7 +28,9 @@ val router = Node[User, User](identity)
   .Else                         (toGuestResult)
 ```
 
-## With Parallel Fan-out
+## Combining with Fan-out
+
+Branches can include parallel operations using `&` or `&>`:
 
 ```scala
 val router = Node[User, User](identity)
@@ -32,10 +38,14 @@ val router = Node[User, User](identity)
   .Else               (toSimpleProfile)
 ```
 
-## Config-Aware
+## Config-Aware Branching
+
+When your pipeline uses configuration, conditions can access it too:
 
 ```scala
-val router = source
+case class Config(threshold: Int)
+
+val router = Node[Config, Int, Int](identity)
   .If(cfg => n => n >= cfg.threshold) (premiumPath)
   .Else                               (standardPath)
 
@@ -45,18 +55,10 @@ router.provide(Config(100)).unsafeRun(50)   // standard
 
 ## Scala 2 vs Scala 3
 
-The API is identical, but Scala 3 supports heterogeneous branches.
-
-**Scala 2** - all branches must return the same type:
-```scala
-val router = Node[Int, Int](identity)
-  .If(_ > 0)     (Node(n => s"pos-$n"))
-  .ElseIf(_ < 0) (Node(n => s"neg-$n"))
-  .Else          (Node(n => s"zero"))
-// All branches return String
-```
+The API is identical across versions, but Scala 3's type system enables more flexibility.
 
 **Scala 3** - branches can return different types (union):
+
 ```scala
 val router = Node[Int, Int](identity)
   .If(_ > 0)     (Node(n => s"pos-$n"))    // String
@@ -66,9 +68,20 @@ val router = Node[Int, Int](identity)
 ```
 
 **Scala 3** - branches can require different configs (intersection):
+
 ```scala
-val router = source
+val router = Node[String, String](identity)
   .If(cfg => _.startsWith("db:")) (dbBranch)    // needs DbConfig
   .Else                           (cacheBranch) // needs CacheConfig
 // Must provide: DbConfig & CacheConfig
 ```
+
+!!! note "Scala 2"
+    All branches must return the same type:
+    ```scala
+    val router = Node[Int, Int](identity)
+      .If(_ > 0)     (Node(n => s"pos-$n"))
+      .ElseIf(_ < 0) (Node(n => s"neg-$n"))
+      .Else          (Node(_ => "zero"))
+    // All branches return String
+    ```

@@ -1,4 +1,3 @@
-
 **etl4s** has an elegant shorthand for grouping and parallelizing operations that share the same input type:
 ```scala
 import etl4s._
@@ -38,7 +37,7 @@ Full example of a parallel pipeline:
 val consoleLoad: Load[String, Unit] = Load(println(_))
 val dbLoad:      Load[String, Unit] = Load(x => println(s"DB Load: ${x}"))
 
-val merge = Transform[(Int, String, Boolean), String] { t => 
+val merge = Transform[(Int, String, Boolean), String] { t =>
     val (i, s, b) = t
     s"$i-$s-$b"
   }
