@@ -923,7 +923,7 @@ hide:
 <div class="feature-row reverse">
 <div class="feature-text">
 <h3>Under the hood:</h3>
-<p>A lightweight effect system with one core <code>Node[-In, +Out]</code> abstraction. The <code>~></code> operator infers and merges environments seamlessly. <a href="faq/#how-it-works">Details in FAQ</a>.</p>
+<p>A lightweight effect system with one core <code>Node[-In, +Out]</code> abstraction. The <code>~></code> operator infers and merges environments automatically. <a href="faq/#how-it-works">Details in FAQ</a>.</p>
 </div>
 <div class="feature-visual quote">
 <blockquote>
@@ -940,7 +940,7 @@ hide:
 <div class="feature-row">
 <div class="feature-text">
 <h3>Automatic environment inference.</h3>
-<p>Chain nodes with different dependencies. The compiler figures out what the pipeline needs. No manual wiring.</p>
+<p>Chain nodes with different dependencies. The compiler gives you config-driven pipelines for free - with typed, declarative endpoints you can share as black-box abstractions.</p>
 </div>
 <div class="feature-visual">
 <div class="env-merge-demo">
