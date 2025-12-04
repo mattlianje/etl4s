@@ -616,3 +616,43 @@ body,
 .md-typeset pre {
   transition: background-color 0.2s, color 0.2s, border-color 0.2s !important;
 }
+
+/* Mermaid diagrams - centered */
+.md-typeset .mermaid {
+  text-align: center;
+}
+
+/* Mermaid dark mode fix */
+[data-md-color-scheme="slate"] .mermaid {
+  --md-mermaid-label-fg-color: #000;
+  --md-mermaid-label-bg-color: #fff;
+  --md-mermaid-node-fg-color: #000;
+  --md-mermaid-node-bg-color: #e1f5fe;
+  --md-mermaid-edge-color: #fff;
+}
+
+[data-md-color-scheme="slate"] .mermaid text {
+  fill: #000 !important;
+}
+
+[data-md-color-scheme="slate"] .mermaid .label {
+  color: #000 !important;
+}
+
+[data-md-color-scheme="slate"] .mermaid .nodeLabel {
+  color: #000 !important;
+}
+
+[data-md-color-scheme="slate"] .mermaid .node rect,
+[data-md-color-scheme="slate"] .mermaid .node polygon,
+[data-md-color-scheme="slate"] .mermaid .node circle {
+  stroke: #fff !important;
+}
+
+[data-md-color-scheme="slate"] .mermaid .edgePath path {
+  stroke: #aaa !important;
+}
+
+[data-md-color-scheme="slate"] .mermaid marker path {
+  fill: #aaa !important;
+}

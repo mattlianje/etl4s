@@ -772,17 +772,22 @@ hide:
     ```scala
     import etl4s._
 
-    val extract = Extract(100)
-    val half    = Transform[Int, Int](_ / 2)
-    val double  = Transform[Int, Int](_ * 2)
-    val format  = Transform[(Int, Int), String] { case (h, d) =>
-      s"half=$h, double=$d"
+    val extract100  = Extract(100)
+    val half        = Transform[Int, Int](_ / 2)
+    val double      = Transform[Int, Int](_ * 2)
+    val consoleLoad = Load[String, Unit](println)
+    val dbLoad      = Load[String, Unit](s => println(s"saving to db: $s"))
+
+    val format = Transform[(Int, Int), String] {
+      case (h, d) => s"half=$h, double=$d"
     }
 
-    val pipeline = extract ~> (half & double) ~> format
+    val pipeline =
+      extract100 ~> (half & double) ~> format ~> (consoleLoad & dbLoad)
 
-    pipeline.unsafeRun(())
-    // "half=50, double=200"
+    pipeline.unsafeRun()
+    // half=50, double=200
+    // saving to db: half=50, double=200
     ```
 
 === "Config"
@@ -808,18 +813,38 @@ hide:
     ```scala
     import etl4s._
 
-    val e = Extract(1).named("source")
-    val t = Transform[Int, Int](_ + 1).named("increment")
-    val l = Load[Int, Unit](println).named("sink")
+    val A = Node[String, String](identity)
+      .lineage(name = "A", inputs = List("s1", "s2"), outputs = List("s3"))
 
-    val pipeline = e ~> t ~> l
+    val B = Node[String, String](identity)
+      .lineage(name = "B", inputs = List("s3"), outputs = List("s4", "s5"))
 
-    println(pipeline.toMermaid)
+    Seq(A, B).toMermaid
     ```
 
     ```mermaid
     graph LR
-      source --> increment --> sink
+        classDef pipeline fill:#e1f5fe,stroke:#01579b,stroke-width:2px,color:#000
+        classDef dataSource fill:#f3e5f5,stroke:#4a148c,stroke-width:2px,color:#000
+
+        A["A"]
+        B["B"]
+        s1(["s1"])
+        s2(["s2"])
+        s3(["s3"])
+        s4(["s4"])
+        s5(["s5"])
+
+        s1 --> A
+        s2 --> A
+        A --> s3
+        s3 --> B
+        B --> s4
+        B --> s5
+
+        class A pipeline
+        class B pipeline
+        class s1,s2,s3,s4,s5 dataSource
     ```
 
 === "Telemetry"
@@ -902,7 +927,7 @@ hide:
 </div>
 <div class="feature-visual quote">
 <blockquote>
-... most of the advantages of full blown "effect systems" without the complexities, and awkward monad syntax!
+... (etl4s has) most of the advantages of full blown "effect systems" without the complexities, and awkward monad syntax!
 <cite>— u/RiceBroad4552</cite>
 </blockquote>
 </div>
@@ -937,6 +962,7 @@ hide:
 </div>
 </div>
 
+<!--
 <div class="feature-row reverse">
 <div class="feature-text">
 <h3>Runs anywhere.</h3>
@@ -968,6 +994,7 @@ hide:
 </div>
 </div>
 </div>
+-->
 
 </div>
 

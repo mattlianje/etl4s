@@ -75,10 +75,3 @@ etl4s doesn't move data or execute transformations. Use Spark, Flink, Pandas for
 **Not a replacement for monadic IO with fiber runtimes**  
 If you're already using Cats Effect or ZIO, you probably do not need etl4s (although in the near the
 concurrency subsystem will not be tied to `Future` so you will be able to run **etl4s** on top of CE, ZIO, Kyo). It's for teams that want structure without committing to an effect system and learning its abstractions.
-
-
-## Tradeoffs
-
-**Performance**
-Each **etl4s** pipeline spawns a daemon-thread to accumulate tracing. Minimal overhead but still something to keep in mind
-

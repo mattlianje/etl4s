@@ -1,27 +1,12 @@
 # Telemetry
 
-etl4s provides a minimal telemetry interface. This interface exists to decouple telemetry from specific backends.
+When writing ETL jobs, you often need to:
 
-## How It Works
+- Count records processed, track durations, measure data quality
+- Ship metrics to Prometheus, DataDog, or whatever your infra uses
+- Have zero overhead in dev, real metrics in prod
 
-The `Etl4sTelemetry` trait defines the core interface:
-
-```scala
-trait Etl4sTelemetry {
-  def withSpan[T](name: String, attributes: (String, Any)*)(block: => T): T
-  def addCounter(name: String, value: Long): Unit
-  def setGauge(name: String, value: Double): Unit  
-  def recordHistogram(name: String, value: Double): Unit
-}
-```
-
-All etl4s pipeline run methods automatically look for `Etl4sTelemetry` in implicit scope.
-
-The `Tel` object provides a convenient API with identical method names to the trait. By default, all `Tel` calls are no-ops with zero overhead until you provide an implementation.
-
-**Your implementation connects to:** OpenTelemetry SDK, Prometheus, DataDog, New Relic, CloudWatch, or whatever you want.
-
-## Usage
+`Tel` gives you this. It's a thin interface over your metrics backend. No-ops by default, wired up when you provide an implementation.
 
 ```scala
 val process = Transform[List[String], Int] { data =>
@@ -39,45 +24,47 @@ implicit val telemetry: Etl4sTelemetry = MyPrometheusProvider()
 process.unsafeRun(data)
 ```
 
-**Key benefits:**
+## The Interface
 
-- Write business critical telemetry in business logic, not infrastructure code
-- Zero performance cost until enabled  
-- Works on any platform: local JVM, Spark, Kubernetes, Lambda
-- No framework lock-in or context threading
+```scala
+trait Etl4sTelemetry {
+  def withSpan[T](name: String, attributes: (String, Any)*)(block: => T): T
+  def addCounter(name: String, value: Long): Unit
+  def setGauge(name: String, value: Double): Unit
+  def recordHistogram(name: String, value: Double): Unit
+}
+```
 
-## Why Telemetry (sometimes) belongs in ETL Business Logic
+Your implementation connects to OpenTelemetry SDK, Prometheus, DataDog, New Relic, CloudWatch, or whatever you use.
 
-In many web and OLTP programs, telemetry is often a cross-cutting concern separate from business logic. **ETL is different.** In OLAP processes, observability metrics are frequently business-critical (especially at the peripheries in Extractors and Loaders):
+## Why Telemetry in ETL Business Logic
+
+In web apps, telemetry is often a cross-cutting concern. ETL is different. In batch/streaming jobs, metrics are frequently business-critical:
 
 ```scala
 val processUsers = Transform[List[RawUser], List[ValidUser]] { rawUsers =>
   val validated = rawUsers.filter(isValid)
   val invalidCount = rawUsers.size - validated.size
-  
-  /* This IS business logic - the business needs these metrics */
-  Tel.addCounter("users.processed", rawUsers.size) 
+
+  /* These ARE business metrics */
+  Tel.addCounter("users.processed", rawUsers.size)
   Tel.addCounter("users.invalid", invalidCount)
   Tel.setGauge("data.quality.ratio", validated.size.toDouble / rawUsers.size)
-  
-  /* Business decision based on data quality */
+
   if (invalidCount > threshold) {
     Tel.addCounter("pipeline.quality.failures", 1)
     throw new DataQualityException("Too many invalid records")
   }
-  
+
   validated
 }
 ```
 
-**In the above example - these aren't just "monitoring metrics" - they're business KPIs:**
+These aren't just "monitoring metrics" - they're business KPIs:
 
 - Record counts determine billing and SLAs
-- Processing times affect customer experience  
 - Data quality ratios trigger business alerts
 - Throughput metrics inform capacity planning
-
-etl4s makes it safe to instrument business logic directly because `Tel` calls are zero-cost no-ops by default. You get the observability where it matters most - in the business context - without infrastructure coupling.
 
 ## Implementation Examples
 
@@ -86,12 +73,12 @@ etl4s makes it safe to instrument business logic directly because `Tel` calls ar
 class OpenTelemetryProvider extends Etl4sTelemetry {
   private val tracer = GlobalOpenTelemetry.getTracer("my-app")
   private val meter = GlobalOpenTelemetry.getMeter("my-app")
-  
+
   def withSpan[T](name: String, attributes: (String, Any)*)(block: => T): T = {
     val span = tracer.spanBuilder(name).startSpan()
     try block finally span.end()
   }
-  
+
   def addCounter(name: String, value: Long): Unit = {
     meter.counterBuilder(name).build().add(value)
   }
@@ -106,7 +93,7 @@ class PrometheusProvider extends Etl4sTelemetry {
     val timer = Timer.start()
     try block finally histogram.labels(name).observe(timer.observeDuration())
   }
-  
+
   def addCounter(name: String, value: Long): Unit = {
     Counter.build().name(name).register().inc(value)
   }
@@ -120,9 +107,19 @@ class PrometheusProvider extends Etl4sTelemetry {
 implicit val telemetry: Etl4sTelemetry = Etl4sConsoleTelemetry()
 ```
 
-## Advanced Features
+## Nested Spans
 
-### Span Attributes
+Spans automatically nest:
+```scala
+Tel.withSpan("outer") {
+  Tel.withSpan("inner") {
+    computeResult()
+  }
+}
+```
+
+## Span Attributes
+
 ```scala
 Tel.withSpan("processing",
   "input.size" -> data.size,
@@ -130,25 +127,6 @@ Tel.withSpan("processing",
 ) {
   /* processing logic */
 }
-```
-
-### Nested Spans
-Spans automatically nest when called within each other:
-```scala
-Tel.withSpan("outer") {
-  val result = Tel.withSpan("inner") {
-    /* nested processing */
-    computeResult()
-  }
-  result
-}
-```
-
-### No-Op by Default
-Without an `Etl4sTelemetry`, all calls are no-ops with zero overhead:
-```scala
-/* No implicit provider - all Tel calls do nothing */
-Tel.withSpan("processing") { Tel.addCounter("processed", 1) }
 ```
 
 ## API Reference
@@ -160,14 +138,6 @@ Tel.withSpan("processing") { Tel.addCounter("processed", 1) }
 | `Tel.addCounter(name, value)` | Increment counter |
 | `Tel.setGauge(name, value)` | Set gauge value |
 | `Tel.recordHistogram(name, value)` | Record histogram value |
-
-### Etl4sTelemetry Interface
-| Method | Description |
-|:-------|:------------|
-| `withSpan(name, attrs*)(block)` | Create span around block |
-| `addCounter(name, value)` | Record counter increment |
-| `setGauge(name, value)` | Set gauge to value |
-| `recordHistogram(name, value)` | Record histogram measurement |
 
 ### Built-in Implementations
 | Implementation | Description |

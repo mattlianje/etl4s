@@ -5,7 +5,7 @@ Let's build a pipeline in 5 minutes.
 ## Install
 
 ```bash
-scala-cli repl --dep io.github.mattlianje::etl4s:0.1.0
+scala-cli repl --dep io.github.mattlianje::etl4s:1.7.0
 ```
 
 ## A Node wraps a function

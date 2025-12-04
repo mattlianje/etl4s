@@ -33,19 +33,21 @@ nav:
     - Core Concepts: core-concepts.md
     - Operators: operators.md
     - Parallel Execution: tasks.md
+    - Conditional Branching: branching.md
+    - Side Effects: effect.md
     - Configuration: config.md
     - Error Handling: failures.md
-    - Side Effects: effect.md
+    - Ensurers: validation.md
     - Tracing: trace.md
     - Telemetry: opentelemetry.md
     - Lineage Diagrams: lineage.md
-    - Ensurers: validation.md
     - Testing: testing.md
   - Examples:
     - Common Patterns: examples.md
     - etl4s + Spark: examples-spark.md
     - etl4s + Flink: examples-flink.md
   - Advanced: advanced.md
+  - Tradeoffs: tradeoffs.md
   - Philosophy: philosophy.md
   - FAQ: faq.md
 markdown_extensions:
