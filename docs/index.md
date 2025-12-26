@@ -11,7 +11,7 @@ hide:
 }
 
 .md-content__inner {
-  max-width: 700px !important;
+  max-width: 800px !important;
   padding: 0 1rem !important;
   margin: 0 auto !important;
 }
@@ -630,6 +630,137 @@ hide:
   opacity: 1;
 }
 
+/* How it works - 1, 2, 3 */
+.how-it-works-header {
+  text-align: center;
+  font-size: 0.8rem;
+  font-weight: 600;
+  margin-bottom: 1.25rem;
+  opacity: 0.9;
+}
+
+.how-it-works {
+  display: flex;
+  justify-content: center;
+  gap: 2.5rem;
+  margin: 0 0 2rem 0;
+  flex-wrap: wrap;
+}
+
+.step {
+  text-align: center;
+  min-width: 160px;
+  max-width: 200px;
+}
+
+.step-num {
+  font-size: 1.5rem;
+  opacity: 0.3;
+  margin-bottom: 0.25rem;
+}
+
+.step-title {
+  font-size: 0.85rem;
+  font-weight: 600;
+  margin-bottom: 0.25rem;
+}
+
+.step-desc {
+  font-size: 0.7rem;
+  opacity: 0.7;
+  line-height: 1.4;
+}
+
+/* Quotes section */
+.quotes-section {
+  max-width: 520px;
+  margin: 2rem auto;
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+}
+
+.quotes-section .quote-item {
+  position: relative;
+  font-size: 0.75rem;
+  font-style: italic;
+  opacity: 0.85;
+  line-height: 1.6;
+  padding-left: 1.5rem;
+}
+
+.quotes-section .quote-item::before {
+  content: "\201C";
+  position: absolute;
+  left: -0.25rem;
+  top: -0.75rem;
+  font-size: 3rem;
+  font-family: Georgia, serif;
+  color: var(--md-primary-fg-color);
+  opacity: 0.3;
+  line-height: 1;
+}
+
+.quotes-section .quote-item cite {
+  font-style: normal;
+  opacity: 0.5;
+  display: inline-block;
+  margin-top: 0.4rem;
+}
+
+/* Motivation */
+.motivation {
+  margin: 2.5rem 0 1.5rem 0;
+}
+
+.motivation h4 {
+  font-size: 0.8rem;
+  font-weight: 600;
+  margin-bottom: 0.5rem;
+}
+
+.motivation p {
+  font-size: 0.75rem;
+  line-height: 1.6;
+  opacity: 0.8;
+}
+
+/* Get started */
+.get-started {
+  text-align: center;
+  margin: 2.5rem 0 6rem 0;
+  padding-bottom: 2rem;
+}
+
+.instacart-note {
+  font-size: 0.75rem;
+  opacity: 0.6;
+  margin: 0 0 1rem 0;
+}
+
+.instacart-note a {
+  color: inherit;
+}
+
+.get-started-links {
+  display: flex;
+  justify-content: center;
+  gap: 1.5rem;
+  flex-wrap: wrap;
+}
+
+.get-started-links a {
+  font-size: 0.75rem;
+  color: var(--md-default-fg-color);
+  text-decoration: none;
+  opacity: 0.6;
+  transition: opacity 0.15s ease;
+}
+
+.get-started-links a:hover {
+  opacity: 1;
+}
+
 /* Zen dividers */
 .md-typeset hr {
   margin: 1.25rem auto;
@@ -772,22 +903,21 @@ hide:
     ```scala
     import etl4s._
 
-    val extract100  = Extract(100)
-    val half        = Transform[Int, Int](_ / 2)
-    val double      = Transform[Int, Int](_ * 2)
-    val consoleLoad = Load[String, Unit](println)
-    val dbLoad      = Load[String, Unit](s => println(s"saving to db: $s"))
+    val extract  = Extract(100)
+    val half     = Transform[Int, Int](_ / 2)
+    val double   = Transform[Int, Int](_ * 2)
+    val print    = Load[String, Unit](println)
+    val save     = Load[String, Unit](s => println(s"[db] $s"))
 
     val format = Transform[(Int, Int), String] {
       case (h, d) => s"half=$h, double=$d"
     }
 
-    val pipeline =
-      extract100 ~> (half & double) ~> format ~> (consoleLoad & dbLoad)
+    val pipeline = extract ~> (half & double) ~> format ~> (print & save)
 
     pipeline.unsafeRun()
     // half=50, double=200
-    // saving to db: half=50, double=200
+    // [db] half=50, double=200
     ```
 
 === "Config"
@@ -869,16 +999,37 @@ hide:
 
 ---
 
+<div class="how-it-works-header">How it works</div>
+<div class="how-it-works">
+  <div class="step">
+    <div class="step-num">1</div>
+    <div class="step-title">Import</div>
+    <div class="step-desc">Drop one file into your project. No dependencies, no framework lock-in.</div>
+  </div>
+  <div class="step">
+    <div class="step-num">2</div>
+    <div class="step-title">Chain</div>
+    <div class="step-desc">Connect nodes with <code>~></code>, branch with <code>&</code>, inject config with <code>.requires</code></div>
+  </div>
+  <div class="step">
+    <div class="step-num">3</div>
+    <div class="step-title">Run</div>
+    <div class="step-desc">Call <code>.unsafeRun()</code>. Works in scripts, Spark, Flink, anywhere Scala runs.</div>
+  </div>
+</div>
+
+---
+
 <div class="feature-grid">
 
 <div class="feature-row">
 <div class="feature-text">
-<h3>Single file. Zero dependencies.</h3>
-<p>A header-file lib (not a framework) that lets you structure code like whiteboard diagrams. Chain with <code>~></code>, parallelize with <code>&</code>, inject config with <code>.requires</code>. Works anywhere: scripts, Spark, Flink, your server.</p>
+<h3>Pipelines as values.</h3>
+<p>One file, zero dependencies. Lazy, composable, testable. Since pipelines are values, attach metadata, generate lineage diagrams, share them across teams.</p>
 </div>
 <div class="feature-visual">
 <div class="typing-demo">
-<div class="line line-1"><span class="c">// That's it. One import.</span></div>
+<div class="line line-1"><span class="c">// One import. That's it.</span></div>
 <div class="line line-2"><span class="k">import</span> etl4s._</div>
 <div class="line line-3"> </div>
 <div class="line line-4"><span class="k">val</span> pipeline =</div>
@@ -889,21 +1040,8 @@ hide:
 
 <div class="feature-row reverse">
 <div class="feature-text">
-<h3>Pipelines as values.</h3>
-<p>Lazy, reified, composable. Pass them around, test them in isolation, generate diagrams from them. Teams share pipelines like Lego bricks. Refactoring is safe because types enforce the boundaries.</p>
-</div>
-<div class="feature-visual quote">
-<blockquote>
-(~>) is just *chef's kiss*. There are so many synergies here, haven't pushed for something this hard in a while.
-<cite>— Sr Engineering Manager, Instacart</cite>
-</blockquote>
-</div>
-</div>
-
-<div class="feature-row">
-<div class="feature-text">
-<h3>For engineers & teams.</h3>
-<p>Write <code>e ~> t ~> l</code>. Types must match or it won't compile. One core abstraction: <code>Node[In, Out]</code>. Structure survives people leaving. New hires read code and get it. Auto-generated diagrams document your pipelines.</p>
+<h3>Type-safe composition.</h3>
+<p>Types must align or it won't compile. Misconnections are compile errors.</p>
 </div>
 <div class="feature-visual">
 <div class="type-safety-demo">
@@ -920,27 +1058,10 @@ hide:
 </div>
 </div>
 
-<div class="feature-row reverse">
-<div class="feature-text">
-<h3>Under the hood:</h3>
-<p>A lightweight effect system with one core <code>Node[-In, +Out]</code> abstraction. The <code>~></code> operator infers and merges environments automatically. <a href="faq/#how-it-works">Details in FAQ</a>.</p>
-</div>
-<div class="feature-visual quote">
-<blockquote>
-... (etl4s has) most of the advantages of full blown "effect systems" without the complexities, and awkward monad syntax!
-<cite>— u/RiceBroad4552</cite>
-</blockquote>
-</div>
-</div>
-
-</div>
-
-<div class="feature-grid">
-
 <div class="feature-row">
 <div class="feature-text">
-<h3>Automatic environment inference.</h3>
-<p>Chain nodes with different dependencies. The compiler gives you config-driven pipelines with typed declarative endpoints for free!</p>
+<h3>Dependency injection, inferred.</h3>
+<p>Nodes declare what they need. Chain freely. The compiler merges and infers the combined type.</p>
 </div>
 <div class="feature-visual">
 <div class="env-merge-demo">
@@ -962,11 +1083,13 @@ hide:
 </div>
 </div>
 
+</div>
+
 <!--
 <div class="feature-row reverse">
 <div class="feature-text">
 <h3>Runs anywhere.</h3>
-<p>Same code compiles to JVM, JavaScript, WebAssembly, and LLVM. No platform-specific APIs.</p>
+<p>JVM, JavaScript, WebAssembly, native binaries via LLVM. Same code, zero platform-specific APIs.</p>
 </div>
 <div class="feature-visual">
 <div class="platform-demo">
@@ -989,28 +1112,29 @@ hide:
   <span class="drop drop-llvm-4"></span>
   <span class="platform platform-jvm"><svg viewBox="0 0 128 128" width="24" height="24"><path fill="#EA2D2E" d="M47.617 98.12s-4.767 2.774 3.397 3.71c9.892 1.13 14.947.968 25.845-1.092 0 0 2.871 1.795 6.873 3.351-24.439 10.47-55.308-.607-36.115-5.969zm-2.988-13.665s-5.348 3.959 2.823 4.805c10.567 1.091 18.91 1.18 33.354-1.6 0 0 1.993 2.025 5.132 3.131-29.542 8.64-62.446.68-41.309-6.336z"/><path fill="#EA2D2E" d="M69.802 61.271c6.025 6.935-1.58 13.17-1.58 13.17s15.289-7.891 8.269-17.777c-6.559-9.215-11.587-13.792 15.635-29.58 0 .001-42.731 10.67-22.324 34.187z"/><path fill="#EA2D2E" d="M102.123 108.229s3.529 2.91-3.888 5.159c-14.102 4.272-58.706 5.56-71.094.171-4.451-1.938 3.899-4.625 6.526-5.192 2.739-.593 4.303-.485 4.303-.485-4.953-3.487-32.013 6.85-13.743 9.815 49.821 8.076 90.817-3.637 77.896-9.468zM49.912 70.294s-22.686 5.389-8.033 7.348c6.188.828 18.518.638 30.011-.326 9.39-.789 18.813-2.474 18.813-2.474s-3.308 1.419-5.704 3.053c-23.042 6.061-67.544 3.238-54.731-2.958 10.832-5.239 19.644-4.643 19.644-4.643zm40.697 22.747c23.421-12.167 12.591-23.86 5.032-22.285-1.848.385-2.677.72-2.677.72s.688-1.079 2-1.543c14.953-5.255 26.451 15.503-4.823 23.725 0-.002.359-.327.468-.617z"/><path fill="#EA2D2E" d="M76.491 1.587S89.459 14.563 64.188 34.51c-20.266 16.006-4.621 25.13-.007 35.559-11.831-10.673-20.509-20.07-14.688-28.815C58.041 28.42 81.722 22.195 76.491 1.587z"/><path fill="#EA2D2E" d="M52.214 126.021c22.476 1.437 57-.8 57.817-11.436 0 0-1.571 4.032-18.577 7.231-19.186 3.612-42.854 3.191-56.887.874 0 .001 2.875 2.381 17.647 3.331z"/></svg></span>
   <span class="platform platform-js"><svg viewBox="0 0 128 128" width="24" height="24"><path fill="#F0DB4F" d="M1.408 1.408h125.184v125.185H1.408z"/><path fill="#323330" d="M116.347 96.736c-.917-5.711-4.641-10.508-15.672-14.981-3.832-1.761-8.104-3.022-9.377-5.926-.452-1.69-.512-2.642-.226-3.665.821-3.32 4.784-4.355 7.925-3.403 2.023.678 3.938 2.237 5.093 4.724 5.402-3.498 5.391-3.475 9.163-5.879-1.381-2.141-2.118-3.129-3.022-4.045-3.249-3.629-7.676-5.498-14.756-5.355l-3.688.477c-3.534.893-6.902 2.748-8.877 5.235-5.926 6.724-4.236 18.492 2.975 23.335 7.104 5.332 17.54 6.545 18.873 11.531 1.297 6.104-4.486 8.08-10.234 7.378-4.236-.881-6.592-3.034-9.139-6.949-4.688 2.713-4.688 2.713-9.508 5.485 1.143 2.499 2.344 3.63 4.26 5.795 9.068 9.198 31.76 8.746 35.83-5.176.165-.478 1.261-3.666.38-8.581zM69.462 58.943H57.753l-.048 30.272c0 6.438.333 12.34-.714 14.149-1.713 3.558-6.152 3.117-8.175 2.427-2.059-1.012-3.106-2.451-4.319-4.485-.333-.584-.583-1.036-.667-1.071l-9.52 5.83c1.583 3.249 3.915 6.069 6.902 7.901 4.462 2.678 10.459 3.499 16.731 2.059 4.082-1.189 7.604-3.652 9.448-7.401 2.666-4.915 2.094-10.864 2.07-17.444.06-10.735.001-21.468.001-32.237z"/></svg></span>
-  <span class="platform platform-wasm"><svg viewBox="0 0 128 128" width="24" height="24"><path fill="#654FF0" d="M0 0h128v128H0z"/><text x="95" y="115" fill="#fff" font-family="Arial,sans-serif" font-size="48" font-weight="bold" text-anchor="end">WA</text></svg></span>
+  <span class="platform platform-wasm"><svg viewBox="0 0 128 128" width="24" height="24"><path fill="#654FF0" d="M0 0h128v128H0z"/><text x="64" y="80" fill="#fff" font-family="Arial,sans-serif" font-size="36" font-weight="bold" text-anchor="middle">WA</text></svg></span>
   <span class="platform platform-llvm">LLVM</span>
 </div>
 </div>
 </div>
 -->
 
+<div class="motivation">
+<h4>Why etl4s?</h4>
+<p>Chaotic, framework-coupled ETL codebases drive dev teams to their knees. etl4s lets you structure your code as clean, typed graphs of pure functions.</p>
 </div>
 
----
+<div class="quotes-section">
+<p class="quote-item">(~>) is just *chef's kiss*. There are so many synergies here, haven't pushed for something this hard in a while.<br><cite>Sr Engineering Manager, Instacart</cite></p>
+<p class="quote-item">...most of the advantages of full blown effect systems without the complexities, and awkward monad syntax!<br><cite>u/RiceBroad4552</cite></p>
+</div>
 
-<p style="text-align: center; opacity: 0.8; margin: 2rem 0;">
-  Battle-tested at <a href="https://www.instacart.com/">Instacart</a> 🥕
-</p>
-
----
-
-## Get started
-
-- [Installation](installation.md)
-- [First Pipeline](first-pipeline.md)
-- [Core Concepts](core-concepts.md)
-- [Examples](examples.md)
-
-<div style="margin-bottom: 4rem;"></div>
+<div class="get-started">
+<p class="instacart-note">Battle-tested at <a href="https://www.instacart.com/">Instacart</a> 🥕</p>
+<div class="get-started-links">
+<a href="installation/">Installation</a>
+<a href="first-pipeline/">First Pipeline</a>
+<a href="core-concepts/">Core Concepts</a>
+<a href="examples/">Examples</a>
+</div>
+</div>
