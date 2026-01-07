@@ -1,5 +1,5 @@
 site_name: etl4s
-site_url: https://matthieucourt.xyz/etl4s
+site_url: https://etl4s.dev
 theme:
   name: material
   logo: assets/etl4s-logo.png
