@@ -3,7 +3,7 @@
 GITHUB_USER="mattlianje"
 ARTIFACT_NAME="etl4s"
 SCALA_VERSIONS=("2.12" "2.13" "3")
-VERSION="1.7.0"
+VERSION="1.7.1"
 BUNDLE_DIR="$HOME/maven-bundle"
 
 process_scala_version() {
