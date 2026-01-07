@@ -731,7 +731,11 @@ package object etl4s {
     outputs: List[String] = List.empty,
     upstreams: List[Any] = List.empty, // Node, Reader, or String
     schedule: String = "",
-    cluster: String = ""
+    cluster: String = "",
+    description: String = "",
+    group: String = "",
+    tags: List[String] = List.empty,
+    links: Map[String, String] = Map.empty
   )
 
   /**
@@ -1541,8 +1545,15 @@ package object etl4s {
       outputs: List[String] = List.empty,
       upstreams: List[Any] = List.empty,
       schedule: String = "",
-      cluster: String = ""
-    ): Out = attachable.withLineage(t, Lineage(name, inputs, outputs, upstreams, schedule, cluster))
+      cluster: String = "",
+      description: String = "",
+      group: String = "",
+      tags: List[String] = List.empty,
+      links: Map[String, String] = Map.empty
+    ): Out = attachable.withLineage(
+      t,
+      Lineage(name, inputs, outputs, upstreams, schedule, cluster, description, group, tags, links)
+    )
   }
 
   /**
@@ -1554,34 +1565,51 @@ package object etl4s {
     output_sources: List[String],
     upstream_pipelines: List[String],
     schedule: String,
-    cluster: String
+    cluster: String,
+    description: String = "",
+    group: String = "",
+    tags: List[String] = List.empty,
+    links: Map[String, String] = Map.empty
   )
 
   /**
    * Represents a connection between pipeline components or data sources.
+   * Used internally for graph traversal and visualization.
    */
   case class LineageEdge(from: String, to: String, isDependency: Boolean = false)
 
   /**
+   * Represents a cluster in the lineage graph for visual organization.
+   */
+  case class LineageCluster(
+    name: String,
+    description: String = "",
+    parent: String = ""
+  )
+
+  /**
    * JSON representation of lineage information for serialization and visualization.
+   * Conforms to the pipeviz JSON spec.
    */
   case class LineageGraph(
     pipelines: List[LineageNode],
-    dataSources: List[String],
-    edges: List[LineageEdge]
+    datasources: List[String],
+    clusters: List[LineageCluster] = List.empty,
+    edges: List[LineageEdge] = List.empty // kept for internal graph ops
   ) {
 
     /**
      * Converts this lineage graph to JSON string.
+     * Output conforms to the pipeviz JSON spec.
      */
     def toJson: String = {
       import JsonHelpers._
 
       val pipelinesJson   = jsonArray(pipelines)(pipelineToJson)
-      val dataSourcesJson = jsonArray(dataSources)(quote)
-      val edgesJson       = jsonArray(edges)(edgeToJson)
+      val datasourcesJson = jsonArray(datasources)(datasourceToJson)
+      val clustersJson    = jsonArray(clusters)(clusterToJson)
 
-      s"""{"pipelines":$pipelinesJson,"dataSources":$dataSourcesJson,"edges":$edgesJson}"""
+      s"""{"pipelines":$pipelinesJson,"datasources":$datasourcesJson,"clusters":$clustersJson}"""
     }
   }
 
@@ -1590,19 +1618,42 @@ package object etl4s {
     def quote(s: String): String                            = s""""$s""""
     def jsonField(key: String, value: String): String       = s""""$key":$value"""
     def jsonObject(fields: String*): String                 = fields.mkString("{", ",", "}")
+    def jsonMap(m: Map[String, String]): String             =
+      m.map { case (k, v) => s""""$k":"$v"""" }.mkString("{", ",", "}")
 
     def pipelineToJson(p: LineageNode): String = {
       val requiredFields = List(
-        jsonField("name", quote(p.name)),
-        jsonField("input_sources", jsonArray(p.input_sources)(quote)),
-        jsonField("output_sources", jsonArray(p.output_sources)(quote)),
-        jsonField("upstream_pipelines", jsonArray(p.upstream_pipelines)(quote))
+        jsonField("name", quote(p.name))
       )
       val optionalFields = List(
+        if (p.description.nonEmpty) Some(jsonField("description", quote(p.description))) else None,
+        if (p.input_sources.nonEmpty)
+          Some(jsonField("input_sources", jsonArray(p.input_sources)(quote)))
+        else None,
+        if (p.output_sources.nonEmpty)
+          Some(jsonField("output_sources", jsonArray(p.output_sources)(quote)))
+        else None,
+        if (p.upstream_pipelines.nonEmpty)
+          Some(jsonField("upstream_pipelines", jsonArray(p.upstream_pipelines)(quote)))
+        else None,
+        if (p.cluster.nonEmpty) Some(jsonField("cluster", quote(p.cluster))) else None,
+        if (p.group.nonEmpty) Some(jsonField("group", quote(p.group))) else None,
         if (p.schedule.nonEmpty) Some(jsonField("schedule", quote(p.schedule))) else None,
-        if (p.cluster.nonEmpty) Some(jsonField("cluster", quote(p.cluster))) else None
+        if (p.tags.nonEmpty) Some(jsonField("tags", jsonArray(p.tags)(quote))) else None,
+        if (p.links.nonEmpty) Some(jsonField("links", jsonMap(p.links))) else None
       ).flatten
 
+      jsonObject((requiredFields ++ optionalFields)*)
+    }
+
+    def datasourceToJson(name: String): String = jsonObject(jsonField("name", quote(name)))
+
+    def clusterToJson(c: LineageCluster): String = {
+      val requiredFields = List(jsonField("name", quote(c.name)))
+      val optionalFields = List(
+        if (c.description.nonEmpty) Some(jsonField("description", quote(c.description))) else None,
+        if (c.parent.nonEmpty) Some(jsonField("parent", quote(c.parent))) else None
+      ).flatten
       jsonObject((requiredFields ++ optionalFields)*)
     }
 
@@ -2176,7 +2227,7 @@ package object etl4s {
      */
     def toJson: String = {
       val lineages = items.flatMap(extractLineage)
-      if (lineages.isEmpty) return """{"pipelines":[],"dataSources":[],"edges":[]}"""
+      if (lineages.isEmpty) return """{"pipelines":[]}"""
 
       buildLineageGraph(lineages).toJson
     }
@@ -2253,22 +2304,28 @@ package object etl4s {
         lineage.copy(upstreams = (lineage.upstreams ++ inferredUpstreams).distinct)
       }
 
+      val allClusters = enrichedLineages.map(_.cluster).filter(_.nonEmpty).distinct.toList
       LineageGraph(
         pipelines = enrichedLineages.map(lineageToNode).toList,
-        dataSources = (enrichedLineages.flatMap(_.inputs) ++ enrichedLineages.flatMap(
+        datasources = (enrichedLineages.flatMap(_.inputs) ++ enrichedLineages.flatMap(
           _.outputs
         )).distinct.toList,
+        clusters = allClusters.map(name => LineageCluster(name)),
         edges = collectEdges(enrichedLineages)
       )
     }
 
     private def lineageToNode(l: Lineage): LineageNode = LineageNode(
-      l.name,
-      l.inputs,
-      l.outputs,
-      l.upstreams.flatMap(extractPipelineName),
-      l.schedule,
-      l.cluster
+      name = l.name,
+      input_sources = l.inputs,
+      output_sources = l.outputs,
+      upstream_pipelines = l.upstreams.flatMap(extractPipelineName),
+      schedule = l.schedule,
+      cluster = l.cluster,
+      description = l.description,
+      group = l.group,
+      tags = l.tags,
+      links = l.links
     )
 
     private def extractLineage(item: Any): Option[Lineage] = item match {
@@ -2309,7 +2366,7 @@ package object etl4s {
         .filter(_.cluster.nonEmpty)
         .flatMap(p => p.input_sources ++ p.output_sources)
         .toSet
-      graph.dataSources
+      graph.datasources
         .filterNot(clusteredDataSources.contains)
         .foreach(renderDataSource(builder, _, 1))
 
@@ -2352,7 +2409,7 @@ package object etl4s {
         case (None, pipelines)              => pipelines.foreach(renderMermaidPipeline(builder, _))
       }
 
-      graph.dataSources.foreach(renderMermaidDataSource(builder, _))
+      graph.datasources.foreach(renderMermaidDataSource(builder, _))
       builder.append("\n")
 
       var linkIndex = 0
@@ -2402,7 +2459,7 @@ package object etl4s {
     private def renderMermaidClasses(builder: StringBuilder, graph: LineageGraph): Unit = {
       builder.append("\n")
       graph.pipelines.foreach(p => builder.append(s"    class ${sanitizeId(p.name)} pipeline\n"))
-      graph.dataSources.foreach(ds => builder.append(s"    class ${sanitizeId(ds)} dataSource\n"))
+      graph.datasources.foreach(ds => builder.append(s"    class ${sanitizeId(ds)} dataSource\n"))
     }
 
     private def sanitizeId(name: String): String = name.replaceAll("[^a-zA-Z0-9]", "_")
