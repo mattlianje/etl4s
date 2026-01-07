@@ -2315,18 +2315,22 @@ package object etl4s {
       )
     }
 
-    private def lineageToNode(l: Lineage): LineageNode = LineageNode(
-      name = l.name,
-      input_sources = l.inputs,
-      output_sources = l.outputs,
-      upstream_pipelines = l.upstreams.flatMap(extractPipelineName),
-      schedule = l.schedule,
-      cluster = l.cluster,
-      description = l.description,
-      group = l.group,
-      tags = l.tags,
-      links = l.links
-    )
+    private def lineageToNode(l: Lineage): LineageNode = {
+      val pipelineNames = l.upstreams.flatMap(extractPipelineName)
+      val groupNames    = l.upstreams.flatMap(extractPipelineGroup)
+      LineageNode(
+        name = l.name,
+        input_sources = l.inputs,
+        output_sources = l.outputs,
+        upstream_pipelines = (pipelineNames ++ groupNames).distinct,
+        schedule = l.schedule,
+        cluster = l.cluster,
+        description = l.description,
+        group = l.group,
+        tags = l.tags,
+        links = l.links
+      )
+    }
 
     private def extractLineage(item: Any): Option[Lineage] = item match {
       case n: Node[_, _]   => n.getLineage
@@ -2339,6 +2343,13 @@ package object etl4s {
       case r: Reader[_, _] => r.getLineage.map(_.name)
       case s: String       => Some(s)
       case _               => None
+    }
+
+    private def extractPipelineGroup(obj: Any): Option[String] = obj match {
+      case n: Node[_, _] => n.getLineage.flatMap(l => if (l.group.nonEmpty) Some(l.group) else None)
+      case r: Reader[_, _] =>
+        r.getLineage.flatMap(l => if (l.group.nonEmpty) Some(l.group) else None)
+      case _ => None
     }
 
     private def generateDotGraph(graph: LineageGraph): String = {
