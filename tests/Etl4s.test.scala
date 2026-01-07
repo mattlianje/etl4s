@@ -887,7 +887,7 @@ class TelSpecs extends munit.FunSuite {
       Node[String, String](identity).lineage("s2", inputs = List("proc"), outputs = List("final"))
 
     val json = Seq(p1, p2).toJson
-    assert(json.contains("\"isDependency\":true"))
+    assert(json.contains("\"upstream_pipelines\":[\"s1\"]"))
   }
 
   test("lineage - toDot") {
@@ -918,7 +918,7 @@ class TelSpecs extends munit.FunSuite {
   test("lineage - empty") {
     assertEquals(
       Seq.empty[Node[String, String]].toJson,
-      """{"pipelines":[],"dataSources":[],"edges":[]}"""
+      """{"pipelines":[]}"""
     )
     assert(Seq.empty[Node[String, String]].toDot.contains("No lineage"))
   }
@@ -940,7 +940,8 @@ class TelSpecs extends munit.FunSuite {
     )
 
     assertEquals(p3.getLineage.get.upstreams.size, 2)
-    assert(Seq(p1, p2, p3).toJson.contains("\"isDependency\":true"))
+    val json = Seq(p1, p2, p3).toJson
+    assert(json.contains("\"u1\"") && json.contains("\"u2\""))
   }
 
   test("lineage - upstream strings") {
@@ -993,7 +994,127 @@ class TelSpecs extends munit.FunSuite {
     assert(r.toMermaid.contains("r"))
   }
 
+  test("lineage - pipeviz description") {
+    val p = Node[String, String](identity)
+      .lineage(
+        "enricher",
+        inputs = List("raw"),
+        outputs = List("clean"),
+        description = "Enriches user data with events"
+      )
+
+    val lin = p.getLineage.get
+    assertEquals(lin.description, "Enriches user data with events")
+    val json = Seq(p).toJson
+    assert(json.contains("\"description\":\"Enriches user data with events\""))
+  }
+
+  test("lineage - pipeviz group") {
+    val p = Node[String, String](identity)
+      .lineage(
+        "transformer",
+        inputs = List("src"),
+        outputs = List("dest"),
+        group = "etl-jobs"
+      )
+
+    val lin = p.getLineage.get
+    assertEquals(lin.group, "etl-jobs")
+    val json = Seq(p).toJson
+    assert(json.contains("\"group\":\"etl-jobs\""))
+  }
+
+  test("lineage - pipeviz tags") {
+    val p = Node[String, String](identity)
+      .lineage(
+        "ml-pipeline",
+        inputs = List("features"),
+        outputs = List("predictions"),
+        tags = List("machine-learning", "production", "critical")
+      )
+
+    val lin = p.getLineage.get
+    assertEquals(lin.tags, List("machine-learning", "production", "critical"))
+    val json = Seq(p).toJson
+    assert(json.contains("\"tags\":[\"machine-learning\",\"production\",\"critical\"]"))
+  }
+
+  test("lineage - pipeviz links") {
+    val p = Node[String, String](identity)
+      .lineage(
+        "data-sync",
+        inputs = List("source"),
+        outputs = List("target"),
+        links = Map("airflow" -> "https://airflow.example.com/dag/123", "docs" -> "https://wiki.example.com")
+      )
+
+    val lin = p.getLineage.get
+    assertEquals(lin.links.size, 2)
+    val json = Seq(p).toJson
+    assert(json.contains("\"links\":{"))
+    assert(json.contains("\"airflow\":\"https://airflow.example.com/dag/123\""))
+  }
+
+  test("lineage - pipeviz clusters in output") {
+    val p1 = Node[String, String](identity)
+      .lineage("p1", inputs = List("a"), outputs = List("b"), cluster = "etl")
+    val p2 = Node[String, String](identity)
+      .lineage("p2", inputs = List("c"), outputs = List("d"), cluster = "analytics")
+
+    val json = Seq(p1, p2).toJson
+    assert(json.contains("\"clusters\":["))
+    assert(json.contains("\"name\":\"etl\""))
+    assert(json.contains("\"name\":\"analytics\""))
+  }
+
+  test("lineage - pipeviz full example") {
+    val p = Node[String, String](identity)
+      .lineage(
+        "user-enrichment",
+        description = "Enriches user data with events",
+        inputs = List("raw_users", "events"),
+        outputs = List("enriched_users"),
+        cluster = "user-processing",
+        group = "etl-jobs",
+        schedule = "Every 2 hours",
+        tags = List("user-data", "ml"),
+        links = Map("airflow" -> "https://airflow.example.com")
+      )
+
+    val json = Seq(p).toJson
+    assert(json.contains("\"name\":\"user-enrichment\""))
+    assert(json.contains("\"description\":\"Enriches user data with events\""))
+    assert(json.contains("\"input_sources\":[\"raw_users\",\"events\"]"))
+    assert(json.contains("\"output_sources\":[\"enriched_users\"]"))
+    assert(json.contains("\"cluster\":\"user-processing\""))
+    assert(json.contains("\"group\":\"etl-jobs\""))
+    assert(json.contains("\"schedule\":\"Every 2 hours\""))
+    assert(json.contains("\"tags\":[\"user-data\",\"ml\"]"))
+    assert(json.contains("\"links\":{\"airflow\":\"https://airflow.example.com\"}"))
+    assert(json.contains("\"datasources\":[{\"name\":\"raw_users\"}"))
+    assert(json.contains("\"clusters\":[{\"name\":\"user-processing\"}]"))
+  }
+
+  test("lineage - pipeviz Reader with new fields") {
+    case class Config(env: String)
+    val r = Reader[Config, Node[String, String]](c => Node(_.toUpperCase))
+      .lineage(
+        "config-reader",
+        inputs = List("input"),
+        outputs = List("output"),
+        description = "Reader with config",
+        tags = List("config", "reader"),
+        links = Map("docs" -> "https://docs.example.com")
+      )
+
+    val lin = r.getLineage.get
+    assertEquals(lin.description, "Reader with config")
+    assertEquals(lin.tags, List("config", "reader"))
+    assertEquals(lin.links, Map("docs" -> "https://docs.example.com"))
+  }
+
 }
+
 
 class ValidationSpecs extends munit.FunSuite {
 

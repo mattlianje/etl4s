@@ -1126,7 +1126,7 @@ hide:
 
 <div class="quotes-section">
 <p class="quote-item">(~>) is just *chef's kiss*. There are so many synergies here, haven't pushed for something this hard in a while.<br><cite>Sr Engineering Manager, Instacart</cite></p>
-<p class="quote-item">...most of the advantages of full blown effect systems without the complexities, and awkward monad syntax!<br><cite>u/RiceBroad4552</cite></p>
+<p class="quote-item">...the advantages of full blown effect systems without the complexities, and awkward monad syntax!<br><cite>u/RiceBroad4552</cite></p>
 </div>
 
 <div class="get-started">
