@@ -11,16 +11,14 @@ val B = Pipeline((s: String) => s + "!")
 val C = A ~> B  // Int => String
 ```
 
-## Parallel extraction with `.zip`
-
-Flatten nested tuples from parallel operations:
+## Parallel extraction
 
 ```scala
 val e1 = Extract(1)
 val e2 = Extract("two")
 val e3 = Extract(3.0)
 
-val combined = (e1 & e2 & e3).zip  // (Int, String, Double) not ((Int, String), Double)
+val combined = e1 & e2 & e3  // (Int, String, Double)
 ```
 
 ## Debugging with `.tap`

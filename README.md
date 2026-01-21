@@ -23,11 +23,11 @@ Battle-tested at [Instacart](https://www.instacart.com/). Part of [d4](https://g
 
 **etl4s** is on MavenCentral and cross-built for Scala, 2.12, 2.13, 3.x
 ```scala
-"xyz.matthieucourt" %% "etl4s" % "1.7.0"
+"xyz.matthieucourt" %% "etl4s" % "1.7.1"
 ```
 Or try in REPL:
 ```bash
-scala-cli repl --scala 3 --dep xyz.matthieucourt:etl4s_3:1.7.0
+scala-cli repl --scala 3 --dep xyz.matthieucourt:etl4s_3:1.7.1
 ```
 
 All you need:
@@ -170,7 +170,7 @@ val e3 = Extract { Thread.sleep(100); true }
 
 Sequential run of e1, e2, and e3 **(~300ms total)**
 ```scala
-val sequential: Extract[Unit, ((Int, String), Boolean)] =
+val sequential: Extract[Unit, (Int, String, Boolean)] =
      e1 & e2 & e3
 ```
 
@@ -178,15 +178,11 @@ Parallel run of e1, e2, e3 on their own JVM threads with Scala Futures **(~100ms
 ```scala
 import scala.concurrent.ExecutionContext.Implicits.global
 
-val parallel: Extract[Unit, ((Int, String), Boolean)] =
+val parallel: Extract[Unit, (Int, String, Boolean)] =
      e1 &> e2 &> e3
 ```
-Use the built-in zip method to flatten unwieldly nested tuples:
-```scala
-val clean: Extract[Unit, (Int, String, Boolean)] =
-     (e1 & e2 & e3).zip
-```
-Mix sequential and parallel execution (First two parallel (~100ms), then third (~100ms)):
+
+Mix sequential and parallel execution (first two parallel (~100ms), then third (~100ms)):
 ```scala
 val mixed = (e1 &> e2) & e3
 ```
@@ -196,13 +192,12 @@ Full example of a parallel pipeline:
 val consoleLoad: Load[String, Unit] = Load(println(_))
 val dbLoad:      Load[String, Unit] = Load(x => println(s"DB Load: ${x}"))
 
-val merge = Transform[(Int, String, Boolean), String] { t => 
-    val (i, s, b) = t
+val merge = Transform[(Int, String, Boolean), String] { case (i, s, b) =>
     s"$i-$s-$b"
   }
 
 val pipeline =
-  (e1 &> e2 &> e3).zip ~> merge ~> (consoleLoad &> dbLoad)
+  (e1 &> e2 &> e3) ~> merge ~> (consoleLoad &> dbLoad)
 ```
 
 ## Handling Failures

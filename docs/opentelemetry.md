@@ -24,6 +24,26 @@ implicit val telemetry: Etl4sTelemetry = MyPrometheusProvider()
 process.unsafeRun(data)
 ```
 
+## Quick Setup: Env-Based Telemetry
+
+A common pattern is to wire telemetry based on environment:
+
+```scala
+object TelemetryConfig {
+  implicit val telemetry: Etl4sTelemetry =
+    if (sys.env.getOrElse("ENV", "dev") == "prod")
+      OpenTelemetryProvider()    /* Real metrics in prod */
+    else
+      Etl4sConsoleTelemetry()    /* Print to stdout in dev */
+}
+
+/* In your pipeline code */
+import TelemetryConfig._
+
+val pipeline = extract ~> process ~> load
+pipeline.unsafeRun()  /* Automatically uses the right backend */
+```
+
 ## The Interface
 
 ```scala

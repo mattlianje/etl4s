@@ -7,8 +7,8 @@ When writing dataflows, you often want to validate inputs and outputs at runtime
 ```scala
 val process = Node[Int, String](n => s"Value: $n")
   .ensure(
-    input = isPositive :: lessThan1k :: Nil,
-    output = notEmpty :: Nil
+    input  = Seq(isPositive, lessThan1k),
+    output = Seq(notEmpty)
   )
 
 process.unsafeRun(42)   // "Value: 42"
@@ -25,14 +25,20 @@ val notEmpty   = (s: String) => if (s.nonEmpty) None else Some("Cannot be empty"
 
 ## Change Validation
 
-Validate by examining both input and output together:
+Validate by examining both input and output together. The `change` validator receives a tuple `(input, output)`:
 
 ```scala
-val noGrowth = (t: (List[Int], List[Int])) =>
-  if (t._2.size <= t._1.size) None else Some("Output larger than input")
+/* Ensure deduplication never grows the list */
+val noGrowth: ((List[Int], List[Int])) => Option[String] = {
+  case (in, out) =>
+    if (out.size <= in.size) None
+    else Some(s"Output grew: ${in.size} -> ${out.size}")
+}
 
 val dedupe = Node[List[Int], List[Int]](_.distinct)
-  .ensure(change = noGrowth :: Nil)
+  .ensure(change = Seq(noGrowth))
+
+dedupe.unsafeRun(List(1, 2, 2, 3))  // List(1, 2, 3) - valid, shrunk
 ```
 
 ## Error Accumulation
@@ -41,7 +47,7 @@ Multiple failures are collected:
 
 ```scala
 val validate = Node[Int, Int](identity)
-  .ensure(input = isPositive :: lessThan100 :: isEven :: Nil)
+  .ensure(input = Seq(isPositive, lessThan100, isEven))
 
 validate.unsafeRun(-5)
 // ValidationException: "Input validation failed:
@@ -59,8 +65,26 @@ Validation failures are logged to Trace:
 
 ```scala
 val node = Node[Int, String](_.toString)
-  .ensure(input = isPositive :: Nil)
+  .ensure(input = Seq(isPositive))
 
 val trace = node.safeRunTrace(-5)
 trace.errors.head  // "Input validation failed: Must be positive"
+```
+
+## Config-Aware Validation
+
+Ensurers work on config nodes too. Validators are curried `Config => A => Option[String]` so they can access config:
+
+```scala
+case class Config(minValue: Int, maxValue: Int)
+
+val inRange: Config => Int => Option[String] = cfg => n =>
+  if (n >= cfg.minValue && n <= cfg.maxValue) None
+  else Some(s"Must be between ${cfg.minValue} and ${cfg.maxValue}")
+
+val process = Transform[Int, Int].requires[Config] { cfg => n => n * 2 }
+  .ensure(input = Seq(inRange))
+
+process.provide(Config(0, 100)).unsafeRun(50)   // 100
+process.provide(Config(0, 100)).unsafeRun(150)  // throws ValidationException
 ```

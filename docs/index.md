@@ -903,21 +903,21 @@ hide:
     ```scala
     import etl4s._
 
-    val extract  = Extract(100)
-    val half     = Transform[Int, Int](_ / 2)
-    val double   = Transform[Int, Int](_ * 2)
-    val print    = Load[String, Unit](println)
-    val save     = Load[String, Unit](s => println(s"[db] $s"))
+    val getUser  = Extract("John Doe")
+    val getOrder = Extract("Order #1234")
 
-    val format = Transform[(Int, Int), String] {
-      case (h, d) => s"half=$h, double=$d"
+    val combine = Transform[(String, String), String] {
+      case (user, order) => s"$user placed $order"
     }
 
-    val pipeline = extract ~> (half & double) ~> format ~> (print & save)
+    val consoleLoad = Load[String, Unit](println(_))
+    val dbLoad      = Load[String, Unit](s => println(s"[DB] $s"))
+
+    val pipeline = (getUser & getOrder) ~> combine ~> (consoleLoad & dbLoad)
 
     pipeline.unsafeRun()
-    // half=50, double=200
-    // [db] half=50, double=200
+    // John Doe placed Order #1234
+    // [DB] John Doe placed Order #1234
     ```
 
 === "Config"
@@ -925,17 +925,16 @@ hide:
     ```scala
     import etl4s._
 
-    case class DbConfig(host: String, port: Int)
+    case class Env(path: String)
 
-    val extract = Extract(List("a", "b", "c"))
-    val save = Load[List[String], Unit].requires[DbConfig] { db => data =>
-      println(s"Saving ${data.size} rows to ${db.host}:${db.port}")
+    val load = Load[String, Unit].requires[Env] { env => data =>
+      println(s"Writing to ${env.path}")
     }
 
-    val pipeline = extract ~> save
+    val pipeline = extract ~> transform ~> load
 
-    pipeline.provide(DbConfig("localhost", 5432)).unsafeRun(())
-    // Saving 3 rows to localhost:5432
+    pipeline.provide(Env("s3://dev")).unsafeRun()
+    pipeline.provide(Env("s3://prod")).unsafeRun()
     ```
 
 === "Diagram"
@@ -982,19 +981,16 @@ hide:
     ```scala
     import etl4s._
 
-    val process = Transform[List[String], Int] { data =>
-      Tel.withSpan("processing") {
-        Tel.addCounter("items", data.size)
-        data.map(_.length).sum
-      }
+    val process = Transform[List[Row], List[Row]] { rows =>
+      Tel.addCounter("rows.processed", rows.size)
+      Tel.setGauge("batch.size", rows.size.toDouble)
+      rows.filter(_.isValid)
     }
 
-    // Dev: no-ops (zero cost)
-    process.unsafeRun(data)
+    process.unsafeRun(rows)  // no-ops (zero cost)
 
-    // Prod: plug in your backend
-    implicit val tel: Etl4sTelemetry = MyOtelProvider()
-    process.unsafeRun(data)
+    implicit val t: Etl4sTelemetry = Prometheus()
+    process.unsafeRun(rows)  // metrics flowing
     ```
 
 ---

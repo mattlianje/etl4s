@@ -27,7 +27,7 @@ Trace(
 )
 ```
 
-Under the hood, two [ThreadLocal](https://docs.oracle.com/javase/8/docs/api/java/lang/ThreadLocal.html) channels (like Unix stdout/stderr) accumulate across your pipeline. Thread-safe with minimal overhead.
+Each pipeline run initializes fresh [ThreadLocal](https://docs.oracle.com/javase/8/docs/api/java/lang/ThreadLocal.html) state, shared by all nodes in that execution, cleared on completion.
 
 ## Nodes That React to Each Other
 

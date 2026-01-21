@@ -11,7 +11,7 @@
 ```scala
 import scala.concurrent.ExecutionContext.Implicits.global
 
-val parallel = (e1 &> e2 &> e3).zip
+val parallel = e1 &> e2 &> e3
 ```
 
 !!! warning "Keep in mind"

@@ -1,10 +1,20 @@
 # Conditional Branching
 
-Route data through different pipelines based on runtime conditions using `If`, `ElseIf`, and `Else`.
+Route data through different pipelines using `If`, `ElseIf`, and `Else`. Branch on the data itself or on configuration.
 
 ```scala
 import etl4s._
 
+case class JobConfig(isBackfill: Boolean)
+
+val pipeline = extract ~> validate
+  .If(cfg => _ => cfg.isBackfill) (fullLoad ~> dedupe ~> save)
+  .Else                           (deltaLoad ~> save)
+```
+
+Branch on data:
+
+```scala
 val classify = Node[Int, Int](identity)
   .If(_ > 0)     (Node(_ => "positive"))
   .ElseIf(_ < 0) (Node(_ => "negative"))
