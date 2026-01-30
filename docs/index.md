@@ -275,7 +275,7 @@ hide:
 .trace-demo {
   position: relative;
   width: 340px;
-  height: 125px;
+  height: 140px;
   font-family: var(--mono, monospace);
   font-size: 0.5rem;
   margin: 0 auto;
@@ -397,7 +397,7 @@ hide:
   bottom: 0;
   left: 0;
   width: 220px;
-  height: 50px;
+  height: 65px;
   border: 1px solid rgba(20, 184, 166, 0.3);
   border-radius: 4px;
   display: flex;
@@ -406,7 +406,7 @@ hide:
 
 .trace-demo .channel-title {
   position: absolute;
-  bottom: -12px;
+  bottom: -16px;
   left: 0;
   font-size: 0.38rem;
   font-weight: 500;
@@ -417,11 +417,11 @@ hide:
 
 .trace-demo .channel-logs {
   flex: 1;
-  padding: 5px 8px;
+  padding: 6px 10px;
   border-right: 1px solid rgba(20, 184, 166, 0.3);
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  gap: 3px;
   overflow: hidden;
 }
 
@@ -622,9 +622,9 @@ hide:
 }
 
 @keyframes trace-channel-pulse {
-  0%, 8% { border-color: rgba(20, 184, 166, 0.3); }
+  0%, 8% { border-color: rgba(128, 128, 128, 0.3); }
   15%, 85% { border-color: var(--md-primary-fg-color); }
-  90%, 100% { border-color: rgba(20, 184, 166, 0.3); }
+  90%, 100% { border-color: rgba(128, 128, 128, 0.3); }
 }
 
 @keyframes trace-result-appear {
@@ -930,7 +930,7 @@ hide:
 
 @keyframes node-pulse-green {
   0%, 30% { box-shadow: none; background: var(--md-primary-fg-color); }
-  35%, 42% { box-shadow: 0 0 8px #14b8a6; background: #14b8a6; }
+  35%, 42% { box-shadow: 0 0 8px var(--md-primary-fg-color); background: var(--md-primary-fg-color); }
   47%, 68% { box-shadow: none; background: var(--md-primary-fg-color); }
   73%, 88% { box-shadow: 0 0 8px #ef4444; background: #ef4444; }
   93%, 100% { box-shadow: none; background: var(--md-primary-fg-color); }

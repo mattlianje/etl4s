@@ -529,7 +529,7 @@ body,
 
 @keyframes node-pulse-green {
   0%, 30% { box-shadow: none; background: var(--md-primary-fg-color); }
-  35%, 42% { box-shadow: 0 0 8px #14b8a6; background: #14b8a6; }
+  35%, 42% { box-shadow: 0 0 8px var(--md-primary-fg-color); background: var(--md-primary-fg-color); }
   47%, 68% { box-shadow: none; background: var(--md-primary-fg-color); }
   73%, 88% { box-shadow: 0 0 8px #ef4444; background: #ef4444; }
   93%, 100% { box-shadow: none; background: var(--md-primary-fg-color); }
@@ -641,9 +641,9 @@ body,
 }
 
 @keyframes trace-channel-pulse {
-  0%, 8% { border-color: #555; }
+  0%, 8% { border-color: rgba(128, 128, 128, 0.3); }
   15%, 85% { border-color: var(--md-primary-fg-color); }
-  90%, 100% { border-color: var(--md-primary-fg-color); }
+  90%, 100% { border-color: rgba(128, 128, 128, 0.3); }
 }
 
 @keyframes trace-result-appear {
