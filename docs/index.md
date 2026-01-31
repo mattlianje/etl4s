@@ -271,6 +271,493 @@ hide:
   75%, 100% { opacity: 0; transform: translateY(-4px); }
 }
 
+/* Trace animation - data flowing through pipeline with trace channel */
+.trace-demo {
+  position: relative;
+  width: 340px;
+  height: 140px;
+  font-family: var(--mono, monospace);
+  font-size: 0.5rem;
+  margin: 0 auto;
+}
+
+.trace-demo .pipeline {
+  position: absolute;
+  top: 0;
+  left: 5px;
+  display: flex;
+  align-items: flex-start;
+  gap: 0;
+}
+
+.trace-demo .node-group {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+.trace-demo .trace-node {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: var(--md-primary-fg-color);
+  opacity: 0.75;
+}
+
+.trace-demo .node-label {
+  font-size: 0.4rem;
+  margin-top: 2px;
+  opacity: 0.7;
+}
+
+/* Connector line from node down to trace channel */
+.trace-demo .node-connector {
+  position: absolute;
+  top: 12px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 1px;
+  height: 0;
+  background: var(--md-primary-fg-color);
+  opacity: 0;
+}
+
+.trace-demo .node-connector.read {
+  border-left: 1px dashed var(--md-primary-fg-color);
+  background: none;
+  width: 0;
+}
+
+/* Labels for write/read actions */
+.trace-demo .node-label-action {
+  font-size: 0.38rem;
+  opacity: 0;
+  position: absolute;
+  white-space: nowrap;
+  transform: translateX(-50%);
+  left: 50%;
+  top: 42px;
+}
+
+.trace-demo .node-label-action.write {
+  color: var(--md-primary-fg-color);
+}
+
+.trace-demo .node-label-action.read {
+  color: #888;
+  font-style: italic;
+}
+
+.trace-demo .trace-arrow {
+  font-size: 0.5rem;
+  opacity: 0.4;
+  margin: 0 18px;
+  color: var(--md-primary-fg-color);
+  line-height: 12px;
+}
+
+.trace-demo .trace-dot {
+  position: absolute;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--md-primary-fg-color);
+  box-shadow: 0 0 8px var(--md-primary-fg-color);
+  top: 3px;
+  opacity: 0;
+}
+
+.trace-demo .trace-dot.bad {
+  background: #ef4444;
+  box-shadow: 0 0 8px #ef4444;
+}
+
+/* Write indicator - shows node logging to trace */
+.trace-demo .write-indicator {
+  position: absolute;
+  width: 3px;
+  height: 3px;
+  border-radius: 50%;
+  background: var(--md-primary-fg-color);
+  opacity: 0;
+}
+
+.trace-demo .node-write {
+  font-size: 0.28rem;
+  opacity: 0;
+  color: var(--md-primary-fg-color);
+  position: absolute;
+  white-space: nowrap;
+}
+
+/* The trace channel - runs below pipeline */
+.trace-demo .channel {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  width: 220px;
+  height: 65px;
+  border: 1px solid rgba(20, 184, 166, 0.3);
+  border-radius: 4px;
+  display: flex;
+  overflow: hidden;
+}
+
+.trace-demo .channel-title {
+  position: absolute;
+  bottom: -16px;
+  left: 0;
+  font-size: 0.38rem;
+  font-weight: 500;
+  opacity: 0.4;
+  color: var(--md-default-fg-color);
+  letter-spacing: 0.03em;
+}
+
+.trace-demo .channel-logs {
+  flex: 1;
+  padding: 6px 10px;
+  border-right: 1px solid rgba(20, 184, 166, 0.3);
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  overflow: hidden;
+}
+
+.trace-demo .channel-time {
+  width: 48px;
+  padding: 5px 6px;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.trace-demo .channel-label {
+  font-size: 0.38rem;
+  opacity: 0.5;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+.trace-demo .log-entry {
+  font-size: 0.42rem;
+  color: var(--md-primary-fg-color);
+  opacity: 0;
+  white-space: nowrap;
+}
+
+.trace-demo .log-entry.error {
+  color: #ef4444;
+}
+
+.trace-demo .timer-display {
+  font-size: 0.55rem;
+  color: var(--md-primary-fg-color);
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+.trace-demo .timer-num {
+  display: inline-block;
+  position: relative;
+}
+
+.trace-demo .timer-num::before {
+  content: "0";
+  visibility: hidden;
+}
+
+.trace-demo .timer-val {
+  position: absolute;
+  top: 0;
+  left: 0;
+  opacity: 0;
+}
+
+.trace-demo .timer-unit {
+  opacity: 0.6;
+}
+
+/* Trace output - comes out the end */
+.trace-demo .trace-output {
+  position: absolute;
+  right: 0;
+  top: 0;
+  bottom: 0;
+  width: 95px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+}
+
+.trace-demo .output-arrow {
+  font-size: 0.7rem;
+  opacity: 0.3;
+  color: var(--md-primary-fg-color);
+  margin-bottom: 4px;
+}
+
+.trace-demo .trace-result {
+  padding: 8px 10px;
+  border: 1px solid rgba(20, 184, 166, 0.35);
+  border-radius: 4px;
+  font-size: 0.44rem;
+  opacity: 0;
+  white-space: nowrap;
+}
+
+.trace-demo .trace-result-inner {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  align-items: flex-start;
+}
+
+.trace-demo .trace-result-title {
+  color: var(--md-primary-fg-color);
+  font-weight: 600;
+  font-size: 0.48rem;
+  margin-bottom: 2px;
+}
+
+.trace-demo .trace-result-line {
+  opacity: 0.7;
+  color: var(--md-default-fg-color);
+}
+
+.trace-demo .trace-result-line .val {
+  color: var(--md-primary-fg-color);
+  opacity: 1;
+}
+
+.trace-demo .trace-result-line .val.err {
+  color: #ef4444;
+}
+
+/* Dark mode */
+[data-md-color-scheme="slate"] .trace-demo .trace-result {
+  border-color: rgba(179, 136, 255, 0.35);
+}
+
+[data-md-color-scheme="slate"] .trace-demo .trace-result-title {
+  color: var(--md-primary-fg-color);
+}
+
+[data-md-color-scheme="slate"] .trace-demo .channel {
+  border-color: rgba(179, 136, 255, 0.3);
+}
+
+[data-md-color-scheme="slate"] .trace-demo .channel-logs {
+  border-right-color: rgba(179, 136, 255, 0.3);
+}
+
+[data-md-color-scheme="slate"] .trace-demo .trace-dot {
+  box-shadow: 0 0 6px var(--md-primary-fg-color);
+}
+
+[data-md-color-scheme="slate"] .trace-demo .trace-dot.bad {
+  box-shadow: 0 0 6px #ef4444;
+}
+
+@keyframes trace-dot-flow {
+  0% { left: -12px; opacity: 0; }
+  4% { left: -5px; opacity: 0.9; }
+  10% { left: 9px; }
+  28% { left: 15px; } /* slow through E */
+  35% { left: 71px; }
+  58% { left: 79px; } /* slow through T */
+  65% { left: 135px; }
+  78% { left: 143px; } /* slow through L */
+  85% { left: 185px; opacity: 0.9; }
+  95%, 100% { left: 210px; opacity: 0; }
+}
+
+@keyframes trace-log-1 {
+  0%, 18% { opacity: 0; transform: translateX(-4px); }
+  22%, 90% { opacity: 1; transform: translateX(0); }
+  96%, 100% { opacity: 0; }
+}
+
+@keyframes trace-log-2 {
+  0%, 52% { opacity: 0; transform: translateX(-4px); }
+  56%, 90% { opacity: 1; transform: translateX(0); }
+  96%, 100% { opacity: 0; }
+}
+
+@keyframes trace-log-3 {
+  0%, 48% { opacity: 0; transform: translateX(-4px); }
+  52%, 92% { opacity: 1; transform: translateX(0); }
+  98%, 100% { opacity: 0; }
+}
+
+@keyframes trace-timer-0 {
+  0%, 9.99% { opacity: 1; }
+  10%, 100% { opacity: 0; }
+}
+
+@keyframes trace-timer-1 {
+  0%, 10% { opacity: 0; }
+  10.01%, 26% { opacity: 1; }
+  26.01%, 100% { opacity: 0; }
+}
+
+@keyframes trace-timer-2 {
+  0%, 26% { opacity: 0; }
+  26.01%, 44% { opacity: 1; }
+  44.01%, 100% { opacity: 0; }
+}
+
+@keyframes trace-timer-3 {
+  0%, 44% { opacity: 0; }
+  44.01%, 62% { opacity: 1; }
+  62.01%, 100% { opacity: 0; }
+}
+
+@keyframes trace-timer-4 {
+  0%, 62% { opacity: 0; }
+  62.01%, 95% { opacity: 1; }
+  100% { opacity: 0; }
+}
+
+@keyframes trace-channel-pulse {
+  0%, 8% { border-color: rgba(128, 128, 128, 0.3); }
+  15%, 85% { border-color: var(--md-primary-fg-color); }
+  90%, 100% { border-color: rgba(128, 128, 128, 0.3); }
+}
+
+@keyframes trace-result-appear {
+  0%, 78% { opacity: 0; transform: scale(0.95); }
+  84%, 98% { opacity: 1; transform: scale(1); }
+  100% { opacity: 0; transform: scale(0.95); }
+}
+
+@keyframes trace-output-arrow {
+  0%, 76% { opacity: 0.3; }
+  82%, 98% { opacity: 0.9; color: var(--md-primary-fg-color); }
+  100% { opacity: 0.3; }
+}
+
+@keyframes trace-node-glow-1 {
+  0%, 10% { box-shadow: none; }
+  14%, 24% { box-shadow: 0 0 10px var(--md-primary-fg-color); }
+  28%, 100% { box-shadow: none; }
+}
+
+@keyframes trace-node-glow-2 {
+  0%, 32% { box-shadow: none; }
+  36%, 54% { box-shadow: 0 0 10px var(--md-primary-fg-color); }
+  58%, 100% { box-shadow: none; }
+}
+
+@keyframes trace-node-glow-3 {
+  0%, 58% { box-shadow: none; }
+  62%, 72% { box-shadow: 0 0 10px var(--md-primary-fg-color); }
+  76%, 100% { box-shadow: none; }
+}
+
+/* Node connector reaching down to trace - for writing logs */
+@keyframes trace-write-connector-1 {
+  0%, 16% { opacity: 0; height: 0; }
+  19%, 26% { opacity: 0.5; height: 60px; }
+  30%, 100% { opacity: 0; height: 0; }
+}
+
+@keyframes trace-write-connector-2 {
+  0%, 46% { opacity: 0; height: 0; }
+  49%, 56% { opacity: 0.5; height: 60px; }
+  60%, 100% { opacity: 0; height: 0; }
+}
+
+/* Write label appears when node logs */
+@keyframes trace-write-label-1 {
+  0%, 17% { opacity: 0; }
+  20%, 28% { opacity: 0.8; }
+  32%, 100% { opacity: 0; }
+}
+
+@keyframes trace-write-label-2 {
+  0%, 47% { opacity: 0; }
+  50%, 58% { opacity: 0.8; }
+  62%, 100% { opacity: 0; }
+}
+
+/* Node connector for checking/reading trace */
+@keyframes trace-read-connector-2 {
+  0%, 34% { opacity: 0; height: 0; }
+  37%, 44% { opacity: 0.4; height: 60px; }
+  48%, 100% { opacity: 0; height: 0; }
+}
+
+@keyframes trace-read-connector-3 {
+  0%, 64% { opacity: 0; height: 0; }
+  67%, 74% { opacity: 0.4; height: 60px; }
+  78%, 100% { opacity: 0; height: 0; }
+}
+
+@keyframes trace-read-label-2 {
+  0%, 35% { opacity: 0; }
+  38%, 46% { opacity: 0.7; }
+  50%, 100% { opacity: 0; }
+}
+
+@keyframes trace-read-label-3 {
+  0%, 65% { opacity: 0; }
+  68%, 76% { opacity: 0.7; }
+  80%, 100% { opacity: 0; }
+}
+
+/* Bad dot animation - same path but red, slightly offset timing */
+@keyframes trace-dot-flow-bad {
+  0% { left: -12px; opacity: 0; }
+  6% { left: -5px; opacity: 0.9; }
+  12% { left: 9px; }
+  30% { left: 15px; } /* slow through E */
+  37% { left: 71px; }
+  60% { left: 79px; } /* slow through T */
+  67% { left: 135px; }
+  80% { left: 143px; } /* slow through L */
+  87% { left: 185px; opacity: 0.9; }
+  97%, 100% { left: 210px; opacity: 0; }
+}
+
+.trace-demo .trace-dot-1 { animation: trace-dot-flow 10s linear infinite; }
+.trace-demo .trace-dot-2 { animation: trace-dot-flow 10s linear infinite 0.4s; }
+.trace-demo .trace-dot-3 { animation: trace-dot-flow-bad 10s linear infinite; }
+
+.trace-demo .trace-node-1 { animation: trace-node-glow-1 10s ease-out infinite; }
+.trace-demo .trace-node-2 { animation: trace-node-glow-2 10s ease-out infinite; }
+.trace-demo .trace-node-3 { animation: trace-node-glow-3 10s ease-out infinite; }
+
+/* Write connectors - solid line when logging */
+.trace-demo .write-conn-1 { animation: trace-write-connector-1 10s ease-out infinite; }
+.trace-demo .write-conn-2 { animation: trace-write-connector-2 10s ease-out infinite; }
+
+.trace-demo .write-label-1 { animation: trace-write-label-1 10s ease-out infinite; }
+.trace-demo .write-label-2 { animation: trace-write-label-2 10s ease-out infinite; }
+
+/* Read connectors - dashed line when checking */
+.trace-demo .read-conn-2 { animation: trace-read-connector-2 10s ease-out infinite; }
+.trace-demo .read-conn-3 { animation: trace-read-connector-3 10s ease-out infinite; }
+
+.trace-demo .read-label-2 { animation: trace-read-label-2 10s ease-out infinite; }
+.trace-demo .read-label-3 { animation: trace-read-label-3 10s ease-out infinite; }
+
+.trace-demo .log-1 { animation: trace-log-1 10s ease-out infinite; }
+.trace-demo .log-2 { animation: trace-log-2 10s ease-out infinite; }
+.trace-demo .log-3 { animation: trace-log-3 10s ease-out infinite; }
+
+.trace-demo .timer-0 { animation: trace-timer-0 10s ease-out infinite; }
+.trace-demo .timer-1 { animation: trace-timer-1 10s ease-out infinite; }
+.trace-demo .timer-2 { animation: trace-timer-2 10s ease-out infinite; }
+.trace-demo .timer-3 { animation: trace-timer-3 10s ease-out infinite; }
+.trace-demo .timer-4 { animation: trace-timer-4 10s ease-out infinite; }
+
+.trace-demo .channel { animation: trace-channel-pulse 10s ease-out infinite; }
+.trace-demo .trace-result { animation: trace-result-appear 10s ease-out infinite; }
+.trace-demo .output-arrow { animation: trace-output-arrow 10s ease-out infinite; }
+
 /* Platform animation */
 .platform-demo {
   position: relative;
@@ -443,7 +930,7 @@ hide:
 
 @keyframes node-pulse-green {
   0%, 30% { box-shadow: none; background: var(--md-primary-fg-color); }
-  35%, 42% { box-shadow: 0 0 8px #14b8a6; background: #14b8a6; }
+  35%, 42% { box-shadow: 0 0 8px var(--md-primary-fg-color); background: var(--md-primary-fg-color); }
   47%, 68% { box-shadow: none; background: var(--md-primary-fg-color); }
   73%, 88% { box-shadow: 0 0 8px #ef4444; background: #ef4444; }
   93%, 100% { box-shadow: none; background: var(--md-primary-fg-color); }
@@ -508,9 +995,8 @@ hide:
   font-size: 13px;
   line-height: 1.5;
   color: var(--md-code-fg-color);
-  background: var(--md-code-bg-color);
-  border-radius: 4px;
-  padding: 1em 1.2em;
+  background: transparent;
+  padding: 0.5em 0;
   overflow: hidden;
   width: 280px;
   margin: 0 auto;
@@ -1085,6 +1571,77 @@ hide:
   <div class="env env-result">
     <span class="dot"></span>
     <span class="env-label">Needs[Db & Api]</span>
+  </div>
+</div>
+</div>
+</div>
+
+<div class="feature-row reverse">
+<div class="feature-text">
+<h3>Built-in tracing.</h3>
+<p>Append-only log that flows with your data. Nodes write messages, check for upstream errors, read elapsed time. Call <code>.unsafeRunTrace()</code> to get it all back.</p>
+</div>
+<div class="feature-visual">
+<div class="trace-demo">
+  <div class="pipeline">
+    <div class="node-group">
+      <div class="trace-node trace-node-1"></div>
+      <span class="node-label">E</span>
+      <div class="node-connector write-conn-1"></div>
+      <span class="node-label-action write write-label-1">log</span>
+    </div>
+    <span class="trace-arrow">~></span>
+    <div class="node-group">
+      <div class="trace-node trace-node-2"></div>
+      <span class="node-label">T</span>
+      <div class="node-connector read read-conn-2"></div>
+      <span class="node-label-action read read-label-2">check</span>
+      <div class="node-connector write-conn-2"></div>
+      <span class="node-label-action write write-label-2">log</span>
+    </div>
+    <span class="trace-arrow">~></span>
+    <div class="node-group">
+      <div class="trace-node trace-node-3"></div>
+      <span class="node-label">L</span>
+      <div class="node-connector read read-conn-3"></div>
+      <span class="node-label-action read read-label-3">check</span>
+    </div>
+  </div>
+  <span class="trace-dot trace-dot-1"></span>
+  <span class="trace-dot trace-dot-2"></span>
+  <span class="trace-dot trace-dot-3 bad"></span>
+  <span class="channel-title">Trace</span>
+  <div class="channel">
+    <div class="channel-logs">
+      <span class="channel-label">logs</span>
+      <span class="log-entry log-1">"read 1420 rows"</span>
+      <span class="log-entry log-2">"validated 89"</span>
+    </div>
+    <div class="channel-time">
+      <span class="channel-label">time</span>
+      <div class="timer-display">
+        <span class="timer-num">
+          <span class="timer-val timer-0">0</span>
+          <span class="timer-val timer-1">1</span>
+          <span class="timer-val timer-2">2</span>
+          <span class="timer-val timer-3">3</span>
+          <span class="timer-val timer-4">4</span>
+        </span>
+        <span class="timer-unit">ms</span>
+      </div>
+    </div>
+  </div>
+  <div class="trace-output">
+    <span class="output-arrow">→</span>
+    <div class="trace-result">
+      <div class="trace-result-inner">
+        <span class="trace-result-title">Trace[B]</span>
+        <span class="trace-result-line">result: <span class="val">B</span></span>
+        <span class="trace-result-line">logs: <span class="val">2</span></span>
+        <span class="trace-result-line">errors: <span class="val err">1</span></span>
+        <span class="trace-result-line">time: <span class="val">4ms</span></span>
+      </div>
+    </div>
   </div>
 </div>
 </div>
