@@ -1,4 +1,4 @@
-.PHONY: test test2 test3 clean docs publish-doc
+.PHONY: test test2 test3 clean docs publish-doc fmt
 
 test: test2 test3
 

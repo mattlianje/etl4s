@@ -7,6 +7,10 @@ project/target/
 project/project/
 target/
 
+# Mill build tool
+out/
+bundles/
+
 # IDE
 .idea/
 .vscode/

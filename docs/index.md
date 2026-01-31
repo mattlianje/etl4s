@@ -616,18 +616,29 @@ hide:
 }
 
 .intro-buttons a {
-  padding: 0.3rem 0;
+  padding: 0.45rem 1rem;
   text-decoration: none !important;
-  font-size: 0.85rem;
+  font-size: 0.75rem;
   font-weight: 500;
   color: var(--md-primary-fg-color);
-  border-bottom: 1.5px solid transparent;
-  transition: border-color 0.15s ease, opacity 0.15s ease;
+  background: transparent;
+  border: 1px solid var(--md-primary-fg-color);
+  border-radius: 4px;
+  transition: all 0.15s ease;
+}
+
+.intro-buttons a:first-child {
+  background: var(--md-primary-fg-color);
+  color: #fff;
 }
 
 .intro-buttons a:hover {
-  border-bottom-color: var(--md-primary-fg-color);
-  opacity: 1;
+  background: var(--md-primary-fg-color);
+  color: #fff;
+}
+
+.intro-buttons a:first-child:hover {
+  opacity: 0.85;
 }
 
 /* How it works - 1, 2, 3 */
@@ -1081,7 +1092,6 @@ hide:
 
 </div>
 
-<!--
 <div class="feature-row reverse">
 <div class="feature-text">
 <h3>Runs anywhere.</h3>
@@ -1113,7 +1123,6 @@ hide:
 </div>
 </div>
 </div>
--->
 
 <div class="motivation">
 <h4>Why etl4s?</h4>
