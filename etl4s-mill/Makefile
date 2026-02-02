@@ -1,6 +1,4 @@
-# etl4s Mill Build
-
-.PHONY: compile test test-jvm test-js test-native publish-local bundle clean fmt fmt-check repl
+.PHONY: compile test test-jvm test-js test-native publish-local bundle clean fmt fmt-check repl repl2
 
 VERSION := 1.8.0
 BUNDLE_DIR := bundles
@@ -10,43 +8,36 @@ GPG_KEY := F36FE8EEBD829E6CF1A5ADB6246482D1268EDC6E
 compile:
 	./mill etl4s.__.compile
 
-# Start a REPL with etl4s loaded (Scala 3 JVM)
 repl:
 	./mill -i etl4s.jvm[3.5.2].console
 
-# Run all tests
+repl2:
+	./mill -i etl4s.jvm[2.13.16].console
+
 test: test-jvm test-js test-native
 
-# JVM tests
 test-jvm:
 	./mill etl4s.jvm.__.test
 
-# JS tests
 test-js:
 	./mill etl4s.js.__.test
 
-# Native tests
 test-native:
 	./mill etl4s.native.__.test
 
-# Publish to local ivy repo (unsigned)
 publish-local:
 	./mill etl4s.__.publishLocal
 
-# Format code with scalafmt
 fmt:
 	./mill mill.scalalib.scalafmt/
 
-# Check formatting without modifying
 fmt-check:
 	./mill mill.scalalib.scalafmt/ --check
 
-# Clean build artifacts
 clean:
 	./mill clean
 	rm -rf $(BUNDLE_DIR)
 
-# Create signed bundle zip locally (for manual upload to Sonatype Central)
 bundle:
 	@echo "Building publish artifacts..."
 	@./mill show etl4s.__.publishArtifacts > /dev/null
@@ -60,7 +51,11 @@ bundle:
 			cp out/etl4s/$$platform/$$scalaVer/jar.dest/out.jar $$dir/$$artifactId-$(VERSION).jar; \
 			cp out/etl4s/$$platform/$$scalaVer/sourceJar.dest/out.jar $$dir/$$artifactId-$(VERSION)-sources.jar; \
 			cp out/etl4s/$$platform/$$scalaVer/docJar.dest/out.jar $$dir/$$artifactId-$(VERSION)-javadoc.jar; \
-			for f in $$dir/*; do gpg --batch --yes -ab -u $(GPG_KEY) $$f; done; \
+			for f in $$dir/*; do \
+				md5sum $$f | cut -d' ' -f1 > $$f.md5; \
+				sha1sum $$f | cut -d' ' -f1 > $$f.sha1; \
+				gpg --batch --yes -ab -u $(GPG_KEY) $$f; \
+			done; \
 			echo "Packaged $$artifactId"; \
 		done; \
 	done
