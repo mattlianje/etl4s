@@ -1400,21 +1400,19 @@ hide:
     ```scala
     import etl4s._
 
-    val getUser  = Extract("John Doe")
-    val getOrder = Extract("Order #1234")
+    val fiveExtract      = Extract(5)
+    val timesTwo         = Transform[Int, Int](_ * 2)
+    val plusFive         = Transform[Int, Int](_ + 5)
+    val timesTwoPlusFive = timesTwo `andThen` plusFive
+    val exclaim          = Transform[Int, String](x => s"Result: $x!")
+    val consoleLoad      = Load[String, Unit](println)
+    val dbLoad           = Load[String, Unit](x => println(s"[DB] $x"))
 
-    val combine = Transform[(String, String), String] {
-      case (user, order) => s"$user placed $order"
-    }
-
-    val consoleLoad = Load[String, Unit](println(_))
-    val dbLoad      = Load[String, Unit](s => println(s"[DB] $s"))
-
-    val pipeline = (getUser & getOrder) ~> combine ~> (consoleLoad & dbLoad)
+    val pipeline = fiveExtract ~> timesTwoPlusFive ~> exclaim ~> (consoleLoad & dbLoad)
 
     pipeline.unsafeRun()
-    // John Doe placed Order #1234
-    // [DB] John Doe placed Order #1234
+    // Result: 15!
+    // [DB] Result: 15!
     ```
 
 === "Config"
@@ -1579,7 +1577,7 @@ hide:
 <div class="feature-row reverse">
 <div class="feature-text">
 <h3>Built-in tracing.</h3>
-<p>Append-only log that flows with your data. Nodes write messages, check for upstream errors, read elapsed time. Call <code>.unsafeRunTrace()</code> to get it all back.</p>
+<p>Shared execution state across pipeline nodes. Write logs, flag errors, react to upstream failures, track timing. Retrieve with <code>.unsafeRunTrace()</code>.</p>
 </div>
 <div class="feature-visual">
 <div class="trace-demo">

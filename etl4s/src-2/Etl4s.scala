@@ -2,7 +2,6 @@
  * +==========================================================================+
  * |                                 etl4s                                    |
  * |                     Powerful, whiteboard-style ETL                       |
- * |                            Version 1.6.1                                 |
  * |                 Compatible with Scala 2.12, 2.13, and 3                  |
  * |                                                                          |
  * | Copyright 2025 Matthieu Court (matthieu.court@protonmail.com)            |
@@ -11,17 +10,15 @@
  */
 
 /**
- * A lightweight, powerful library for writing dataflows
+ * A lightweight, zero-dep library for writing whiteboard-style dataflows
  * using the core [[Node]] and [[Reader]] abstractions.
- * 
- * It enables config-driven, whiteboard-style pipeline composition
- * with functional programming principles.
+ *
+ * Compose pipelines with the overloaded `~>` operator.
  */
 package object etl4s {
   import scala.language.{higherKinds, implicitConversions}
   import scala.concurrent.{Future, ExecutionContext}
   import scala.concurrent.duration._
-  import scala.concurrent.Await
   import scala.util.Try
 
   /**
@@ -41,17 +38,18 @@ package object etl4s {
      */
     val f: A => B
 
-    /** Sets up trace collectors, executes block, cleans up. */
+    /** Sets up trace collectors, executes block, cleans up. Supports nesting. */
     private def withTraceSetup[T](
       block: Long => T
     ): T = {
-      val startTime = System.currentTimeMillis()
+      val parentState = Trace.saveCollector()
+      val startTime   = System.currentTimeMillis()
       Trace.setCollector(startTime)
 
       try {
         block(startTime)
       } finally {
-        Trace.clearCollector()
+        Trace.restoreCollector(parentState)
       }
     }
 
@@ -257,6 +255,39 @@ package object etl4s {
     }
 
     /**
+     * Sets or updates the lineage name.
+     */
+    def lineageName(name: String): Node[A, B] = {
+      val updated = this.getLineage match {
+        case Some(lin) => lin.copy(name = name)
+        case None      => Lineage(name = name)
+      }
+      this.withLineage(updated)
+    }
+
+    /**
+     * Sets or updates the lineage inputs.
+     */
+    def lineageInputs(inputs: String*): Node[A, B] = {
+      val updated = this.getLineage match {
+        case Some(lin) => lin.copy(inputs = inputs.toList)
+        case None      => Lineage(name = "", inputs = inputs.toList)
+      }
+      this.withLineage(updated)
+    }
+
+    /**
+     * Sets or updates the lineage outputs.
+     */
+    def lineageOutputs(outputs: String*): Node[A, B] = {
+      val updated = this.getLineage match {
+        case Some(lin) => lin.copy(outputs = outputs.toList)
+        case None      => Lineage(name = "", outputs = outputs.toList)
+      }
+      this.withLineage(updated)
+    }
+
+    /**
      * Functorial mapping: transforms the output of this node.
      *
      * @tparam C the new output type
@@ -308,12 +339,21 @@ package object etl4s {
      * pipeline("hello") // returns "Length: 5"
      * }}}
      */
-    def ~>[C](next: Node[B, C]): Node[A, C] = Node(a => next(f(a)))
+    def ~>[C](next: Node[B, C]): Node[A, C] = {
+      val combined = (this.getLineage, next.getLineage) match {
+        case (Some(l1), Some(l2)) => Some(l1.chain(l2))
+        case (Some(l), None)      => Some(l)
+        case (None, Some(l))      => Some(l)
+        case _                    => None
+      }
+      val result = Node[A, C](a => next(f(a)))
+      combined.fold(result)(lin => result.withLineage(lin))
+    }
 
     /**
      * Alias for `~>` with more explicit naming.
      */
-    def andThen[C](next: Node[B, C]): Node[A, C] = Node(a => next(f(a)))
+    def andThen[C](next: Node[B, C]): Node[A, C] = this ~> next
 
     /**
      * Sequential composition with a Reader-wrapped node.
@@ -324,7 +364,14 @@ package object etl4s {
      * @return a Reader that produces the composed Node
      */
     def ~>[T, C](next: Reader[T, Node[B, C]]): Reader[T, Node[A, C]] = {
-      next.map(nextNode => this ~> nextNode)
+      val combined = (this.getLineage, next.getLineage) match {
+        case (Some(l1), Some(l2)) => Some(l1.chain(l2))
+        case (Some(l), None)      => Some(l)
+        case (None, Some(l))      => Some(l)
+        case _                    => None
+      }
+      val result = next.map(nextNode => this ~> nextNode)
+      combined.fold(result)(lin => result.withLineage(lin))
     }
 
     /**
@@ -344,16 +391,32 @@ package object etl4s {
      * val storeBoth = storeToS3 >> storeToDb  // Both receive the same Int
      * }}}
      */
-    def >>[C](next: Node[A, C]): Node[A, C] = Node { a =>
-      f(a)
-      next(a)
+    def >>[C](next: Node[A, C]): Node[A, C] = {
+      val combined = (this.getLineage, next.getLineage) match {
+        case (Some(l1), Some(l2)) => Some(l1.combine(l2))
+        case (Some(l), None)      => Some(l)
+        case (None, Some(l))      => Some(l)
+        case _                    => None
+      }
+      val result = Node[A, C] { a =>
+        f(a)
+        next(a)
+      }
+      combined.fold(result)(lin => result.withLineage(lin))
     }
 
     /**
      * Side effect composition with a Reader-wrapped node.
      */
     def >>[T, C](next: Reader[T, Node[A, C]]): Reader[T, Node[A, C]] = {
-      next.map(nextNode => this >> nextNode)
+      val combined = (this.getLineage, next.getLineage) match {
+        case (Some(l1), Some(l2)) => Some(l1.combine(l2))
+        case (Some(l), None)      => Some(l)
+        case (None, Some(l))      => Some(l)
+        case _                    => None
+      }
+      val result = next.map(nextNode => this >> nextNode)
+      combined.fold(result)(lin => result.withLineage(lin))
     }
 
     /**
@@ -373,8 +436,17 @@ package object etl4s {
      * val getAll = getName & getAge & getEmail  // returns (String, Int, String) - auto-flattened!
      * }}}
      */
-    def &[C](that: Node[A, C])(implicit ta: TupleAppend[B, C]): Node[A, ta.Out] = Node { a =>
-      ta.append(f(a), that(a))
+    def &[C](that: Node[A, C])(implicit ta: TupleAppend[B, C]): Node[A, ta.Out] = {
+      val combined = (this.getLineage, that.getLineage) match {
+        case (Some(l1), Some(l2)) => Some(l1.combine(l2))
+        case (Some(l), None)      => Some(l)
+        case (None, Some(l))      => Some(l)
+        case _                    => None
+      }
+      val result = Node[A, ta.Out] { a =>
+        ta.append(f(a), that(a))
+      }
+      combined.fold(result)(lin => result.withLineage(lin))
     }
 
     /**
@@ -383,7 +455,14 @@ package object etl4s {
     def &[T, C](
       that: Reader[T, Node[A, C]]
     )(implicit ta: TupleAppend[B, C]): Reader[T, Node[A, ta.Out]] = {
-      that.map(thatNode => this & thatNode)
+      val combined = (this.getLineage, that.getLineage) match {
+        case (Some(l1), Some(l2)) => Some(l1.combine(l2))
+        case (Some(l), None)      => Some(l)
+        case (None, Some(l))      => Some(l)
+        case _                    => None
+      }
+      val result = that.map(thatNode => this & thatNode)
+      combined.fold(result)(lin => result.withLineage(lin))
     }
 
     /**
@@ -409,14 +488,18 @@ package object etl4s {
     def &>[C](that: Node[A, C])(implicit
       ec: ExecutionContext,
       ta: TupleAppend[B, C]
-    ): Node[A, ta.Out] = Node { a =>
-      val f1       = Future(f(a))
-      val f2       = Future(that(a))
-      val combined = for {
-        r1 <- f1
-        r2 <- f2
-      } yield ta.append(r1, r2)
-      Await.result(combined, Duration.Inf)
+    ): Node[A, ta.Out] = {
+      val combined = (this.getLineage, that.getLineage) match {
+        case (Some(l1), Some(l2)) => Some(l1.combine(l2))
+        case (Some(l), None)      => Some(l)
+        case (None, Some(l))      => Some(l)
+        case _                    => None
+      }
+      val result = Node[A, ta.Out] { a =>
+        val (r1, r2) = Platform.runParallel(f(a), that(a))
+        ta.append(r1, r2)
+      }
+      combined.fold(result)(lin => result.withLineage(lin))
     }
 
     /**
@@ -426,7 +509,14 @@ package object etl4s {
       ec: ExecutionContext,
       ta: TupleAppend[B, C]
     ): Reader[T, Node[A, ta.Out]] = {
-      that.map(thatNode => this &> thatNode)
+      val combined = (this.getLineage, that.getLineage) match {
+        case (Some(l1), Some(l2)) => Some(l1.combine(l2))
+        case (Some(l), None)      => Some(l)
+        case (None, Some(l))      => Some(l)
+        case _                    => None
+      }
+      val result = that.map(thatNode => this &> thatNode)
+      combined.fold(result)(lin => result.withLineage(lin))
     }
 
     /**
@@ -502,7 +592,7 @@ package object etl4s {
           f(a)
         } catch {
           case e: Throwable if remaining > 1 =>
-            Thread.sleep(delay)
+            Platform.sleep(delay)
             attempt(remaining - 1, (delay * backoffFactor).toLong)
           case e: Throwable => throw e
         }
@@ -698,44 +788,7 @@ package object etl4s {
       }
   }
 
-  /**
-   * Lineage information for data pipeline visualization.
-   *
-   * Captures the name, inputs, outputs, and optional metadata about a pipeline
-   * component for visualization and documentation purposes.
-   *
-   * @param name the unique name/identifier for this pipeline component
-   * @param inputs list of input data source names this component depends on
-   * @param outputs list of output data source names this component produces
-   * @param schedule optional schedule information (e.g. "Every 2 hours", "Daily at 1:00 AM")
-   * @param cluster optional cluster/group name for organizing related components
-   * @param upstreams list of upstream Node/Reader objects this component depends on
-   *
-   * @example
-   * {{{
-   * val userEnrichment = Node[String, User](parseUser)
-   *   .lineage(
-   *     name = "user-enrichment",
-   *     inputs = List("raw_users", "user_events"),
-   *     outputs = List("enriched_users"),
-   *     schedule = "Every 2 hours",
-   *     cluster = "user-processing",
-   *     upstreams = List(someOtherNode, someReader)
-   *   )
-   * }}}
-   */
-  case class Lineage(
-    name: String,
-    inputs: List[String] = List.empty,
-    outputs: List[String] = List.empty,
-    upstreams: List[Any] = List.empty, // Node, Reader, or String
-    schedule: String = "",
-    cluster: String = "",
-    description: String = "",
-    group: String = "",
-    tags: List[String] = List.empty,
-    links: Map[String, String] = Map.empty
-  )
+  // Lineage case class is defined in shared src/Lineage.scala
 
   /**
    * Type class for types that can carry metadata.
@@ -792,6 +845,39 @@ package object etl4s {
      * @return a new Reader with the attached lineage
      */
     def withLineage(lin: Lineage): Reader[R, A] = copy(getLineage = Some(lin))
+
+    /**
+     * Sets or updates the lineage name.
+     */
+    def lineageName(name: String): Reader[R, A] = {
+      val updated = this.getLineage match {
+        case Some(lin) => lin.copy(name = name)
+        case None      => Lineage(name = name)
+      }
+      this.withLineage(updated)
+    }
+
+    /**
+     * Sets or updates the lineage inputs.
+     */
+    def lineageInputs(inputs: String*): Reader[R, A] = {
+      val updated = this.getLineage match {
+        case Some(lin) => lin.copy(inputs = inputs.toList)
+        case None      => Lineage(name = "", inputs = inputs.toList)
+      }
+      this.withLineage(updated)
+    }
+
+    /**
+     * Sets or updates the lineage outputs.
+     */
+    def lineageOutputs(outputs: String*): Reader[R, A] = {
+      val updated = this.getLineage match {
+        case Some(lin) => lin.copy(outputs = outputs.toList)
+        case None      => Lineage(name = "", outputs = outputs.toList)
+      }
+      this.withLineage(updated)
+    }
   }
 
   object Reader {
@@ -831,24 +917,45 @@ package object etl4s {
       * ~>: Reader(Node) ~> {Reader(Node) | Reader(Node) compat | Node}
       */
     def ~>[C](fb: Reader[T1, Node[B, C]]): Reader[T1, Node[A, C]] = {
-      for {
+      val combined = (fa.getLineage, fb.getLineage) match {
+        case (Some(l1), Some(l2)) => Some(l1.chain(l2))
+        case (Some(l), None)      => Some(l)
+        case (None, Some(l))      => Some(l)
+        case _                    => None
+      }
+      val result = for {
         nodeA <- fa
         nodeB <- fb
       } yield nodeA ~> nodeB
+      combined.fold(result)(lin => result.withLineage(lin))
     }
 
     def ~>[T2, C, R](fb: Reader[T2, Node[B, C]])(implicit
       compat: ReaderCompat[T1, T2, R]
     ): Reader[R, Node[A, C]] = {
-      Reader { (env: R) =>
+      val combined = (fa.getLineage, fb.getLineage) match {
+        case (Some(l1), Some(l2)) => Some(l1.chain(l2))
+        case (Some(l), None)      => Some(l)
+        case (None, Some(l))      => Some(l)
+        case _                    => None
+      }
+      val result = Reader[R, Node[A, C]] { (env: R) =>
         val nodeA = fa.run(compat.toT1(env))
         val nodeB = fb.run(compat.toT2(env))
         nodeA ~> nodeB
       }
+      combined.fold(result)(lin => result.withLineage(lin))
     }
 
     def ~>[C](node: Node[B, C]): Reader[T1, Node[A, C]] = {
-      fa.map(contextNode => contextNode ~> node)
+      val combined = (fa.getLineage, node.getLineage) match {
+        case (Some(l1), Some(l2)) => Some(l1.chain(l2))
+        case (Some(l), None)      => Some(l)
+        case (None, Some(l))      => Some(l)
+        case _                    => None
+      }
+      val result = fa.map(contextNode => contextNode ~> node)
+      combined.fold(result)(lin => result.withLineage(lin))
     }
 
     /**
@@ -857,25 +964,46 @@ package object etl4s {
     def &[C](
       fb: Reader[T1, Node[A, C]]
     )(implicit ta: TupleAppend[B, C]): Reader[T1, Node[A, ta.Out]] = {
-      for {
+      val combined = (fa.getLineage, fb.getLineage) match {
+        case (Some(l1), Some(l2)) => Some(l1.combine(l2))
+        case (Some(l), None)      => Some(l)
+        case (None, Some(l))      => Some(l)
+        case _                    => None
+      }
+      val result = for {
         nodeA <- fa
         nodeB <- fb
       } yield nodeA & nodeB
+      combined.fold(result)(lin => result.withLineage(lin))
     }
 
     def &[T2, C, R](fb: Reader[T2, Node[A, C]])(implicit
       compat: ReaderCompat[T1, T2, R],
       ta: TupleAppend[B, C]
     ): Reader[R, Node[A, ta.Out]] = {
-      Reader { (env: R) =>
+      val combined = (fa.getLineage, fb.getLineage) match {
+        case (Some(l1), Some(l2)) => Some(l1.combine(l2))
+        case (Some(l), None)      => Some(l)
+        case (None, Some(l))      => Some(l)
+        case _                    => None
+      }
+      val result = Reader[R, Node[A, ta.Out]] { (env: R) =>
         val nodeA = fa.run(compat.toT1(env))
         val nodeB = fb.run(compat.toT2(env))
         nodeA & nodeB
       }
+      combined.fold(result)(lin => result.withLineage(lin))
     }
 
     def &[C](node: Node[A, C])(implicit ta: TupleAppend[B, C]): Reader[T1, Node[A, ta.Out]] = {
-      fa.map(readerNode => readerNode & node)
+      val combined = (fa.getLineage, node.getLineage) match {
+        case (Some(l1), Some(l2)) => Some(l1.combine(l2))
+        case (Some(l), None)      => Some(l)
+        case (None, Some(l))      => Some(l)
+        case _                    => None
+      }
+      val result = fa.map(readerNode => readerNode & node)
+      combined.fold(result)(lin => result.withLineage(lin))
     }
 
     /**
@@ -885,10 +1013,17 @@ package object etl4s {
       ec: ExecutionContext,
       ta: TupleAppend[B, C]
     ): Reader[T1, Node[A, ta.Out]] = {
-      for {
+      val combined = (fa.getLineage, fb.getLineage) match {
+        case (Some(l1), Some(l2)) => Some(l1.combine(l2))
+        case (Some(l), None)      => Some(l)
+        case (None, Some(l))      => Some(l)
+        case _                    => None
+      }
+      val result = for {
         nodeA <- fa
         nodeB <- fb
       } yield nodeA &> nodeB
+      combined.fold(result)(lin => result.withLineage(lin))
     }
 
     def &>[T2, C, R](fb: Reader[T2, Node[A, C]])(implicit
@@ -896,42 +1031,77 @@ package object etl4s {
       ec: ExecutionContext,
       ta: TupleAppend[B, C]
     ): Reader[R, Node[A, ta.Out]] = {
-      Reader { (env: R) =>
+      val combined = (fa.getLineage, fb.getLineage) match {
+        case (Some(l1), Some(l2)) => Some(l1.combine(l2))
+        case (Some(l), None)      => Some(l)
+        case (None, Some(l))      => Some(l)
+        case _                    => None
+      }
+      val result = Reader[R, Node[A, ta.Out]] { (env: R) =>
         val nodeA = fa.run(compat.toT1(env))
         val nodeB = fb.run(compat.toT2(env))
         nodeA &> nodeB
       }
+      combined.fold(result)(lin => result.withLineage(lin))
     }
 
     def &>[C](node: Node[A, C])(implicit
       ec: ExecutionContext,
       ta: TupleAppend[B, C]
     ): Reader[T1, Node[A, ta.Out]] = {
-      fa.map(readerNode => readerNode &> node)
+      val combined = (fa.getLineage, node.getLineage) match {
+        case (Some(l1), Some(l2)) => Some(l1.combine(l2))
+        case (Some(l), None)      => Some(l)
+        case (None, Some(l))      => Some(l)
+        case _                    => None
+      }
+      val result = fa.map(readerNode => readerNode &> node)
+      combined.fold(result)(lin => result.withLineage(lin))
     }
 
     /**
       *  >>: Reader(Node) >> {Reader(Node) | Reader(Node) compat | Node}
       */
     def >>[C](fb: Reader[T1, Node[A, C]]): Reader[T1, Node[A, C]] = {
-      for {
+      val combined = (fa.getLineage, fb.getLineage) match {
+        case (Some(l1), Some(l2)) => Some(l1.combine(l2))
+        case (Some(l), None)      => Some(l)
+        case (None, Some(l))      => Some(l)
+        case _                    => None
+      }
+      val result = for {
         nodeA <- fa
         nodeB <- fb
       } yield nodeA >> nodeB
+      combined.fold(result)(lin => result.withLineage(lin))
     }
 
     def >>[T2, C, R](fb: Reader[T2, Node[A, C]])(implicit
       compat: ReaderCompat[T1, T2, R]
     ): Reader[R, Node[A, C]] = {
-      Reader { (env: R) =>
+      val combined = (fa.getLineage, fb.getLineage) match {
+        case (Some(l1), Some(l2)) => Some(l1.combine(l2))
+        case (Some(l), None)      => Some(l)
+        case (None, Some(l))      => Some(l)
+        case _                    => None
+      }
+      val result = Reader[R, Node[A, C]] { (env: R) =>
         val nodeA = fa.run(compat.toT1(env))
         val nodeB = fb.run(compat.toT2(env))
         nodeA >> nodeB
       }
+      combined.fold(result)(lin => result.withLineage(lin))
     }
 
     def >>[C](node: Node[A, C]): Reader[T1, Node[A, C]] = {
-      fa.map(readerNode => readerNode >> node)
+      val combined = (fa.getLineage, node.getLineage) match {
+        case (Some(l1), Some(l2)) => Some(l1.combine(l2))
+        case (Some(l), None)      => Some(l)
+        case (None, Some(l))      => Some(l)
+        case _                    => None
+      }
+      val result = fa.map(readerNode => readerNode >> node)
+      combined.fold(result)(lin => result.withLineage(lin))
     }
 
     /**
@@ -966,6 +1136,15 @@ package object etl4s {
    *
    * @tparam A the result type
    * @param result the computation result
+   * @param logs collected log values (any type)
+   * @param timeElapsedMillis execution duration in milliseconds
+   * @param errors errors encountered (any type)
+   */
+  /**
+   * Result container for traced pipeline execution.
+   *
+   * @tparam A the result type
+   * @param result the final result value
    * @param logs collected log values (any type)
    * @param timeElapsedMillis execution duration in milliseconds
    * @param errors errors encountered (any type)
@@ -1009,26 +1188,7 @@ package object etl4s {
    */
   implicit def function1ToNode[A, B](f: A => B): Node[A, B] = Node(f)
 
-  /**
-   * Marker trait for validation checks that can be used in Reader.ensure()
-   */
-  sealed trait ValidationCheck[T, A] {
-    def toCurried: T => A => Option[String]
-  }
-
-  /**
-   * Context-aware validation check (already curried)
-   */
-  case class CurriedCheck[T, A](f: T => A => Option[String]) extends ValidationCheck[T, A] {
-    def toCurried: T => A => Option[String] = f
-  }
-
-  /**
-   * Plain validation check (will be lifted to ignore context)
-   */
-  case class PlainCheck[T, A](f: A => Option[String]) extends ValidationCheck[T, A] {
-    def toCurried: T => A => Option[String] = _ => f
-  }
+  // ValidationCheck, CurriedCheck, PlainCheck defined in shared src/Core.scala
 
   /**
    * Implicit conversions for validation checks
@@ -1046,11 +1206,9 @@ package object etl4s {
    * including logs, validation errors, and execution timing.
    */
   object Trace {
-    // ThreadLocal that holds all trace state: (logs, errors, startTime)
-    private val traceCollector: ThreadLocal[Option[(List[Any], List[Any], Long)]] =
-      new ThreadLocal[Option[(List[Any], List[Any], Long)]] {
-        override def initialValue(): Option[(List[Any], List[Any], Long)] = None
-      }
+    // Platform-specific local var that holds all trace state: (logs, errors, startTime)
+    private val traceCollector: LocalVar[Option[(List[Any], List[Any], Long)]] =
+      Platform.newLocalVar(None)
 
     def setCollector(startTime: Long): Unit = {
       traceCollector.set(Some((List.empty, List.empty, startTime)))
@@ -1058,6 +1216,16 @@ package object etl4s {
 
     def clearCollector(): Unit = {
       traceCollector.set(None)
+    }
+
+    /** Save current collector state for later restoration (supports nesting) */
+    def saveCollector(): Option[(List[Any], List[Any], Long)] = {
+      traceCollector.get()
+    }
+
+    /** Restore a previously saved collector state */
+    def restoreCollector(state: Option[(List[Any], List[Any], Long)]): Unit = {
+      traceCollector.set(state)
     }
 
     /**
@@ -1466,9 +1634,12 @@ package object etl4s {
       def Pipeline[A, B](f: T => A => B): Reader[T, Pipeline[A, B]] =
         etl4s.Pipeline.requires[T, A, B](f)
 
+      def Node[A, B](f: T => A => B): Reader[T, Node[A, B]] =
+        etl4s.Node.requires[T, A, B](f)
+
       def tap[A](f: T => A => Any): Reader[T, Node[A, A]] =
         Reader { ctx =>
-          Node { a =>
+          etl4s.Node { a =>
             f(ctx)(a)
             a
           }
@@ -1504,10 +1675,8 @@ package object etl4s {
    * }}}
    */
   object Tel {
-    private val observabilityProvider: ThreadLocal[Option[Etl4sTelemetry]] =
-      new ThreadLocal[Option[Etl4sTelemetry]] {
-        override def initialValue(): Option[Etl4sTelemetry] = None
-      }
+    private val observabilityProvider: LocalVar[Option[Etl4sTelemetry]] =
+      Platform.newLocalVar(None)
 
     private[etl4s] def setProvider(provider: Etl4sTelemetry): Unit = {
       observabilityProvider.set(Some(provider))
@@ -1518,11 +1687,8 @@ package object etl4s {
     }
 
     /**
-     * Execute block within a named span.
+     * Execute block within a named span with optional attributes.
      * No-op if no Etl4sTelemetry is set.
-     */
-    /**
-     * Create a span with optional attributes.
      */
     def withSpan[T](name: String, attributes: (String, Any)*)(block: => T): T = {
       val provider = observabilityProvider.get()
@@ -1568,100 +1734,7 @@ package object etl4s {
     }
   }
 
-  /**
-   * Minimal interface for OpenTelemetry integration.
-   * Direct method calls avoid intermediate object creation.
-   * 
-   * @example
-   * {{{
-   * class MyEtl4sTelemetry extends Etl4sTelemetry {
-   *   private val tracer = GlobalOpenTelemetry.getTracer("my-app")
-   *   private val meter = GlobalOpenTelemetry.getMeter("my-app")
-   *   
-   *   def withSpan[T](name: String, attributes: (String, Any)*)(block: => T): T = {
-   *     val span = tracer.spanBuilder(name).startSpan()
-   *     try block finally span.end()
-   *   }
-   *   
-   *   def addCounter(name: String, value: Long): Unit = {
-   *     meter.counterBuilder(name).build().add(value)
-   *   }
-   *   
-   *   def setGauge(name: String, value: Double): Unit = {
-   *     meter.gaugeBuilder(name).build().set(value)
-   *   }
-   *   
-   *   def recordHistogram(name: String, value: Double): Unit = {
-   *     meter.histogramBuilder(name).build().record(value)
-   *   }
-   * }
-   * }}}
-   */
-  trait Etl4sTelemetry {
-    def withSpan[T](name: String, attributes: (String, Any)*)(block: => T): T
-    def addCounter(name: String, value: Long): Unit
-    def setGauge(name: String, value: Double): Unit
-    def recordHistogram(name: String, value: Double): Unit
-  }
-
-  /**
-   * No-op implementation for when observability is not needed.
-   * This is the default when no implicit Etl4sTelemetry is provided.
-   */
-  object Etl4sNoOpTelemetry extends Etl4sTelemetry {
-    def withSpan[T](name: String, attributes: (String, Any)*)(block: => T): T = block
-    def addCounter(name: String, value: Long): Unit                           = ()
-    def setGauge(name: String, value: Double): Unit                           = ()
-    def recordHistogram(name: String, value: Double): Unit                    = ()
-  }
-
-  /**
-   * Console-based observability provider for development and testing.
-   * Prints telemetry data to stdout with timestamps.
-   * 
-   * @example
-   * {{{
-   * implicit val observability: Etl4sTelemetry = Etl4sConsole()
-   * pipeline.unsafeRun(data) // Prints spans and metrics to console
-   * }}}
-   */
-  case class Etl4sConsoleTelemetry(prefix: String = "[ETL4S]") extends Etl4sTelemetry {
-
-    def withSpan[T](name: String, attributes: (String, Any)*)(block: => T): T = {
-      val startTime = System.currentTimeMillis()
-      println(s"$prefix [SPAN START] $name")
-
-      if (attributes.nonEmpty) {
-        println(
-          s"$prefix [ATTRIBUTES] ${attributes.map { case (k, v) => s"$k=$v" }.mkString(", ")}"
-        )
-      }
-
-      try {
-        val result   = block
-        val duration = System.currentTimeMillis() - startTime
-        println(s"$prefix [SPAN END] $name (${duration}ms)")
-        result
-      } catch {
-        case e: Throwable =>
-          val duration = System.currentTimeMillis() - startTime
-          println(s"$prefix [SPAN ERROR] $name (${duration}ms): ${e.getMessage}")
-          throw e
-      }
-    }
-
-    def addCounter(name: String, value: Long): Unit = {
-      println(s"$prefix [COUNTER] $name: +$value")
-    }
-
-    def setGauge(name: String, value: Double): Unit = {
-      println(s"$prefix [GAUGE] $name: $value")
-    }
-
-    def recordHistogram(name: String, value: Double): Unit = {
-      println(s"$prefix [HISTOGRAM] $name: $value")
-    }
-  }
+  // Etl4sTelemetry, Etl4sNoOpTelemetry, Etl4sConsoleTelemetry defined in shared src/Telemetry.scala
 
   /**
    * Typeclass for rendering lineage information to various formats.
@@ -1806,118 +1879,8 @@ package object etl4s {
     }
   }
 
-  /**
-   * Represents a pipeline node in the lineage graph.
-   */
-  case class LineageNode(
-    name: String,
-    input_sources: List[String],
-    output_sources: List[String],
-    upstream_pipelines: List[String],
-    schedule: String,
-    cluster: String,
-    description: String = "",
-    group: String = "",
-    tags: List[String] = List.empty,
-    links: Map[String, String] = Map.empty
-  )
-
-  /**
-   * Represents a connection between pipeline components or data sources.
-   * Used internally for graph traversal and visualization.
-   */
-  case class LineageEdge(from: String, to: String, isDependency: Boolean = false)
-
-  /**
-   * Represents a cluster in the lineage graph for visual organization.
-   */
-  case class LineageCluster(
-    name: String,
-    description: String = "",
-    parent: String = ""
-  )
-
-  /**
-   * JSON representation of lineage information for serialization and visualization.
-   * Conforms to the pipeviz JSON spec.
-   */
-  case class LineageGraph(
-    pipelines: List[LineageNode],
-    datasources: List[String],
-    clusters: List[LineageCluster] = List.empty,
-    edges: List[LineageEdge] = List.empty // kept for internal graph ops
-  ) {
-
-    /**
-     * Converts this lineage graph to JSON string.
-     * Output conforms to the pipeviz JSON spec.
-     */
-    def toJson: String = {
-      import JsonHelpers._
-
-      val pipelinesJson   = jsonArray(pipelines)(pipelineToJson)
-      val datasourcesJson = jsonArray(datasources)(datasourceToJson)
-      val clustersJson    = jsonArray(clusters)(clusterToJson)
-
-      s"""{"pipelines":$pipelinesJson,"datasources":$datasourcesJson,"clusters":$clustersJson}"""
-    }
-  }
-
-  private object JsonHelpers {
-    def jsonArray[A](items: Seq[A])(f: A => String): String = items.map(f).mkString("[", ",", "]")
-    def quote(s: String): String                            = s""""$s""""
-    def jsonField(key: String, value: String): String       = s""""$key":$value"""
-    def jsonObject(fields: String*): String                 = fields.mkString("{", ",", "}")
-    def jsonMap(m: Map[String, String]): String             =
-      m.map { case (k, v) => s""""$k":"$v"""" }.mkString("{", ",", "}")
-
-    def pipelineToJson(p: LineageNode): String = {
-      val requiredFields = List(
-        jsonField("name", quote(p.name))
-      )
-      val optionalFields = List(
-        if (p.description.nonEmpty) Some(jsonField("description", quote(p.description))) else None,
-        if (p.input_sources.nonEmpty)
-          Some(jsonField("input_sources", jsonArray(p.input_sources)(quote)))
-        else None,
-        if (p.output_sources.nonEmpty)
-          Some(jsonField("output_sources", jsonArray(p.output_sources)(quote)))
-        else None,
-        if (p.upstream_pipelines.nonEmpty)
-          Some(jsonField("upstream_pipelines", jsonArray(p.upstream_pipelines)(quote)))
-        else None,
-        if (p.cluster.nonEmpty) Some(jsonField("cluster", quote(p.cluster))) else None,
-        if (p.group.nonEmpty) Some(jsonField("group", quote(p.group))) else None,
-        if (p.schedule.nonEmpty) Some(jsonField("schedule", quote(p.schedule))) else None,
-        if (p.tags.nonEmpty) Some(jsonField("tags", jsonArray(p.tags)(quote))) else None,
-        if (p.links.nonEmpty) Some(jsonField("links", jsonMap(p.links))) else None
-      ).flatten
-
-      jsonObject((requiredFields ++ optionalFields): _*)
-    }
-
-    def datasourceToJson(name: String): String = jsonObject(jsonField("name", quote(name)))
-
-    def clusterToJson(c: LineageCluster): String = {
-      val requiredFields = List(jsonField("name", quote(c.name)))
-      val optionalFields = List(
-        if (c.description.nonEmpty) Some(jsonField("description", quote(c.description))) else None,
-        if (c.parent.nonEmpty) Some(jsonField("parent", quote(c.parent))) else None
-      ).flatten
-      jsonObject((requiredFields ++ optionalFields): _*)
-    }
-
-    def edgeToJson(e: LineageEdge): String = jsonObject(
-      jsonField("from", quote(e.from)),
-      jsonField("to", quote(e.to)),
-      jsonField("isDependency", e.isDependency.toString)
-    )
-  }
-
-  /**
-   * Exception thrown when validation fails.
-   */
-  class ValidationException(message: String) extends RuntimeException(message)
+  // LineageNode, LineageEdge, LineageCluster, LineageGraph defined in shared src/Lineage.scala
+  // ValidationException defined in shared src/Telemetry.scala
 
   /**
    * Extension methods for adding validation to Nodes.
@@ -1931,8 +1894,7 @@ package object etl4s {
       ec: ExecutionContext
     ): Unit = {
       val errors = if (parallel) {
-        val futures = checks.map(check => Future(check(a)))
-        Await.result(Future.sequence(futures), Duration.Inf).flatten
+        Platform.runAll(checks.map(check => () => check(a))).flatten
       } else {
         checks.flatMap(_(a))
       }
@@ -1947,8 +1909,7 @@ package object etl4s {
       ec: ExecutionContext
     ): Unit = {
       val errors = if (parallel) {
-        val futures = checks.map(check => Future(check(b)))
-        Await.result(Future.sequence(futures), Duration.Inf).flatten
+        Platform.runAll(checks.map(check => () => check(b))).flatten
       } else {
         checks.flatMap(_(b))
       }
@@ -1967,8 +1928,7 @@ package object etl4s {
       ec: ExecutionContext
     ): Unit = {
       val errors = if (parallel) {
-        val futures = checks.map(check => Future(check(pair)))
-        Await.result(Future.sequence(futures), Duration.Inf).flatten
+        Platform.runAll(checks.map(check => () => check(pair))).flatten
       } else {
         checks.flatMap(_(pair))
       }
@@ -2004,8 +1964,7 @@ package object etl4s {
       ec: ExecutionContext
     ): Unit = {
       val errors = if (parallel) {
-        val futures = checks.map(check => Future(check(value)))
-        Await.result(Future.sequence(futures), Duration.Inf).flatten
+        Platform.runAll(checks.map(check => () => check(value))).flatten
       } else {
         checks.flatMap(_(value))
       }
@@ -2210,7 +2169,7 @@ package object etl4s {
     def Else[Branch](branch: Branch)(implicit
       lift: BranchLift[T, B, C, Branch]
     ): Reader[T, Node[A, C]] = Reader { ctx =>
-      val sourceNode        = sourceReader.run(ctx)
+      val sourceNode = sourceReader.run(ctx)
       val evaluatedBranches = branches.map { case (check, readerBranch) =>
         (check(ctx), readerBranch.run(ctx))
       }
@@ -2240,7 +2199,7 @@ package object etl4s {
       )
 
     def build: Reader[T, Node[A, C]] = Reader { ctx =>
-      val sourceNode        = sourceReader.run(ctx)
+      val sourceNode = sourceReader.run(ctx)
       val evaluatedBranches = branches.map { case (check, readerBranch) =>
         (check(ctx), readerBranch.run(ctx))
       }
@@ -2645,7 +2604,7 @@ package object etl4s {
         inputEdges ++ outputEdges
       }
 
-      val pipelineOutputs         = lineages.map(l => (l.name, l.outputs)).toMap
+      val pipelineOutputs = lineages.map(l => (l.name, l.outputs)).toMap
       val implicitDependencyEdges = lineages.flatMap { lineage =>
         lineage.inputs.flatMap { input =>
           pipelineOutputs.collectFirst {
@@ -2698,7 +2657,7 @@ package object etl4s {
       pipeline: LineageNode,
       indent: Int
     ): Unit = {
-      val ind           = "    " * indent
+      val ind = "    " * indent
       val scheduleLabel = if (pipeline.schedule.nonEmpty) {
         "<BR/><FONT POINT-SIZE=\"9\" COLOR=\"#d63384\"><I>" + pipeline.schedule + "</I></FONT>"
       } else {

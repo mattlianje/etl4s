@@ -443,6 +443,20 @@ class ReaderSpecs extends munit.FunSuite {
     assertEquals(result, "Processed by DataService with value 34")
   }
 
+  test("Context.Node alias") {
+    case class Config(multiplier: Int)
+
+    object TestContext extends Context[Config] {
+      val multiply = Context.Node[Int, Int] { cfg => x =>
+        x * cfg.multiplier
+      }
+    }
+
+    import TestContext._
+    val result = multiply.provide(Config(3)).unsafeRun(7)
+    assertEquals(result, 21)
+  }
+
   test("basic logging with Trace.log") {
     val node = Transform[String, Int] { input =>
       Trace.log("Processing string")

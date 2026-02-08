@@ -10,6 +10,10 @@ target/
 # Mill build tool
 out/
 bundles/
+mill
+
+# Generated docs
+site/
 
 # IDE
 .idea/

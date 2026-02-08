@@ -2,8 +2,7 @@
  * +==========================================================================+
  * |                                 etl4s                                    |
  * |                     Powerful, whiteboard-style ETL                       |
- * |                            Version 1.8.0                                 |
- * |                 Compatible with Scala 2.12, 2.13, and 3                  |
+ * |                        Compatible with Scala 3                           |
  * |                                                                          |
  * | Copyright 2025 Matthieu Court (matthieu.court@protonmail.com)            |
  * | Apache License 2.0                                                       |
@@ -11,16 +10,16 @@
  */
 
 /**
- * A lightweight, powerful library for writing dataflows
+ * A lightweight, zero-dep library for writing whiteboard-style dataflows
  * using the core [[Node]] and [[Reader]] abstractions.
- * 
- * It enables config-driven, whiteboard-style pipeline composition
- * with functional programming principles.
+ *
+ * Compose pipelines with the overloaded `~>` operator.
  */
 package object etl4s {
-  import scala.language.{higherKinds, implicitConversions}
+  import scala.language.implicitConversions
   import scala.concurrent.{Future, ExecutionContext}
   import scala.concurrent.duration._
+  import scala.concurrent.Await
   import scala.util.Try
 
   /**
@@ -85,8 +84,8 @@ package object etl4s {
      * Runs the node without any input (for Node[Any, B]).
      * Only available when the node accepts Any as input.
      */
-    def unsafeRun()(implicit ev: A =:= Any): B =
-      unsafeRun(null.asInstanceOf[A])(Etl4sNoOpTelemetry)
+    def unsafeRun()(using ev: A =:= Any): B =
+      unsafeRun(null.asInstanceOf[A])(using Etl4sNoOpTelemetry)
 
     /**
      * Runs the node without any error handling.
@@ -97,7 +96,7 @@ package object etl4s {
      * @return the transformed output
      * @throws any exception thrown by the underlying function
      */
-    def unsafeRun(a: A)(implicit otelProvider: Etl4sTelemetry = Etl4sNoOpTelemetry): B =
+    def unsafeRun(a: A)(using otelProvider: Etl4sTelemetry = Etl4sNoOpTelemetry): B =
       withOtelSetup(otelProvider) {
         withTraceSetup { _ =>
           f(a)
@@ -112,7 +111,7 @@ package object etl4s {
      * @param otelProvider optional OTel provider for observability (defaults to Etl4sNoOpTelemetry)
      * @return Success(result) or Failure(exception)
      */
-    def safeRun(a: A)(implicit otelProvider: Etl4sTelemetry = Etl4sNoOpTelemetry): Try[B] =
+    def safeRun(a: A)(using otelProvider: Etl4sTelemetry = Etl4sNoOpTelemetry): Try[B] =
       withOtelSetup(otelProvider) {
         withTraceSetup { _ =>
           Try(f(a))
@@ -122,8 +121,8 @@ package object etl4s {
     /**
      * Runs the node with error handling without any input (for Node[Any, B]).
      */
-    def safeRun()(implicit ev: A =:= Any): Try[B] =
-      safeRun(null.asInstanceOf[A])(Etl4sNoOpTelemetry)
+    def safeRun()(using ev: A =:= Any): Try[B] =
+      safeRun(null.asInstanceOf[A])(using Etl4sNoOpTelemetry)
 
     /**
      * Runs the node and collects insights about the execution.
@@ -132,7 +131,7 @@ package object etl4s {
      * @param otelProvider optional OTel provider for observability (defaults to Etl4sNoOpTelemetry)
      * @return Trace containing result and collected information
      */
-    def unsafeRunTrace(a: A)(implicit otelProvider: Etl4sTelemetry = Etl4sNoOpTelemetry): Trace[B] =
+    def unsafeRunTrace(a: A)(using otelProvider: Etl4sTelemetry = Etl4sNoOpTelemetry): Trace[B] =
       withOtelSetup(otelProvider) {
         withTraceSetup { startTime =>
           val result       = f(a)
@@ -156,9 +155,7 @@ package object etl4s {
      * @param otelProvider optional OTel provider for observability (defaults to Etl4sNoOpTelemetry)
      * @return Trace with Try[B] as result
      */
-    def safeRunTrace(
-      a: A
-    )(implicit otelProvider: Etl4sTelemetry = Etl4sNoOpTelemetry): Trace[Try[B]] =
+    def safeRunTrace(a: A)(using otelProvider: Etl4sTelemetry = Etl4sNoOpTelemetry): Trace[Try[B]] =
       withOtelSetup(otelProvider) {
         withTraceSetup { startTime =>
           val result       = Try(f(a))
@@ -438,7 +435,7 @@ package object etl4s {
      * val getAll = getName & getAge & getEmail  // returns (String, Int, String) - auto-flattened!
      * }}}
      */
-    def &[C](that: Node[A, C])(implicit ta: TupleAppend[B, C]): Node[A, ta.Out] = {
+    def &[C](that: Node[A, C])(using ta: TupleAppend[B, C]): Node[A, ta.Out] = {
       val combined = (this.getLineage, that.getLineage) match {
         case (Some(l1), Some(l2)) => Some(l1.combine(l2))
         case (Some(l), None)      => Some(l)
@@ -456,7 +453,7 @@ package object etl4s {
      */
     def &[T, C](
       that: Reader[T, Node[A, C]]
-    )(implicit ta: TupleAppend[B, C]): Reader[T, Node[A, ta.Out]] = {
+    )(using ta: TupleAppend[B, C]): Reader[T, Node[A, ta.Out]] = {
       val combined = (this.getLineage, that.getLineage) match {
         case (Some(l1), Some(l2)) => Some(l1.combine(l2))
         case (Some(l), None)      => Some(l)
@@ -487,10 +484,9 @@ package object etl4s {
      * val fetchAll = fetchUser &> fetchPrefs &> fetchSettings  // auto-flattened!
      * }}}
      */
-    def &>[C](that: Node[A, C])(implicit
-      ec: ExecutionContext,
-      ta: TupleAppend[B, C]
-    ): Node[A, ta.Out] = {
+    def &>[C](
+      that: Node[A, C]
+    )(using ec: ExecutionContext, ta: TupleAppend[B, C]): Node[A, ta.Out] = {
       val combined = (this.getLineage, that.getLineage) match {
         case (Some(l1), Some(l2)) => Some(l1.combine(l2))
         case (Some(l), None)      => Some(l)
@@ -507,10 +503,9 @@ package object etl4s {
     /**
      * Concurrent parallel composition with a Reader-wrapped node.
      */
-    def &>[T, C](that: Reader[T, Node[A, C]])(implicit
-      ec: ExecutionContext,
-      ta: TupleAppend[B, C]
-    ): Reader[T, Node[A, ta.Out]] = {
+    def &>[T, C](
+      that: Reader[T, Node[A, C]]
+    )(using ec: ExecutionContext, ta: TupleAppend[B, C]): Reader[T, Node[A, ta.Out]] = {
       val combined = (this.getLineage, that.getLineage) match {
         case (Some(l1), Some(l2)) => Some(l1.combine(l2))
         case (Some(l), None)      => Some(l)
@@ -615,7 +610,7 @@ package object etl4s {
      * val futureResult: Future[Result] = asyncProcessor(input)
      * }}}
      */
-    def runAsync(implicit ec: ExecutionContext): A => Future[B] = a => Future(f(a))
+    def runAsync(using ec: ExecutionContext): A => Future[B] = a => Future(f(a))
 
     /**
      * Flattens nested tuple results.
@@ -638,9 +633,7 @@ package object etl4s {
      * val flattened = combined.zip  // Node[String, (Int, String, Boolean)]
      * }}}
      */
-    def zip[BB >: B, Out](implicit
-      flattener: Flatten.Aux[BB, Out]
-    ): Node[A, Out] =
+    def zip[BB >: B, Out](using flattener: Flatten.Aux[BB, Out]): Node[A, Out] =
       Node { a => flattener(f(a)) }
   }
 
@@ -726,10 +719,10 @@ package object etl4s {
 
   /**
    * Extension methods for Node factory methods.
-   * 
+   *
    * This allows the pattern: `Transform[Int, Int].requires[Config] { ... }`
    */
-  implicit class NodeFactoryRequiresOps[A, B](val factory: (A => B) => Node[A, B]) {
+  extension [A, B](factory: (A => B) => Node[A, B]) {
     def requires[T](f: T => A => B): Reader[T, Node[A, B]] = {
       Reader { config =>
         factory { a =>
@@ -756,37 +749,44 @@ package object etl4s {
   }
 
   /**
-   * Companion object providing implicit instances for ReaderCompat.
-   * 
+   * Companion object providing given instances for ReaderCompat.
+   *
    * The priority hierarchy ensures the most specific instances are selected first.
    */
   object ReaderCompat extends ReaderCompat2 {
 
     /** Highest priority: Case 1 - same types */
-    implicit def identityCompat[T]: ReaderCompat[T, T, T] =
-      new ReaderCompat[T, T, T] {
-        def toT1(r: T): T = r
-        def toT2(r: T): T = r
-      }
+    given identityCompat[T]: ReaderCompat[T, T, T] = new ReaderCompat[T, T, T] {
+      def toT1(r: T): T = r
+      def toT2(r: T): T = r
+    }
   }
 
   trait ReaderCompat2 extends ReaderCompat1 {
 
     /** Case 2: T1 is a subtype of T2 */
-    implicit def t1SubT2[T1 <: T2, T2]: ReaderCompat[T1, T2, T1] =
-      new ReaderCompat[T1, T2, T1] {
-        def toT1(r: T1): T1 = r
-        def toT2(r: T1): T2 = r /* Since T1 <: T2 */
-      }
+    given t1SubT2[T1 <: T2, T2]: ReaderCompat[T1, T2, T1] = new ReaderCompat[T1, T2, T1] {
+      def toT1(r: T1): T1 = r
+      def toT2(r: T1): T2 = r /* Since T1 <: T2 */
+    }
   }
 
-  trait ReaderCompat1 {
+  trait ReaderCompat1 extends ReaderCompat0 {
 
     /** Case 3: T2 is a subtype of T1 */
-    implicit def t2SubT1[T1, T2 <: T1]: ReaderCompat[T1, T2, T2] =
-      new ReaderCompat[T1, T2, T2] {
-        def toT1(r: T2): T1 = r /* Since T2 <: T1 */
-        def toT2(r: T2): T2 = r
+    given t2SubT1[T1, T2 <: T1]: ReaderCompat[T1, T2, T2] = new ReaderCompat[T1, T2, T2] {
+      def toT1(r: T2): T1 = r /* Since T2 <: T1 */
+      def toT2(r: T2): T2 = r
+    }
+  }
+
+  trait ReaderCompat0 {
+
+    /** Case 4: Unrelated types - use intersection type T1 & T2 */
+    given intersectionCompat[T1, T2]: ReaderCompat[T1, T2, T1 & T2] =
+      new ReaderCompat[T1, T2, T1 & T2] {
+        def toT1(r: T1 & T2): T1 = r
+        def toT2(r: T1 & T2): T2 = r
       }
   }
 
@@ -891,17 +891,15 @@ package object etl4s {
    * HasMetadata instances for Node and Reader.
    */
   object HasMetadata {
-    // Basically just type lambda syntax: ({type L[X] = SomeType})#L creates a type constructor
-    // from multi-parameter types to work with single-parameter typeclasses like HasMetadata[F[_]]
-    // ... to keep the cross builds between 2.12, 2.13 and 3.x simple for now
-    implicit def nodeHasMetadata[A, B]: HasMetadata[({ type L[X] = Node[A, B] })#L] =
-      new HasMetadata[({ type L[X] = Node[A, B] })#L] {
+    // Scala 3 type lambda syntax: [X] =>> Node[A, B]
+    given nodeHasMetadata[A, B]: HasMetadata[[X] =>> Node[A, B]] =
+      new HasMetadata[[X] =>> Node[A, B]] {
         def metadata[X](fa: Node[A, B]): Any                       = fa.metadata
         def withMetadata[X](fa: Node[A, B], meta: Any): Node[A, B] = fa.withMetadata(meta)
       }
 
-    implicit def readerHasMetadata[R]: HasMetadata[({ type L[A] = Reader[R, A] })#L] =
-      new HasMetadata[({ type L[A] = Reader[R, A] })#L] {
+    given readerHasMetadata[R]: HasMetadata[[A] =>> Reader[R, A]] =
+      new HasMetadata[[A] =>> Reader[R, A]] {
         def metadata[A](fa: Reader[R, A]): Any                         = fa.metadata
         def withMetadata[A](fa: Reader[R, A], meta: Any): Reader[R, A] = fa.withMetadata(meta)
       }
@@ -911,30 +909,17 @@ package object etl4s {
    * Extension methods for composing Reader-wrapped Nodes.
    *
    * These methods enable natural composition of context-dependent operations
-   * while handling environment compatibility automatically.
+   * while handling environment compatibility automatically via ReaderCompat.
    */
-  implicit class ReaderOps[T1, A, B](val fa: Reader[T1, Node[A, B]]) {
+  extension [T1, A, B](fa: Reader[T1, Node[A, B]]) {
 
     /**
-      * ~>: Reader(Node) ~> {Reader(Node) | Reader(Node) compat | Node}
-      */
-    def ~>[C](fb: Reader[T1, Node[B, C]]): Reader[T1, Node[A, C]] = {
-      val combined = (fa.getLineage, fb.getLineage) match {
-        case (Some(l1), Some(l2)) => Some(l1.chain(l2))
-        case (Some(l), None)      => Some(l)
-        case (None, Some(l))      => Some(l)
-        case _                    => None
-      }
-      val result = for {
-        nodeA <- fa
-        nodeB <- fb
-      } yield nodeA ~> nodeB
-      combined.fold(result)(lin => result.withLineage(lin))
-    }
-
-    def ~>[T2, C, R](fb: Reader[T2, Node[B, C]])(implicit
-      compat: ReaderCompat[T1, T2, R]
-    ): Reader[R, Node[A, C]] = {
+     * Sequential composition: Reader(Node) ~> Reader(Node)
+     * Uses ReaderCompat to handle type compatibility automatically.
+     */
+    def ~>[T2, C, R](
+      fb: Reader[T2, Node[B, C]]
+    )(using compat: ReaderCompat[T1, T2, R]): Reader[R, Node[A, C]] = {
       val combined = (fa.getLineage, fb.getLineage) match {
         case (Some(l1), Some(l2)) => Some(l1.chain(l2))
         case (Some(l), None)      => Some(l)
@@ -949,6 +934,9 @@ package object etl4s {
       combined.fold(result)(lin => result.withLineage(lin))
     }
 
+    /**
+     * Sequential composition: Reader(Node) ~> Node
+     */
     def ~>[C](node: Node[B, C]): Reader[T1, Node[A, C]] = {
       val combined = (fa.getLineage, node.getLineage) match {
         case (Some(l1), Some(l2)) => Some(l1.chain(l2))
@@ -961,28 +949,13 @@ package object etl4s {
     }
 
     /**
-      *  &: Reader(Node) & {Reader(Node) | Reader(Node) compat | Node}
-      */
-    def &[C](
-      fb: Reader[T1, Node[A, C]]
-    )(implicit ta: TupleAppend[B, C]): Reader[T1, Node[A, ta.Out]] = {
-      val combined = (fa.getLineage, fb.getLineage) match {
-        case (Some(l1), Some(l2)) => Some(l1.combine(l2))
-        case (Some(l), None)      => Some(l)
-        case (None, Some(l))      => Some(l)
-        case _                    => None
-      }
-      val result = for {
-        nodeA <- fa
-        nodeB <- fb
-      } yield nodeA & nodeB
-      combined.fold(result)(lin => result.withLineage(lin))
-    }
-
-    def &[T2, C, R](fb: Reader[T2, Node[A, C]])(implicit
-      compat: ReaderCompat[T1, T2, R],
-      ta: TupleAppend[B, C]
-    ): Reader[R, Node[A, ta.Out]] = {
+     * Parallel composition: Reader(Node) & Reader(Node)
+     * Uses ReaderCompat to handle type compatibility automatically.
+     * Auto-flattens tuples: r1 & r2 & r3 produces (Out1, Out2, Out3)
+     */
+    def &[T2, C, R](
+      fb: Reader[T2, Node[A, C]]
+    )(using compat: ReaderCompat[T1, T2, R], ta: TupleAppend[B, C]): Reader[R, Node[A, ta.Out]] = {
       val combined = (fa.getLineage, fb.getLineage) match {
         case (Some(l1), Some(l2)) => Some(l1.combine(l2))
         case (Some(l), None)      => Some(l)
@@ -997,7 +970,11 @@ package object etl4s {
       combined.fold(result)(lin => result.withLineage(lin))
     }
 
-    def &[C](node: Node[A, C])(implicit ta: TupleAppend[B, C]): Reader[T1, Node[A, ta.Out]] = {
+    /**
+     * Parallel composition: Reader(Node) & Node
+     * Auto-flattens tuples.
+     */
+    def &[C](node: Node[A, C])(using ta: TupleAppend[B, C]): Reader[T1, Node[A, ta.Out]] = {
       val combined = (fa.getLineage, node.getLineage) match {
         case (Some(l1), Some(l2)) => Some(l1.combine(l2))
         case (Some(l), None)      => Some(l)
@@ -1009,26 +986,11 @@ package object etl4s {
     }
 
     /**
-      *  &>: Reader(Node) &> {Reader(Node) | Reader(Node) compat | Node}
-      */
-    def &>[C](fb: Reader[T1, Node[A, C]])(implicit
-      ec: ExecutionContext,
-      ta: TupleAppend[B, C]
-    ): Reader[T1, Node[A, ta.Out]] = {
-      val combined = (fa.getLineage, fb.getLineage) match {
-        case (Some(l1), Some(l2)) => Some(l1.combine(l2))
-        case (Some(l), None)      => Some(l)
-        case (None, Some(l))      => Some(l)
-        case _                    => None
-      }
-      val result = for {
-        nodeA <- fa
-        nodeB <- fb
-      } yield nodeA &> nodeB
-      combined.fold(result)(lin => result.withLineage(lin))
-    }
-
-    def &>[T2, C, R](fb: Reader[T2, Node[A, C]])(implicit
+     * Concurrent parallel composition: Reader(Node) &> Reader(Node)
+     * Uses ReaderCompat to handle type compatibility automatically.
+     * Auto-flattens tuples.
+     */
+    def &>[T2, C, R](fb: Reader[T2, Node[A, C]])(using
       compat: ReaderCompat[T1, T2, R],
       ec: ExecutionContext,
       ta: TupleAppend[B, C]
@@ -1047,10 +1009,13 @@ package object etl4s {
       combined.fold(result)(lin => result.withLineage(lin))
     }
 
-    def &>[C](node: Node[A, C])(implicit
-      ec: ExecutionContext,
-      ta: TupleAppend[B, C]
-    ): Reader[T1, Node[A, ta.Out]] = {
+    /**
+     * Concurrent parallel composition: Reader(Node) &> Node
+     * Auto-flattens tuples.
+     */
+    def &>[C](
+      node: Node[A, C]
+    )(using ec: ExecutionContext, ta: TupleAppend[B, C]): Reader[T1, Node[A, ta.Out]] = {
       val combined = (fa.getLineage, node.getLineage) match {
         case (Some(l1), Some(l2)) => Some(l1.combine(l2))
         case (Some(l), None)      => Some(l)
@@ -1062,25 +1027,12 @@ package object etl4s {
     }
 
     /**
-      *  >>: Reader(Node) >> {Reader(Node) | Reader(Node) compat | Node}
-      */
-    def >>[C](fb: Reader[T1, Node[A, C]]): Reader[T1, Node[A, C]] = {
-      val combined = (fa.getLineage, fb.getLineage) match {
-        case (Some(l1), Some(l2)) => Some(l1.combine(l2))
-        case (Some(l), None)      => Some(l)
-        case (None, Some(l))      => Some(l)
-        case _                    => None
-      }
-      val result = for {
-        nodeA <- fa
-        nodeB <- fb
-      } yield nodeA >> nodeB
-      combined.fold(result)(lin => result.withLineage(lin))
-    }
-
-    def >>[T2, C, R](fb: Reader[T2, Node[A, C]])(implicit
-      compat: ReaderCompat[T1, T2, R]
-    ): Reader[R, Node[A, C]] = {
+     * Sequence composition (discard first result): Reader(Node) >> Reader(Node)
+     * Uses ReaderCompat to handle type compatibility automatically.
+     */
+    def >>[T2, C, R](
+      fb: Reader[T2, Node[A, C]]
+    )(using compat: ReaderCompat[T1, T2, R]): Reader[R, Node[A, C]] = {
       val combined = (fa.getLineage, fb.getLineage) match {
         case (Some(l1), Some(l2)) => Some(l1.combine(l2))
         case (Some(l), None)      => Some(l)
@@ -1095,6 +1047,9 @@ package object etl4s {
       combined.fold(result)(lin => result.withLineage(lin))
     }
 
+    /**
+     * Sequence composition (discard first result): Reader(Node) >> Node
+     */
     def >>[C](node: Node[A, C]): Reader[T1, Node[A, C]] = {
       val combined = (fa.getLineage, node.getLineage) match {
         case (Some(l1), Some(l2)) => Some(l1.combine(l2))
@@ -1119,8 +1074,8 @@ package object etl4s {
      * val contextExtract = Context.Extract[Config, String, Int] { config => input =>
      *   process(input, config)
      * }
-     * 
-     * val withTap = contextExtract.tap(config => result => 
+     *
+     * val withTap = contextExtract.tap(config => result =>
      *   println(s"[${config.serviceName}] Extracted: $result")
      * )
      * }}}
@@ -1130,7 +1085,6 @@ package object etl4s {
         fa.run(ctx).tap(result => g(ctx)(result))
       }
     }
-
   }
 
   /**
@@ -1176,19 +1130,19 @@ package object etl4s {
 
   /**
    * Implicit conversion from Function1 to Node.
-   * 
+   *
    * This allows you to use plain functions directly as Nodes without wrapping.
-   * 
+   *
    * @example
    * {{{
    * val length: String => Int = _.length
    * val upper: String => String = _.toUpperCase
-   * 
+   *
    * // Can use directly without Node(...)
    * val pipeline = length ~> upper
    * }}}
    */
-  implicit def function1ToNode[A, B](f: A => B): Node[A, B] = Node(f)
+  given function1ToNode[A, B]: Conversion[A => B, Node[A, B]] = Node(_)
 
   // ValidationCheck, CurriedCheck, PlainCheck defined in shared src/Core.scala
 
@@ -1208,7 +1162,7 @@ package object etl4s {
    * including logs, validation errors, and execution timing.
    */
   object Trace {
-    // Platform-specific local var that holds all trace state: (logs, errors, startTime)
+    // LocalVar that holds all trace state: (logs, errors, startTime)
     private val traceCollector: LocalVar[Option[(List[Any], List[Any], Long)]] =
       Platform.newLocalVar(None)
 
@@ -1317,13 +1271,18 @@ package object etl4s {
   }
 
   /**
+   * Type-level function to flatten nested left-associated tuples into flat tuples.
+   * The Flatten typeclass below handles the actual flattening at runtime.
+   * This is kept as documentation of the concept.
+   */
+
+  /**
    * Type class for flattening nested tuple structures.
    *
    * This helps transform nested tuples like `((a,b),c)` into flat tuples like `(a,b,c)`.
    * Makes pipelines that combine multiple steps more ergonomic.
    *
-   * Note: Implementation is limited to avoid shapeless dependency and maintain
-   * cross-compilation with Scala 2.12. Nesting is supported up to about 7-8 levels.
+   * Scala 3 implementation uses match types for arbitrary tuple lengths.
    *
    * @tparam A the input type to flatten
    */
@@ -1332,263 +1291,71 @@ package object etl4s {
     def apply(a: A): Out
   }
 
-  trait P0 {
-    implicit def base[A]: Flatten.Aux[A, A] = new Flatten[A] {
+  object Flatten extends FlattenLowPriority {
+    type Aux[A, B] = Flatten[A] { type Out = B }
+
+    /** Flatten nested tuple where head is also a tuple: ((A, B, ...), C) => (A, B, ..., C) */
+    given nestedTuple[H <: Tuple, L](using
+      hf: Flatten[H]
+    ): Flatten.Aux[(H, L), Tuple.Concat[hf.Out & Tuple, L *: EmptyTuple]] =
+      new Flatten[(H, L)] {
+        type Out = Tuple.Concat[hf.Out & Tuple, L *: EmptyTuple]
+        def apply(t: (H, L)): Out = {
+          val flatHead = hf(t._1).asInstanceOf[Tuple]
+          (flatHead ++ (t._2 *: EmptyTuple)).asInstanceOf[Out]
+        }
+      }
+  }
+
+  trait FlattenLowPriority {
+
+    /** Base case: simple pair (A, B) where A is not a tuple */
+    given pair[A, B]: Flatten.Aux[(A, B), (A, B)] =
+      new Flatten[(A, B)] {
+        type Out = (A, B)
+        def apply(t: (A, B)): (A, B) = t
+      }
+
+    /** Identity: non-tuple types */
+    given base[A]: Flatten.Aux[A, A] = new Flatten[A] {
       type Out = A
       def apply(a: A): A = a
     }
-  }
-
-  trait P1 extends P0 {
-    implicit def tuple3[A, B, C]: Flatten.Aux[((A, B), C), (A, B, C)] =
-      new Flatten[((A, B), C)] {
-        type Out = (A, B, C)
-        def apply(t: ((A, B), C)): (A, B, C) = {
-          val ((a, b), c) = t
-          (a, b, c)
-        }
-      }
-  }
-
-  trait P2 extends P1 {
-    implicit def tuple4[A, B, C, D]: Flatten.Aux[(((A, B), C), D), (A, B, C, D)] =
-      new Flatten[(((A, B), C), D)] {
-        type Out = (A, B, C, D)
-        def apply(t: (((A, B), C), D)): (A, B, C, D) = {
-          val (((a, b), c), d) = t
-          (a, b, c, d)
-        }
-      }
-  }
-
-  trait P3 extends P2 {
-    implicit def tuple5[A, B, C, D, E]: Flatten.Aux[((((A, B), C), D), E), (A, B, C, D, E)] =
-      new Flatten[((((A, B), C), D), E)] {
-        type Out = (A, B, C, D, E)
-        def apply(t: ((((A, B), C), D), E)): (A, B, C, D, E) = {
-          val ((((a, b), c), d), e) = t
-          (a, b, c, d, e)
-        }
-      }
-  }
-
-  trait P4 extends P3 {
-    implicit def tuple6[A, B, C, D, E, F]
-      : Flatten.Aux[(((((A, B), C), D), E), F), (A, B, C, D, E, F)] =
-      new Flatten[(((((A, B), C), D), E), F)] {
-        type Out = (A, B, C, D, E, F)
-        def apply(t: (((((A, B), C), D), E), F)): (A, B, C, D, E, F) = {
-          val (((((a, b), c), d), e), f) = t
-          (a, b, c, d, e, f)
-        }
-      }
-  }
-
-  trait P5 extends P4 {
-    implicit def tuple7[A, B, C, D, E, F, G]
-      : Flatten.Aux[((((((A, B), C), D), E), F), G), (A, B, C, D, E, F, G)] =
-      new Flatten[((((((A, B), C), D), E), F), G)] {
-        type Out = (A, B, C, D, E, F, G)
-        def apply(t: ((((((A, B), C), D), E), F), G)): (A, B, C, D, E, F, G) = {
-          val ((((((a, b), c), d), e), f), g) = t
-          (a, b, c, d, e, f, g)
-        }
-      }
-  }
-
-  trait P6 extends P5 {
-    implicit def tuple8[A, B, C, D, E, F, G, H]: Flatten.Aux[
-      (((((((A, B), C), D), E), F), G), H),
-      (A, B, C, D, E, F, G, H)
-    ] =
-      new Flatten[(((((((A, B), C), D), E), F), G), H)] {
-        type Out = (A, B, C, D, E, F, G, H)
-        def apply(
-          t: (((((((A, B), C), D), E), F), G), H)
-        ): (A, B, C, D, E, F, G, H) = {
-          val (((((((a, b), c), d), e), f), g), h) = t
-          (a, b, c, d, e, f, g, h)
-        }
-      }
-  }
-
-  trait P7 extends P6 {
-    implicit def tuple9[A, B, C, D, E, F, G, H, I]: Flatten.Aux[
-      ((((((((A, B), C), D), E), F), G), H), I),
-      (A, B, C, D, E, F, G, H, I)
-    ] =
-      new Flatten[((((((((A, B), C), D), E), F), G), H), I)] {
-        type Out = (A, B, C, D, E, F, G, H, I)
-        def apply(
-          t: ((((((((A, B), C), D), E), F), G), H), I)
-        ): (A, B, C, D, E, F, G, H, I) = {
-          val ((((((((a, b), c), d), e), f), g), h), i) = t
-          (a, b, c, d, e, f, g, h, i)
-        }
-      }
-  }
-
-  trait P8 extends P7 {
-    implicit def tuple10[A, B, C, D, E, F, G, H, I, J]: Flatten.Aux[
-      (((((((((A, B), C), D), E), F), G), H), I), J),
-      (A, B, C, D, E, F, G, H, I, J)
-    ] =
-      new Flatten[(((((((((A, B), C), D), E), F), G), H), I), J)] {
-        type Out = (A, B, C, D, E, F, G, H, I, J)
-        def apply(
-          t: (((((((((A, B), C), D), E), F), G), H), I), J)
-        ): (A, B, C, D, E, F, G, H, I, J) = {
-          val (((((((((a, b), c), d), e), f), g), h), i), j) = t
-          (a, b, c, d, e, f, g, h, i, j)
-        }
-      }
-  }
-
-  trait P9 extends P8 {
-    implicit def tuple11[A, B, C, D, E, F, G, H, I, J, K]: Flatten.Aux[
-      ((((((((((A, B), C), D), E), F), G), H), I), J), K),
-      (A, B, C, D, E, F, G, H, I, J, K)
-    ] =
-      new Flatten[((((((((((A, B), C), D), E), F), G), H), I), J), K)] {
-        type Out = (A, B, C, D, E, F, G, H, I, J, K)
-        def apply(
-          t: ((((((((((A, B), C), D), E), F), G), H), I), J), K)
-        ): (A, B, C, D, E, F, G, H, I, J, K) = {
-          val ((((((((((a, b), c), d), e), f), g), h), i), j), k) = t
-          (a, b, c, d, e, f, g, h, i, j, k)
-        }
-      }
-  }
-
-  trait P10 extends P9 {
-    implicit def tuple12[A, B, C, D, E, F, G, H, I, J, K, L]: Flatten.Aux[
-      (((((((((((A, B), C), D), E), F), G), H), I), J), K), L),
-      (A, B, C, D, E, F, G, H, I, J, K, L)
-    ] =
-      new Flatten[(((((((((((A, B), C), D), E), F), G), H), I), J), K), L)] {
-        type Out = (A, B, C, D, E, F, G, H, I, J, K, L)
-        def apply(
-          t: (((((((((((A, B), C), D), E), F), G), H), I), J), K), L)
-        ): (A, B, C, D, E, F, G, H, I, J, K, L) = {
-          val (((((((((((a, b), c), d), e), f), g), h), i), j), k), l) = t
-          (a, b, c, d, e, f, g, h, i, j, k, l)
-        }
-      }
-  }
-
-  object Flatten extends P10 {
-    type Aux[A, B] = Flatten[A] { type Out = B }
   }
 
   /**
    * Type class for appending an element to a tuple, building flat tuples.
    * Used by the & operator to auto-flatten parallel compositions.
    *
-   * For non-tuple A: A & B => (A, B)
+   * For non-tuple A: (A, B) => (A, B)
    * For tuple A: (A1, A2) & B => (A1, A2, B)
    *
    * This enables: node1 & node2 & node3 to produce Node[In, (Out1, Out2, Out3)]
    * instead of Node[In, ((Out1, Out2), Out3)]
    */
   trait TupleAppend[A, B] {
-    type Out
+    type Out <: Tuple
     def append(a: A, b: B): Out
   }
 
-  trait TupleAppendLowestPriority {
-    // Fallback: when A is not a tuple, create a pair
-    implicit def pairAppend[A, B]: TupleAppend.Aux[A, B, (A, B)] =
+  object TupleAppend extends TupleAppendLowPriority {
+    type Aux[A, B, O <: Tuple] = TupleAppend[A, B] { type Out = O }
+
+    // When A is already a tuple, append B to it
+    given tupleAppend[A <: Tuple, B]: TupleAppend.Aux[A, B, Tuple.Append[A, B]] =
+      new TupleAppend[A, B] {
+        type Out = Tuple.Append[A, B]
+        def append(a: A, b: B): Tuple.Append[A, B] = a :* b
+      }
+  }
+
+  trait TupleAppendLowPriority {
+    // When A is not a tuple, create a pair
+    given pairAppend[A, B]: TupleAppend.Aux[A, B, (A, B)] =
       new TupleAppend[A, B] {
         type Out = (A, B)
         def append(a: A, b: B): (A, B) = (a, b)
       }
-  }
-
-  trait TupleAppendLowPriority extends TupleAppendLowestPriority {
-    implicit def append2[A, B, C]: TupleAppend.Aux[(A, B), C, (A, B, C)] =
-      new TupleAppend[(A, B), C] {
-        type Out = (A, B, C)
-        def append(t: (A, B), c: C): (A, B, C) = (t._1, t._2, c)
-      }
-  }
-
-  trait TupleAppend3 extends TupleAppendLowPriority {
-    implicit def append3[A, B, C, D]: TupleAppend.Aux[(A, B, C), D, (A, B, C, D)] =
-      new TupleAppend[(A, B, C), D] {
-        type Out = (A, B, C, D)
-        def append(t: (A, B, C), d: D): (A, B, C, D) = (t._1, t._2, t._3, d)
-      }
-  }
-
-  trait TupleAppend4 extends TupleAppend3 {
-    implicit def append4[A, B, C, D, E]: TupleAppend.Aux[(A, B, C, D), E, (A, B, C, D, E)] =
-      new TupleAppend[(A, B, C, D), E] {
-        type Out = (A, B, C, D, E)
-        def append(t: (A, B, C, D), e: E): (A, B, C, D, E) = (t._1, t._2, t._3, t._4, e)
-      }
-  }
-
-  trait TupleAppend5 extends TupleAppend4 {
-    implicit def append5[A, B, C, D, E, F]
-      : TupleAppend.Aux[(A, B, C, D, E), F, (A, B, C, D, E, F)] =
-      new TupleAppend[(A, B, C, D, E), F] {
-        type Out = (A, B, C, D, E, F)
-        def append(t: (A, B, C, D, E), f: F): (A, B, C, D, E, F) = (t._1, t._2, t._3, t._4, t._5, f)
-      }
-  }
-
-  trait TupleAppend6 extends TupleAppend5 {
-    implicit def append6[A, B, C, D, E, F, G]
-      : TupleAppend.Aux[(A, B, C, D, E, F), G, (A, B, C, D, E, F, G)] =
-      new TupleAppend[(A, B, C, D, E, F), G] {
-        type Out = (A, B, C, D, E, F, G)
-        def append(t: (A, B, C, D, E, F), g: G): (A, B, C, D, E, F, G) =
-          (t._1, t._2, t._3, t._4, t._5, t._6, g)
-      }
-  }
-
-  trait TupleAppend7 extends TupleAppend6 {
-    implicit def append7[A, B, C, D, E, F, G, H]
-      : TupleAppend.Aux[(A, B, C, D, E, F, G), H, (A, B, C, D, E, F, G, H)] =
-      new TupleAppend[(A, B, C, D, E, F, G), H] {
-        type Out = (A, B, C, D, E, F, G, H)
-        def append(t: (A, B, C, D, E, F, G), h: H): (A, B, C, D, E, F, G, H) =
-          (t._1, t._2, t._3, t._4, t._5, t._6, t._7, h)
-      }
-  }
-
-  trait TupleAppend8 extends TupleAppend7 {
-    implicit def append8[A, B, C, D, E, F, G, H, I]
-      : TupleAppend.Aux[(A, B, C, D, E, F, G, H), I, (A, B, C, D, E, F, G, H, I)] =
-      new TupleAppend[(A, B, C, D, E, F, G, H), I] {
-        type Out = (A, B, C, D, E, F, G, H, I)
-        def append(t: (A, B, C, D, E, F, G, H), i: I): (A, B, C, D, E, F, G, H, I) =
-          (t._1, t._2, t._3, t._4, t._5, t._6, t._7, t._8, i)
-      }
-  }
-
-  trait TupleAppend9 extends TupleAppend8 {
-    implicit def append9[A, B, C, D, E, F, G, H, I, J]
-      : TupleAppend.Aux[(A, B, C, D, E, F, G, H, I), J, (A, B, C, D, E, F, G, H, I, J)] =
-      new TupleAppend[(A, B, C, D, E, F, G, H, I), J] {
-        type Out = (A, B, C, D, E, F, G, H, I, J)
-        def append(t: (A, B, C, D, E, F, G, H, I), j: J): (A, B, C, D, E, F, G, H, I, J) =
-          (t._1, t._2, t._3, t._4, t._5, t._6, t._7, t._8, t._9, j)
-      }
-  }
-
-  trait TupleAppend10 extends TupleAppend9 {
-    implicit def append10[A, B, C, D, E, F, G, H, I, J, K]
-      : TupleAppend.Aux[(A, B, C, D, E, F, G, H, I, J), K, (A, B, C, D, E, F, G, H, I, J, K)] =
-      new TupleAppend[(A, B, C, D, E, F, G, H, I, J), K] {
-        type Out = (A, B, C, D, E, F, G, H, I, J, K)
-        def append(t: (A, B, C, D, E, F, G, H, I, J), k: K): (A, B, C, D, E, F, G, H, I, J, K) =
-          (t._1, t._2, t._3, t._4, t._5, t._6, t._7, t._8, t._9, t._10, k)
-      }
-  }
-
-  object TupleAppend extends TupleAppend10 {
-    type Aux[A, B, O] = TupleAppend[A, B] { type Out = O }
   }
 
   /**
@@ -1636,9 +1403,12 @@ package object etl4s {
       def Pipeline[A, B](f: T => A => B): Reader[T, Pipeline[A, B]] =
         etl4s.Pipeline.requires[T, A, B](f)
 
+      def Node[A, B](f: T => A => B): Reader[T, Node[A, B]] =
+        etl4s.Node.requires[T, A, B](f)
+
       def tap[A](f: T => A => Any): Reader[T, Node[A, A]] =
         Reader { ctx =>
-          Node { a =>
+          etl4s.Node { a =>
             f(ctx)(a)
             a
           }
@@ -1692,7 +1462,7 @@ package object etl4s {
     def withSpan[T](name: String, attributes: (String, Any)*)(block: => T): T = {
       val provider = observabilityProvider.get()
       provider match {
-        case Some(p) => p.withSpan(name, attributes: _*)(block)
+        case Some(p) => p.withSpan(name, attributes*)(block)
         case None    => block
       }
     }
@@ -1733,6 +1503,35 @@ package object etl4s {
     }
   }
 
+  /**
+   * Minimal interface for OpenTelemetry integration.
+   * Direct method calls avoid intermediate object creation.
+   * 
+   * @example
+   * {{{
+   * class MyEtl4sTelemetry extends Etl4sTelemetry {
+   *   private val tracer = GlobalOpenTelemetry.getTracer("my-app")
+   *   private val meter = GlobalOpenTelemetry.getMeter("my-app")
+   *   
+   *   def withSpan[T](name: String, attributes: (String, Any)*)(block: => T): T = {
+   *     val span = tracer.spanBuilder(name).startSpan()
+   *     try block finally span.end()
+   *   }
+   *   
+   *   def addCounter(name: String, value: Long): Unit = {
+   *     meter.counterBuilder(name).build().add(value)
+   *   }
+   *   
+   *   def setGauge(name: String, value: Double): Unit = {
+   *     meter.gaugeBuilder(name).build().set(value)
+   *   }
+   *   
+   *   def recordHistogram(name: String, value: Double): Unit = {
+   *     meter.histogramBuilder(name).build().record(value)
+   *   }
+   * }
+   * }}}
+   */
   // Etl4sTelemetry, Etl4sNoOpTelemetry, Etl4sConsoleTelemetry defined in shared src/Telemetry.scala
 
   /**
@@ -1751,11 +1550,10 @@ package object etl4s {
       def toMermaid(t: T): String = new LineageCollectionOps(Seq(t)).toMermaid
     }
 
-    implicit def nodeRenderer[A, B]: LineageRenderer[Node[A, B]] = singleItemRenderer[Node[A, B]]
-    implicit def readerRenderer[R, A]: LineageRenderer[Reader[R, A]] =
-      singleItemRenderer[Reader[R, A]]
+    given nodeRenderer[A, B]: LineageRenderer[Node[A, B]]     = singleItemRenderer[Node[A, B]]
+    given readerRenderer[R, A]: LineageRenderer[Reader[R, A]] = singleItemRenderer[Reader[R, A]]
 
-    implicit def seqRenderer[T]: LineageRenderer[Seq[T]] = new LineageRenderer[Seq[T]] {
+    given seqRenderer[T]: LineageRenderer[Seq[T]] = new LineageRenderer[Seq[T]] {
       def toJson(items: Seq[T]): String    = new LineageCollectionOps(items).toJson
       def toDot(items: Seq[T]): String     = new LineageCollectionOps(items).toDot
       def toMermaid(items: Seq[T]): String = new LineageCollectionOps(items).toMermaid
@@ -1765,19 +1563,35 @@ package object etl4s {
   /**
    * Extension methods for lineage rendering using typeclass.
    */
-  implicit class LineageOps[T](val t: T)(implicit renderer: LineageRenderer[T]) {
+  extension [T](t: T)(using renderer: LineageRenderer[T]) {
     def toJson: String    = renderer.toJson(t)
     def toDot: String     = renderer.toDot(t)
     def toMermaid: String = renderer.toMermaid(t)
   }
 
   /**
-   * Extension methods for adding lineage to Nodes.
+   * Type class for attaching lineage to different types.
    */
-  implicit class NodeLineageOps[A, B](val node: Node[A, B]) {
+  trait LineageAttachable[T, Out] {
+    def withLineage(t: T, lineage: Lineage): Out
+  }
+
+  given nodeLineageAttachable[A, B]: LineageAttachable[Node[A, B], Node[A, B]] with {
+    def withLineage(node: Node[A, B], lineage: Lineage): Node[A, B] = node.withLineage(lineage)
+  }
+
+  given readerLineageAttachable[R, A]: LineageAttachable[Reader[R, A], Reader[R, A]] with {
+    def withLineage(reader: Reader[R, A], lineage: Lineage): Reader[R, A] =
+      reader.withLineage(lineage)
+  }
+
+  /**
+   * Universal extension for adding lineage to any type with LineageAttachable.
+   */
+  extension [T, Out](t: T)(using attachable: LineageAttachable[T, Out]) {
 
     /**
-     * Attaches lineage information to this node.
+     * Attaches lineage information.
      *
      * @param name the unique name/identifier for this pipeline component
      * @param inputs list of input data source names
@@ -1785,7 +1599,7 @@ package object etl4s {
      * @param schedule optional schedule information
      * @param cluster optional cluster/group name
      * @param upstreams list of upstream Node/Reader objects or String names this depends on
-     * @return a new Node with the attached lineage
+     * @return a new instance with the attached lineage
      *
      * @example
      * {{{
@@ -1811,89 +1625,24 @@ package object etl4s {
       group: String = "",
       tags: List[String] = List.empty,
       links: Map[String, String] = Map.empty
-    ): Node[A, B] = {
-      node.withLineage(
-        Lineage(
-          name,
-          inputs,
-          outputs,
-          upstreams,
-          schedule,
-          cluster,
-          description,
-          group,
-          tags,
-          links
-        )
-      )
-    }
-  }
-
-  /**
-   * Extension methods for adding lineage to Readers.
-   */
-  implicit class ReaderLineageOps[R, A](val reader: Reader[R, A]) {
-
-    /**
-     * Attaches lineage information to this reader.
-     *
-     * @param name the unique name/identifier for this pipeline component
-     * @param inputs list of input data source names
-     * @param outputs list of output data source names
-     * @param schedule optional schedule information
-     * @param cluster optional cluster/group name
-     * @param upstreams list of upstream Node/Reader objects or String names this depends on
-     * @param description optional description of the pipeline
-     * @param group optional group name for collapsing nodes
-     * @param tags optional list of tags
-     * @param links optional map of link names to URLs
-     * @return a new Reader with the attached lineage
-     */
-    def lineage(
-      name: String,
-      inputs: List[String] = List.empty,
-      outputs: List[String] = List.empty,
-      upstreams: List[Any] = List.empty,
-      schedule: String = "",
-      cluster: String = "",
-      description: String = "",
-      group: String = "",
-      tags: List[String] = List.empty,
-      links: Map[String, String] = Map.empty
-    ): Reader[R, A] = {
-      reader.withLineage(
-        Lineage(
-          name,
-          inputs,
-          outputs,
-          upstreams,
-          schedule,
-          cluster,
-          description,
-          group,
-          tags,
-          links
-        )
-      )
-    }
+    ): Out = attachable.withLineage(
+      t,
+      Lineage(name, inputs, outputs, upstreams, schedule, cluster, description, group, tags, links)
+    )
   }
 
   // LineageNode, LineageEdge, LineageCluster, LineageGraph defined in shared src/Lineage.scala
   // ValidationException defined in shared src/Telemetry.scala
 
   /**
-   * Extension methods for adding validation to Nodes.
-   * 
-   * Validation functions return None if valid, Some(errorMessage) if invalid.
-   * All validation errors are collected and logged to Trace before throwing.
+   * Private helper object for validation operations.
    */
-  implicit class NodeValidationOps[A, B](val node: Node[A, B]) {
-
-    private def validateInput(a: A, checks: Seq[A => Option[String]], parallel: Boolean)(implicit
+  private object ValidationHelpers {
+    def validateInput[A](a: A, checks: Seq[A => Option[String]], parallel: Boolean)(using
       ec: ExecutionContext
     ): Unit = {
-      val errors = if (parallel) {
-        Platform.runAll(checks.map(check => () => check(a))).flatten
+      val errors = if (parallel && checks.size > 1) {
+        checks.map(check => Platform.runParallel(check(a), ())._1).flatten
       } else {
         checks.flatMap(_(a))
       }
@@ -1904,11 +1653,11 @@ package object etl4s {
       }
     }
 
-    private def validateOutput(b: B, checks: Seq[B => Option[String]], parallel: Boolean)(implicit
+    def validateOutput[B](b: B, checks: Seq[B => Option[String]], parallel: Boolean)(using
       ec: ExecutionContext
     ): Unit = {
-      val errors = if (parallel) {
-        Platform.runAll(checks.map(check => () => check(b))).flatten
+      val errors = if (parallel && checks.size > 1) {
+        checks.map(check => Platform.runParallel(check(b), ())._1).flatten
       } else {
         checks.flatMap(_(b))
       }
@@ -1919,15 +1668,13 @@ package object etl4s {
       }
     }
 
-    private def validateChange(
+    def validateChange[A, B](
       pair: (A, B),
       checks: Seq[((A, B)) => Option[String]],
       parallel: Boolean
-    )(implicit
-      ec: ExecutionContext
-    ): Unit = {
-      val errors = if (parallel) {
-        Platform.runAll(checks.map(check => () => check(pair))).flatten
+    )(using ec: ExecutionContext): Unit = {
+      val errors = if (parallel && checks.size > 1) {
+        checks.map(check => Platform.runParallel(check(pair), ())._1).flatten
       } else {
         checks.flatMap(_(pair))
       }
@@ -1938,32 +1685,14 @@ package object etl4s {
       }
     }
 
-    private def warnInput(a: A, checks: Seq[A => Option[String]], parallel: Boolean)(implicit
-      ec: ExecutionContext
-    ): Unit = logWarnings("Input", checks, a, parallel)
-
-    private def warnOutput(b: B, checks: Seq[B => Option[String]], parallel: Boolean)(implicit
-      ec: ExecutionContext
-    ): Unit = logWarnings("Output", checks, b, parallel)
-
-    private def warnChange(
-      pair: (A, B),
-      checks: Seq[((A, B)) => Option[String]],
-      parallel: Boolean
-    )(implicit
-      ec: ExecutionContext
-    ): Unit = logWarnings("Change", checks, pair, parallel)
-
-    private def logWarnings[V](
+    def logWarnings[V](
       stage: String,
       checks: Seq[V => Option[String]],
       value: V,
       parallel: Boolean
-    )(implicit
-      ec: ExecutionContext
-    ): Unit = {
-      val errors = if (parallel) {
-        Platform.runAll(checks.map(check => () => check(value))).flatten
+    )(using ec: ExecutionContext): Unit = {
+      val errors = if (parallel && checks.size > 1) {
+        checks.map(check => Platform.runParallel(check(value), ())._1).flatten
       } else {
         checks.flatMap(_(value))
       }
@@ -1971,15 +1700,24 @@ package object etl4s {
         Trace.log(s"$stage validation warning:\n${errors.map(e => s"  - $e").mkString("\n")}")
       }
     }
+  }
+
+  /**
+   * Extension methods for adding validation to Nodes.
+   *
+   * Validation functions return None if valid, Some(errorMessage) if invalid.
+   * All validation errors are collected and logged to Trace before throwing.
+   */
+  extension [A, B](node: Node[A, B]) {
 
     /**
      * Adds multiple validation checks in one call.
-     * 
+     *
      * @param input validation functions for input
      * @param output validation functions for output
      * @param change validation functions for the transformation
      * @return a new Node with all validations applied
-     * 
+     *
      * @example
      * {{{
      * val process = Node[Int, String](n => s"Value: $n")
@@ -1997,46 +1735,43 @@ package object etl4s {
       if (input.isEmpty && output.isEmpty && change.isEmpty) node
       else
         Node { a =>
-          if (input.nonEmpty) validateInput(a, input, parallel = false)(ExecutionContext.global)
+          if (input.nonEmpty)
+            ValidationHelpers.validateInput(a, input, parallel = false)(using
+              ExecutionContext.global
+            )
           val result = node.f(a)
           if (output.nonEmpty)
-            validateOutput(result, output, parallel = false)(ExecutionContext.global)
+            ValidationHelpers.validateOutput(result, output, parallel = false)(using
+              ExecutionContext.global
+            )
           if (change.nonEmpty)
-            validateChange((a, result), change, parallel = false)(ExecutionContext.global)
+            ValidationHelpers.validateChange((a, result), change, parallel = false)(using
+              ExecutionContext.global
+            )
           result
         }
 
     /**
      * Adds multiple validation checks in one call with parallel execution.
-     * 
-     * @param input validation functions for input
-     * @param output validation functions for output
-     * @param change validation functions for the transformation
-     * @param ec ExecutionContext for parallel execution
-     * @return a new Node with all validations applied
      */
     def ensurePar(
       input: Seq[A => Option[String]] = Nil,
       output: Seq[B => Option[String]] = Nil,
       change: Seq[((A, B)) => Option[String]] = Nil
-    )(implicit ec: ExecutionContext = ExecutionContext.global): Node[A, B] =
+    )(using ec: ExecutionContext = ExecutionContext.global): Node[A, B] =
       if (input.isEmpty && output.isEmpty && change.isEmpty) node
       else
         Node { a =>
-          if (input.nonEmpty) validateInput(a, input, parallel = true)
+          if (input.nonEmpty) ValidationHelpers.validateInput(a, input, parallel = true)
           val result = node.f(a)
-          if (output.nonEmpty) validateOutput(result, output, parallel = true)
-          if (change.nonEmpty) validateChange((a, result), change, parallel = true)
+          if (output.nonEmpty) ValidationHelpers.validateOutput(result, output, parallel = true)
+          if (change.nonEmpty)
+            ValidationHelpers.validateChange((a, result), change, parallel = true)
           result
         }
 
     /**
      * Adds validation checks that log warnings instead of throwing exceptions.
-     * 
-     * @param input validation functions for input
-     * @param output validation functions for output
-     * @param change validation functions for the transformation
-     * @return a new Node with all validations applied
      */
     def ensureWarn(
       input: Seq[A => Option[String]] = Nil,
@@ -2046,65 +1781,122 @@ package object etl4s {
       if (input.isEmpty && output.isEmpty && change.isEmpty) node
       else
         Node { a =>
-          if (input.nonEmpty) warnInput(a, input, parallel = false)(ExecutionContext.global)
+          if (input.nonEmpty)
+            ValidationHelpers.logWarnings("Input", input, a, parallel = false)(using
+              ExecutionContext.global
+            )
           val result = node.f(a)
-          if (output.nonEmpty) warnOutput(result, output, parallel = false)(ExecutionContext.global)
+          if (output.nonEmpty)
+            ValidationHelpers.logWarnings("Output", output, result, parallel = false)(using
+              ExecutionContext.global
+            )
           if (change.nonEmpty)
-            warnChange((a, result), change, parallel = false)(ExecutionContext.global)
+            ValidationHelpers.logWarnings("Change", change, (a, result), parallel = false)(using
+              ExecutionContext.global
+            )
           result
         }
 
     /**
      * Adds validation checks with parallel execution that log warnings instead of throwing exceptions.
-     * 
-     * @param input validation functions for input
-     * @param output validation functions for output
-     * @param change validation functions for the transformation
-     * @param ec ExecutionContext for parallel execution
-     * @return a new Node with all validations applied
      */
     def ensureParWarn(
       input: Seq[A => Option[String]] = Nil,
       output: Seq[B => Option[String]] = Nil,
       change: Seq[((A, B)) => Option[String]] = Nil
-    )(implicit ec: ExecutionContext = ExecutionContext.global): Node[A, B] =
+    )(using ec: ExecutionContext = ExecutionContext.global): Node[A, B] =
       if (input.isEmpty && output.isEmpty && change.isEmpty) node
       else
         Node { a =>
-          if (input.nonEmpty) warnInput(a, input, parallel = true)
+          if (input.nonEmpty) ValidationHelpers.logWarnings("Input", input, a, parallel = true)
           val result = node.f(a)
-          if (output.nonEmpty) warnOutput(result, output, parallel = true)
-          if (change.nonEmpty) warnChange((a, result), change, parallel = true)
+          if (output.nonEmpty)
+            ValidationHelpers.logWarnings("Output", output, result, parallel = true)
+          if (change.nonEmpty)
+            ValidationHelpers.logWarnings("Change", change, (a, result), parallel = true)
           result
         }
+
+    /**
+     * Conditional branching for Nodes.
+     */
+    def If[C](condition: B => Boolean)(branch: Node[B, C]): PartialConditionalBuilder[A, B, C] =
+      PartialConditionalBuilder(node, List((condition, branch)))
   }
 
   /**
-   * Non-exhaustive conditional builder for Nodes.
+   * Non-exhaustive conditional builder for Nodes with heterogeneous output types.
+   * Each branch can produce a different output type, accumulating as a union.
+   *
+   * @tparam A input type to the source node
+   * @tparam B output type from source node (input to branches)
+   * @tparam C accumulated union type of all branch outputs
    */
   case class PartialConditionalBuilder[A, B, C](
     sourceNode: Node[A, B],
     branches: List[(B => Boolean, Node[B, C])]
   ) {
-    def ElseIf(condition: B => Boolean)(branch: Node[B, C]): PartialConditionalBuilder[A, B, C] =
-      PartialConditionalBuilder(sourceNode, branches :+ (condition, branch))
 
-    def Else(branch: Node[B, C]): Node[A, C] = Node { a =>
-      val b = sourceNode.f(a)
-      branches.find(_._1(b)).map(_._2.f(b)).getOrElse(branch.f(b))
+    /**
+     * Add another conditional branch with potentially different output type.
+     * The output types union together: C | C2
+     */
+    def ElseIf[C2](
+      condition: B => Boolean
+    )(branch: Node[B, C2]): PartialConditionalBuilder[A, B, C | C2] =
+      PartialConditionalBuilder(
+        sourceNode,
+        branches.map { case (cond, node) =>
+          (cond, node.asInstanceOf[Node[B, C | C2]])
+        } :+
+          (condition, branch.asInstanceOf[Node[B, C | C2]])
+      )
+
+    /**
+     * Complete the conditional with a default branch.
+     * Output type becomes C | C2 (union of all branches including default).
+     */
+    def Else[C2](branch: Node[B, C2]): Node[A, C | C2] = {
+      val castBranches = branches.map { case (cond, node) =>
+        (cond, node.asInstanceOf[Node[B, C | C2]])
+      }
+      val castDefault = branch.asInstanceOf[Node[B, C | C2]]
+      Node { a =>
+        val b = sourceNode.f(a)
+        castBranches.find(_._1(b)).map(_._2.f(b)).getOrElse(castDefault.f(b))
+      }
     }
   }
 
   /**
-   * Exhaustive conditional builder for Nodes.
+   * Exhaustive conditional builder for Nodes with heterogeneous output types.
+   * Produces a Node[A, C] where C is the union of all branch output types.
+   *
+   * @tparam A input type to the source node
+   * @tparam B output type from source node (input to branches)
+   * @tparam C union type of all branch outputs
    */
   case class CompleteConditionalBuilder[A, B, C](
     sourceNode: Node[A, B],
     branches: List[(B => Boolean, Node[B, C])],
     defaultBranch: Node[B, C]
   ) {
-    def ElseIf(condition: B => Boolean)(branch: Node[B, C]): CompleteConditionalBuilder[A, B, C] =
-      CompleteConditionalBuilder(sourceNode, branches :+ (condition, branch), defaultBranch)
+
+    /**
+     * Add another conditional branch, inserting before the default.
+     * Output type expands to C | C2.
+     */
+    def ElseIf[C2](condition: B => Boolean)(
+      branch: Node[B, C2]
+    ): CompleteConditionalBuilder[A, B, C | C2] =
+      CompleteConditionalBuilder(
+        sourceNode,
+        branches.map { case (cond, node) =>
+          (cond, node.asInstanceOf[Node[B, C | C2]])
+        } :+
+          (condition, branch.asInstanceOf[Node[B, C | C2]]),
+        defaultBranch.asInstanceOf[Node[B, C | C2]]
+      )
 
     def build: Node[A, C] = Node { a =>
       val b = sourceNode.f(a)
@@ -2112,101 +1904,121 @@ package object etl4s {
     }
   }
 
-  /**
-   * Conditional branching for Nodes.
-   */
-  implicit class NodeConditionalOps[A, B](val node: Node[A, B]) {
-    def If[C](condition: B => Boolean)(branch: Node[B, C]): PartialConditionalBuilder[A, B, C] =
-      PartialConditionalBuilder(node, List((condition, branch)))
-  }
-
   implicit def conditionalBuilderToNode[A, B, C](
     builder: CompleteConditionalBuilder[A, B, C]
-  ): Node[A, C] =
-    builder.build
+  ): Node[A, C] = builder.build
 
   /**
    * Type class for lifting branches (Node or Reader) to Reader.
+   * Given a branch type, determines the config type needed.
+   * For Nodes, config type is Any (no requirement).
+   * For Readers, config type is the Reader's type parameter.
    */
-  trait BranchLift[T, B, C, Branch] {
-    def lift(branch: Branch): Reader[T, Node[B, C]]
+  trait BranchLift[B, C, Branch] {
+    type Config
+    def lift(branch: Branch): Reader[Config, Node[B, C]]
   }
 
-  object BranchLift extends BranchLiftLowPriority {
-    implicit def nodeToReader[T, B, C]: BranchLift[T, B, C, Node[B, C]] =
-      new BranchLift[T, B, C, Node[B, C]] {
-        def lift(branch: Node[B, C]): Reader[T, Node[B, C]] = Reader.pure(branch)
-      }
+  object BranchLift {
+    // Node branch: no config requirement (Any)
+    given nodeToReader[B, C]: BranchLift[B, C, Node[B, C]] with {
+      type Config = Any
+      def lift(branch: Node[B, C]): Reader[Any, Node[B, C]] = Reader.pure(branch)
+    }
 
-    implicit def readerIdentity[T, B, C]: BranchLift[T, B, C, Reader[T, Node[B, C]]] =
-      new BranchLift[T, B, C, Reader[T, Node[B, C]]] {
-        def lift(branch: Reader[T, Node[B, C]]): Reader[T, Node[B, C]] = branch
-      }
-  }
-
-  trait BranchLiftLowPriority {
-    implicit def builderToReader[T, B, X, C]
-      : BranchLift[T, B, C, ReaderCompleteConditionalBuilder[T, B, X, C]] =
-      new BranchLift[T, B, C, ReaderCompleteConditionalBuilder[T, B, X, C]] {
-        def lift(builder: ReaderCompleteConditionalBuilder[T, B, X, C]): Reader[T, Node[B, C]] =
-          builder.build
-      }
+    // Reader branch: uses the Reader's config type
+    given readerLift[T, B, C]: BranchLift[B, C, Reader[T, Node[B, C]]] with {
+      type Config = T
+      def lift(branch: Reader[T, Node[B, C]]): Reader[T, Node[B, C]] = branch
+    }
   }
 
   /**
-   * Non-exhaustive conditional builder for Reader-wrapped nodes.
+   * Non-exhaustive conditional builder for Reader-wrapped nodes with heterogeneous types.
+   * Config types accumulate via intersection, output types via union.
    */
   case class ReaderPartialConditionalBuilder[T, A, B, C](
     sourceReader: Reader[T, Node[A, B]],
     branches: List[(T => B => Boolean, Reader[T, Node[B, C]])]
   ) {
-    def ElseIf[Branch](condition: T => B => Boolean)(branch: Branch)(implicit
-      lift: BranchLift[T, B, C, Branch]
-    ): ReaderPartialConditionalBuilder[T, A, B, C] =
-      ReaderPartialConditionalBuilder(sourceReader, branches :+ (condition, lift.lift(branch)))
 
-    def Else[Branch](branch: Branch)(implicit
-      lift: BranchLift[T, B, C, Branch]
-    ): Reader[T, Node[A, C]] = Reader { ctx =>
-      val sourceNode = sourceReader.run(ctx)
-      val evaluatedBranches = branches.map { case (check, readerBranch) =>
-        (check(ctx), readerBranch.run(ctx))
-      }
-      val evaluatedDefault = lift.lift(branch).run(ctx)
-      Node { a =>
-        val b = sourceNode.f(a)
-        evaluatedBranches.find(_._1(b)).map(_._2.f(b)).getOrElse(evaluatedDefault.f(b))
+    /**
+     * Add another conditional branch.
+     * For Node branches: config unchanged, output types union.
+     * For Reader branches: config types intersect, output types union.
+     */
+    def ElseIf[C2, Branch](condition: T => B => Boolean)(branch: Branch)(using
+      lift: BranchLift[B, C2, Branch]
+    ): ReaderPartialConditionalBuilder[T & lift.Config, A, B, C | C2] = {
+      type R   = T & lift.Config
+      type Out = C | C2
+      ReaderPartialConditionalBuilder(
+        sourceReader.asInstanceOf[Reader[R, Node[A, B]]],
+        branches.map((c, r) =>
+          (c.asInstanceOf[R => B => Boolean], r.asInstanceOf[Reader[R, Node[B, Out]]])
+        ) :+
+          (
+            condition.asInstanceOf[R => B => Boolean],
+            lift.lift(branch).asInstanceOf[Reader[R, Node[B, Out]]]
+          )
+      )
+    }
+
+    /** Complete the conditional with a default branch. */
+    def Else[C2, Branch](branch: Branch)(using
+      lift: BranchLift[B, C2, Branch]
+    ): Reader[T & lift.Config, Node[A, C | C2]] = {
+      type R   = T & lift.Config
+      type Out = C | C2
+      Reader { ctx =>
+        val source = sourceReader.asInstanceOf[Reader[R, Node[A, B]]].run(ctx)
+        val evaluated = branches.map((c, r) =>
+          (c.asInstanceOf[R => B => Boolean](ctx), r.asInstanceOf[Reader[R, Node[B, Out]]].run(ctx))
+        )
+        val default = lift.lift(branch).asInstanceOf[Reader[R, Node[B, Out]]].run(ctx)
+        Node { a =>
+          val b = source.f(a)
+          evaluated.find(_._1(b)).map(_._2.f(b)).getOrElse(default.f(b))
+        }
       }
     }
   }
 
   /**
-   * Exhaustive conditional builder for Reader-wrapped nodes.
+   * Exhaustive conditional builder for Reader-wrapped nodes with heterogeneous types.
    */
   case class ReaderCompleteConditionalBuilder[T, A, B, C](
     sourceReader: Reader[T, Node[A, B]],
     branches: List[(T => B => Boolean, Reader[T, Node[B, C]])],
     defaultBranch: Reader[T, Node[B, C]]
   ) {
-    def ElseIf[Branch](condition: T => B => Boolean)(branch: Branch)(implicit
-      lift: BranchLift[T, B, C, Branch]
-    ): ReaderCompleteConditionalBuilder[T, A, B, C] =
+
+    /** Add another conditional branch before the default. */
+    def ElseIf[C2, Branch](condition: T => B => Boolean)(branch: Branch)(using
+      lift: BranchLift[B, C2, Branch]
+    ): ReaderCompleteConditionalBuilder[T & lift.Config, A, B, C | C2] = {
+      type R   = T & lift.Config
+      type Out = C | C2
       ReaderCompleteConditionalBuilder(
-        sourceReader,
-        branches :+ (condition, lift.lift(branch)),
-        defaultBranch
+        sourceReader.asInstanceOf[Reader[R, Node[A, B]]],
+        branches.map((c, r) =>
+          (c.asInstanceOf[R => B => Boolean], r.asInstanceOf[Reader[R, Node[B, Out]]])
+        ) :+
+          (
+            condition.asInstanceOf[R => B => Boolean],
+            lift.lift(branch).asInstanceOf[Reader[R, Node[B, Out]]]
+          ),
+        defaultBranch.asInstanceOf[Reader[R, Node[B, Out]]]
       )
+    }
 
     def build: Reader[T, Node[A, C]] = Reader { ctx =>
-      val sourceNode = sourceReader.run(ctx)
-      val evaluatedBranches = branches.map { case (check, readerBranch) =>
-        (check(ctx), readerBranch.run(ctx))
-      }
-      val evaluatedDefault = defaultBranch.run(ctx)
-
+      val source    = sourceReader.run(ctx)
+      val evaluated = branches.map((c, r) => (c(ctx), r.run(ctx)))
+      val default   = defaultBranch.run(ctx)
       Node { a =>
-        val b = sourceNode.f(a)
-        evaluatedBranches.find(_._1(b)).map(_._2.f(b)).getOrElse(evaluatedDefault.f(b))
+        val b = source.f(a)
+        evaluated.find(_._1(b)).map(_._2.f(b)).getOrElse(default.f(b))
       }
     }
   }
@@ -2216,56 +2028,14 @@ package object etl4s {
   ): Reader[T, Node[A, C]] = builder.build
 
   /**
-   * Conditional branching for Reader-wrapped Nodes.
+   * Context-aware validation helper for Reader[T, Node[A, B]].
    */
-  implicit class ReaderConditionalOps[T, A, B](val reader: Reader[T, Node[A, B]]) {
-    def If[C, Branch](condition: T => B => Boolean)(branch: Branch)(implicit
-      lift: BranchLift[T, B, C, Branch]
-    ): ReaderPartialConditionalBuilder[T, A, B, C] =
-      ReaderPartialConditionalBuilder(reader, List((condition, lift.lift(branch))))
-  }
-
-  /**
-   * Extension methods for adding validation to Reader-wrapped Nodes.
-   * 
-   * Validation functions use curried form (T => A => Option[String]) to match
-   * the Reader pattern. This allows validations to be context-aware and composable.
-   * 
-   * For context-independent checks, use `(_: T) => ...` to ignore the context.
-   */
-  implicit class ReaderValidationOps[T, A, B](val fa: Reader[T, Node[A, B]]) {
-
-    /**
-     * Adds multiple validation checks in one call.
-     * 
-     * Accepts both curried (T => A => Option[String]) and plain (A => Option[String]) checks.
-     * Plain checks are automatically lifted to ignore the context.
-     * 
-     * @param input validation functions for input
-     * @param output validation functions for output
-     * @param change validation functions for the transformation
-     * @return a new Reader[T, Node[A, B]] with all validations applied
-     * 
-     * @example
-     * {{{
-     * val checkPositive = (x: Int) => if (x > 0) None else Some("must be positive")
-     * 
-     * val node = Reader[Config, Node[Int, String]] { _ => Node(_.toString) }
-     *   .ensure(
-     *     input = Seq(
-     *       (cfg: Config) => (x: Int) => if (x >= cfg.min) None else Some("too small"),
-     *       checkPositive  // plain function - automatically lifted!
-     *     ),
-     *     output = Seq(
-     *       (s: String) => if (s.nonEmpty) None else Some("empty")  // also works!
-     *     )
-     *   )
-     * }}}
-     */
-    def ensure(
-      input: Seq[ValidationCheck[T, A]] = Nil,
-      output: Seq[ValidationCheck[T, B]] = Nil,
-      change: Seq[ValidationCheck[T, (A, B)]] = Nil
+  private object ReaderValidationHelper {
+    def ensureImpl[T, A, B](
+      fa: Reader[T, Node[A, B]],
+      input: Seq[ValidationCheck[T, A]],
+      output: Seq[ValidationCheck[T, B]],
+      change: Seq[ValidationCheck[T, (A, B)]]
     ): Reader[T, Node[A, B]] =
       if (input.isEmpty && output.isEmpty && change.isEmpty) fa
       else
@@ -2290,18 +2060,11 @@ package object etl4s {
           }
         }
 
-    /**
-     * Adds validation checks that log warnings instead of throwing exceptions.
-     * 
-     * @param input validation functions for input
-     * @param output validation functions for output
-     * @param change validation functions for the transformation
-     * @return a new Reader[T, Node[A, B]] with all validations applied
-     */
-    def ensureWarn(
-      input: Seq[ValidationCheck[T, A]] = Nil,
-      output: Seq[ValidationCheck[T, B]] = Nil,
-      change: Seq[ValidationCheck[T, (A, B)]] = Nil
+    def ensureWarnImpl[T, A, B](
+      fa: Reader[T, Node[A, B]],
+      input: Seq[ValidationCheck[T, A]],
+      output: Seq[ValidationCheck[T, B]],
+      change: Seq[ValidationCheck[T, (A, B)]]
     ): Reader[T, Node[A, B]] =
       if (input.isEmpty && output.isEmpty && change.isEmpty) fa
       else
@@ -2327,9 +2090,90 @@ package object etl4s {
   }
 
   /**
-   * Extension methods for collections of pipeline components with lineage.
+   * Extension methods for conditional branching and validation on Reader-wrapped Nodes.
+   *
+   * Validation functions use curried form (T => A => Option[String]) to match
+   * the Reader pattern. This allows validations to be context-aware and composable.
    */
-  implicit class LineageCollectionOps[T](val items: Seq[T]) {
+  extension [T, A, B](fa: Reader[T, Node[A, B]]) {
+
+    /**
+     * Conditional branching for Reader-wrapped Nodes.
+     * Works with both Reader and plain Node branches.
+     * Config types accumulate via intersection, output types via union.
+     *
+     * @example
+     * {{{
+     * val result = sourceReader
+     *   .If(cfg => x => x > 0)(readerBranchA)
+     *   .ElseIf(cfg => x => x < 0)(readerBranchB)
+     *   .Else(nodeBranchC)
+     * // Result: Reader[T & ConfigA & ConfigB, Node[A, OutA | OutB | OutC]]
+     * }}}
+     */
+    def If[C, Branch](condition: T => B => Boolean)(branch: Branch)(using
+      lift: BranchLift[B, C, Branch]
+    ): ReaderPartialConditionalBuilder[T & lift.Config, A, B, C] =
+      ReaderPartialConditionalBuilder(
+        fa.asInstanceOf[Reader[T & lift.Config, Node[A, B]]],
+        List(
+          (
+            condition.asInstanceOf[(T & lift.Config) => B => Boolean],
+            lift.lift(branch).asInstanceOf[Reader[T & lift.Config, Node[B, C]]]
+          )
+        )
+      )
+
+  }
+
+  /**
+   * Reader validation extensions using implicit class to allow default arguments
+   * without conflicting with Node extension methods.
+   */
+  implicit class ReaderNodeValidationOps[T, A, B](private val fa: Reader[T, Node[A, B]])
+      extends AnyVal {
+
+    /**
+     * Adds multiple context-aware validation checks in one call.
+     * Uses curried form (T => A => Option[String]) for validators that need config access.
+     *
+     * @param input validation functions for input (curried: T => A => Option[String])
+     * @param output validation functions for output (curried: T => B => Option[String])
+     * @param change validation functions for the transformation
+     * @return a new Reader with all validations applied
+     *
+     * @example
+     * {{{
+     * val checkMin = (cfg: Config) => (x: Int) => if (x >= cfg.min) None else Some("too small")
+     * val node = Reader[Config, Node[Int, Int]] { _ => Node(identity) }
+     *   .ensure(input = Seq(checkMin))
+     * }}}
+     */
+    def ensure(
+      input: Seq[ValidationCheck[T, A]] = Nil,
+      output: Seq[ValidationCheck[T, B]] = Nil,
+      change: Seq[ValidationCheck[T, (A, B)]] = Nil
+    ): Reader[T, Node[A, B]] = ReaderValidationHelper.ensureImpl(fa, input, output, change)
+
+    /**
+     * Adds context-aware validation checks that log warnings instead of throwing exceptions.
+     *
+     * @param input validation functions for input (curried: T => A => Option[String])
+     * @param output validation functions for output (curried: T => B => Option[String])
+     * @param change validation functions for the transformation
+     * @return a new Reader with all validations applied
+     */
+    def ensureWarn(
+      input: Seq[ValidationCheck[T, A]] = Nil,
+      output: Seq[ValidationCheck[T, B]] = Nil,
+      change: Seq[ValidationCheck[T, (A, B)]] = Nil
+    ): Reader[T, Node[A, B]] = ReaderValidationHelper.ensureWarnImpl(fa, input, output, change)
+  }
+
+  /**
+   * LineageCollectionOps - helper class for lineage graph operations.
+   */
+  class LineageCollectionOps[T](val items: Seq[T]) {
 
     /**
      * Converts a collection of Nodes or Readers with lineage information to JSON format.
