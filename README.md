@@ -23,11 +23,11 @@ Battle-tested at [Instacart](https://www.instacart.com/). Part of [d4](https://g
 
 **etl4s** is on MavenCentral and cross-built for Scala, 2.12, 2.13, 3.x
 ```scala
-"xyz.matthieucourt" %% "etl4s" % "1.7.1"
+"xyz.matthieucourt" %% "etl4s" % "1.9.0"
 ```
 Or try in REPL:
 ```bash
-scala-cli repl --scala 3 --dep xyz.matthieucourt:etl4s_3:1.7.1
+scala-cli repl --scala 3 --dep xyz.matthieucourt:etl4s_3:1.9.0
 ```
 
 All you need:
@@ -41,8 +41,8 @@ import etl4s._
 
 val getUser  = Extract("John Doe")
 val getOrder = Extract("Order #1234")
-val combine  = Transform[(String, String), String] { case (user, order) => 
-  s"$user placed $order" 
+val combine  = Transform[(String, String), String] { case (user, order) =>
+  s"$user placed $order"
 }
 val saveDb    = Load[String, String](s => { println(s"DB: $s"); s })
 val sendEmail = Load[String, Unit](s => println(s"Email: $s"))

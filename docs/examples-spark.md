@@ -3,7 +3,7 @@
 etl4s works alongside Spark. Use it to structure your Spark job logic - extraction, transformations, and loading stay composable and type-safe.
 
 ```bash
-scala-cli repl --dep io.github.mattlianje::etl4s:1.7.1 --dep org.apache.spark::spark-sql:3.5.0
+scala-cli repl --dep io.github.mattlianje::etl4s:1.9.0 --dep org.apache.spark::spark-sql:3.5.0
 ```
 
 ## Basic pattern

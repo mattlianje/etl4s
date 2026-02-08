@@ -218,7 +218,7 @@ class Scala3Specs extends munit.FunSuite {
       }
     }
 
-    val source  = Reader[Config, Node[User, User]] { _ => Node[User, User](identity) }
+    val source = Reader[Config, Node[User, User]] { _ => Node[User, User](identity) }
     val toMinor = Reader[Config, Node[User, ProcessedUser]] { _ =>
       Node(u => ProcessedUser(u.name, "minor"))
     }

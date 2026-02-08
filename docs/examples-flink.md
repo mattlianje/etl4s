@@ -3,7 +3,7 @@
 etl4s structures your Flink job logic. Define extraction, transformation, and sinks as composable, type-safe stages.
 
 ```bash
-scala-cli repl --dep io.github.mattlianje::etl4s:1.7.1 --dep org.apache.flink::flink-streaming-scala:1.18.0
+scala-cli repl --dep io.github.mattlianje::etl4s:1.9.0 --dep org.apache.flink::flink-streaming-scala:1.18.0
 ```
 
 ## Basic streaming pattern
