@@ -1400,6 +1400,7 @@ hide:
     ```scala
     import etl4s._
 
+    /* Define building blocks */
     val fiveExtract      = Extract(5)
     val timesTwo         = Transform[Int, Int](_ * 2)
     val plusFive         = Transform[Int, Int](_ + 5)
@@ -1408,8 +1409,10 @@ hide:
     val consoleLoad      = Load[String, Unit](println)
     val dbLoad           = Load[String, Unit](x => println(s"[DB] $x"))
 
+    /* Stitch with ~> */
     val pipeline = fiveExtract ~> timesTwoPlusFive ~> exclaim ~> (consoleLoad & dbLoad)
 
+    /* Run */
     pipeline.unsafeRun()
     // Result: 15!
     // [DB] Result: 15!
