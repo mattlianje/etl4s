@@ -1408,7 +1408,7 @@ hide:
     val consoleLoad = Load[String, Unit](println)
     val dbLoad      = Load[String, Unit](x => println(s"[DB] $x"))
 
-    /* Combine into reusable pieces */
+    /* Compose with `andThen` */
     val timesTwoPlusFive = timesTwo `andThen` plusFive
 
     /* Stitch with ~> */
