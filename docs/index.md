@@ -1401,13 +1401,15 @@ hide:
     import etl4s._
 
     /* Define building blocks */
-    val fiveExtract      = Extract(5)
-    val timesTwo         = Transform[Int, Int](_ * 2)
-    val plusFive         = Transform[Int, Int](_ + 5)
+    val fiveExtract = Extract(5)
+    val timesTwo    = Transform[Int, Int](_ * 2)
+    val plusFive    = Transform[Int, Int](_ + 5)
+    val exclaim     = Transform[Int, String](x => s"Result: $x!")
+    val consoleLoad = Load[String, Unit](println)
+    val dbLoad      = Load[String, Unit](x => println(s"[DB] $x"))
+
+    /* Combine into reusable pieces */
     val timesTwoPlusFive = timesTwo `andThen` plusFive
-    val exclaim          = Transform[Int, String](x => s"Result: $x!")
-    val consoleLoad      = Load[String, Unit](println)
-    val dbLoad           = Load[String, Unit](x => println(s"[DB] $x"))
 
     /* Stitch with ~> */
     val pipeline = fiveExtract ~> timesTwoPlusFive ~> exclaim ~> (consoleLoad & dbLoad)
