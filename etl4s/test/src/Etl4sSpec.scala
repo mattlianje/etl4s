@@ -1778,13 +1778,11 @@ class ConditionalBranchingSpecs extends munit.FunSuite {
 
     val result = node.unsafeRun(10)
     assertEquals(result, "first")
-    // Only first condition should be evaluated
     assertEquals(evaluations, List("cond1"))
 
     evaluations = List.empty
     val result2 = node.unsafeRun(4)
     assertEquals(result2, "second")
-    // First condition false, second condition true
     assertEquals(evaluations, List("cond1", "cond2"))
   }
 
@@ -1808,10 +1806,8 @@ class ConditionalBranchingSpecs extends munit.FunSuite {
       .If(_ < 0)(Node[Int, String](_ => "negative"))
       .ElseIf(_ > 0)(Node[Int, String](_ => "positive"))
 
-    // partial is a PartialConditionalBuilder, not a Node
     assert(partial.isInstanceOf[PartialConditionalBuilder[?, ?, ?]])
 
-    // Adding Else makes it a complete Node
     val complete = partial.Else(Node[Int, String](_ => "zero"))
     assertEquals(complete.unsafeRun(-5), "negative")
     assertEquals(complete.unsafeRun(5), "positive")
@@ -1924,7 +1920,6 @@ class ConditionalBranchingSpecs extends munit.FunSuite {
       Node(n => s"positive:${n * cfg.multiplier}")
     }
 
-    // Plain condition syntax - no config needed for this check!
     val pipeline = source
       .If((n: Int) => n < 0)(formatNegative)
       .Else(formatPositive)
@@ -1937,7 +1932,6 @@ class ConditionalBranchingSpecs extends munit.FunSuite {
   test("Reader conditional with nested branching") {
     case class Config(threshold: Int)
 
-    // Outer condition uses plain syntax, inner uses config-aware syntax
     val outer = Reader[Config, Node[Int, Int]] { _ => Node[Int, Int](identity) }
       .If((_: Int) < 0)(
         Reader[Config, Node[Int, Int]] { _ => Node(n => n.abs) }
@@ -1981,7 +1975,6 @@ class ConditionalBranchingSpecs extends munit.FunSuite {
     val toBelow = Reader[Config, Node[Int, String]] { _ => Node[Int, String](_ => "below") }
     val toAbove = Reader[Config, Node[Int, String]] { _ => Node[Int, String](_ => "above") }
 
-    // Config-aware condition
     val branch2: Reader[Config, Node[Int, String]] = source2
       .If((cfg: Config) => (n: Int) => n < cfg.threshold)(toBelow)
       .Else(toAbove)
@@ -2001,7 +1994,6 @@ class ConditionalBranchingSpecs extends munit.FunSuite {
     val toZero     = Node[Int, String](_ => "zero")
     val toPositive = Node[Int, String](n => s"positive:$n")
 
-    // Plain conditions - the whole point of ConditionLift!
     val pipeline = source
       .If((n: Int) => n < 0)(toNegative)
       .ElseIf((n: Int) => n == 0)(toZero)
@@ -2020,7 +2012,6 @@ class ConditionalBranchingSpecs extends munit.FunSuite {
     val formatBelow = Node[Int, String](n => s"below:$n")
     val formatAbove = Node[Int, String](n => s"above:$n")
 
-    // Config-aware condition
     val pipeline = source
       .If((cfg: Config) => (n: Int) => n < cfg.threshold)(formatBelow)
       .Else(formatAbove)
@@ -2039,7 +2030,6 @@ class ConditionalBranchingSpecs extends munit.FunSuite {
     val toSmallNeg = Node[Int, String](n => s"small-neg:$n")
     val toLargeNeg = Node[Int, String](n => s"large-neg:$n")
 
-    // Config-aware condition
     val negBranch = toAbs
       .If((cfg: Config) => (n: Int) => n < cfg.threshold)(toSmallNeg)
       .Else(toLargeNeg)
@@ -2048,12 +2038,10 @@ class ConditionalBranchingSpecs extends munit.FunSuite {
     val toSmallPos = Node[Int, String](n => s"small-pos:$n")
     val toLargePos = Node[Int, String](n => s"large-pos:$n")
 
-    // Config-aware condition
     val posBranch = toIdentity
       .If((cfg: Config) => (n: Int) => n < cfg.threshold)(toSmallPos)
       .Else(toLargePos)
 
-    // Plain condition
     val outer = source
       .If((_: Int) < 0)(negBranch)
       .Else(posBranch)
@@ -2075,10 +2063,9 @@ class ConditionalBranchingSpecs extends munit.FunSuite {
     val aboveThresh = Node[Int, String](n => s"above:$n")
     val negative    = Node[Int, String](n => s"negative:$n")
 
-    // Mix plain and config-aware conditions in same pipeline
     val pipeline = source
-      .If((_: Int) < 0)(negative)                                          // plain condition
-      .ElseIf((cfg: Config) => (n: Int) => n < cfg.threshold)(belowThresh) // config-aware condition
+      .If((_: Int) < 0)(negative)
+      .ElseIf((cfg: Config) => (n: Int) => n < cfg.threshold)(belowThresh)
       .Else(aboveThresh)
 
     val config = Config(10)
@@ -2095,7 +2082,6 @@ class ConditionalBranchingSpecs extends munit.FunSuite {
     val adult  = Node[User, String](u => s"${u.name} is adult")
     val minor  = Node[User, String](u => s"${u.name} is minor")
 
-    // Plain condition using underscore syntax
     val pipeline = source
       .If((_: User).age >= 18)(adult)
       .Else(minor)
@@ -2113,16 +2099,13 @@ class ConditionalBranchingSpecs extends munit.FunSuite {
     val adult  = Node[User, String](u => s"${u.name} is adult")
     val minor  = Node[User, String](u => s"${u.name} is minor")
 
-    // Config-aware condition
     val pipeline = source
       .If((cfg: Config) => (u: User) => u.age >= cfg.minAge)(adult)
       .Else(minor)
 
-    // With minAge=18, Alice (22) is adult, Bob (16) is minor
     assertEquals(pipeline.provide(Config(18)).unsafeRun(User("Alice", 22)), "Alice is adult")
     assertEquals(pipeline.provide(Config(18)).unsafeRun(User("Bob", 16)), "Bob is minor")
 
-    // With minAge=25, both are minors
     assertEquals(pipeline.provide(Config(25)).unsafeRun(User("Alice", 22)), "Alice is minor")
     assertEquals(pipeline.provide(Config(25)).unsafeRun(User("Bob", 16)), "Bob is minor")
   }
@@ -2135,7 +2118,6 @@ class ConditionalBranchingSpecs extends munit.FunSuite {
     val dryRun   = Node[Int, String](n => s"dryrun:$n")
     val normal   = Node[Int, String](n => s"normal:$n")
 
-    // Conditions based purely on config - clean underscore syntax!
     val pipeline = source
       .IfCtx(_.isBackfill)(backfill)
       .ElseIfCtx(_.isDryRun)(dryRun)
