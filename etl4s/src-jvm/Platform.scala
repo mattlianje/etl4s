@@ -16,6 +16,9 @@ object Platform {
   /** Sleep the current thread for the specified milliseconds */
   def sleep(millis: Long): Unit = Thread.sleep(millis)
 
+  /** Generate a random 16-char hex ID */
+  def randomId(): String = java.util.UUID.randomUUID().toString.replace("-", "").take(16)
+
   /** Run a sequence of computations in parallel and collect all results */
   def runAll[A](tasks: Seq[() => A])(implicit ec: ExecutionContext): Seq[A] = {
     val futures = tasks.map(task => Future(task()))

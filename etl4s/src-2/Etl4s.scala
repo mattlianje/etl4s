@@ -1229,8 +1229,7 @@ package object etl4s {
     private val traceCollector: LocalVar[Option[TraceState]] =
       Platform.newLocalVar(None)
 
-    private def generateId(): String =
-      java.util.UUID.randomUUID().toString.replace("-", "").take(16)
+    private def generateId(): String = Platform.randomId()
 
     def setCollector(startTime: Long): Unit = {
       traceCollector.set(
@@ -1778,8 +1777,7 @@ package object etl4s {
     private val observabilityProvider: LocalVar[Option[Etl4sTelemetry]] =
       Platform.newLocalVar(None)
 
-    private def generateSpanId(): String =
-      java.util.UUID.randomUUID().toString.replace("-", "").take(16)
+    private def generateSpanId(): String = Platform.randomId()
 
     private[etl4s] def setProvider(provider: Etl4sTelemetry): Unit = {
       observabilityProvider.set(Some(provider))

@@ -16,6 +16,13 @@ object Platform {
   /** Sleep the current thread for the specified milliseconds */
   def sleep(millis: Long): Unit = Thread.sleep(millis)
 
+  /** Generate a random 16-char hex ID */
+  def randomId(): String = {
+    val chars = "0123456789abcdef"
+    val rng   = new scala.util.Random()
+    (1 to 16).map(_ => chars(rng.nextInt(16))).mkString
+  }
+
   /** Run a sequence of computations in parallel and collect all results */
   def runAll[A](tasks: Seq[() => A])(implicit ec: ExecutionContext): Seq[A] = {
     val futures = tasks.map(task => Future(task()))
