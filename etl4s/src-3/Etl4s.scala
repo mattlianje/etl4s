@@ -1243,7 +1243,6 @@ package object etl4s {
             Some((message :: currentLogs, currentErrors, startTime, telData, spanId, traceId))
           )
         case None =>
-        // No collector set, log is ignored
       }
     }
 
@@ -1255,7 +1254,6 @@ package object etl4s {
             Some((currentLogs, err :: currentErrors, startTime, telData, spanId, traceId))
           )
         case None =>
-        // No collector set, error is ignored
       }
     }
 
@@ -1265,7 +1263,7 @@ package object etl4s {
         case Some((logs, errors, startTime, telData, spanId, traceId)) =>
           val updated = telData.copy(spans = span :: telData.spans)
           traceCollector.set(Some((logs, errors, startTime, updated, spanId, traceId)))
-        case None => // No collector, ignored
+        case None =>
       }
     }
 
@@ -1276,7 +1274,7 @@ package object etl4s {
           val counter = TelCounter(name, value, System.nanoTime())
           val updated = telData.copy(counters = counter :: telData.counters)
           traceCollector.set(Some((logs, errors, startTime, updated, spanId, traceId)))
-        case None => // No collector, ignored
+        case None =>
       }
     }
 
@@ -1287,7 +1285,7 @@ package object etl4s {
           val gauge   = TelGauge(name, value, System.nanoTime())
           val updated = telData.copy(gauges = gauge :: telData.gauges)
           traceCollector.set(Some((logs, errors, startTime, updated, spanId, traceId)))
-        case None => // No collector, ignored
+        case None =>
       }
     }
 
@@ -1298,7 +1296,7 @@ package object etl4s {
           val hist    = TelHistogram(name, value, System.nanoTime())
           val updated = telData.copy(histograms = hist :: telData.histograms)
           traceCollector.set(Some((logs, errors, startTime, updated, spanId, traceId)))
-        case None => // No collector, ignored
+        case None =>
       }
     }
 
@@ -1312,7 +1310,7 @@ package object etl4s {
       traceCollector.get() match {
         case Some((logs, errors, startTime, telData, _, traceId)) =>
           traceCollector.set(Some((logs, errors, startTime, telData, newSpanId, traceId)))
-        case None => // No collector, ignored
+        case None =>
       }
     }
 
@@ -1600,7 +1598,6 @@ package object etl4s {
      * Add an event to the current span.
      */
     def addEvent(name: String, attributes: (String, Any)*): Unit = {
-      // No-op by default - only works when real telemetry provider is active
       // Implementation provided by actual telemetry integration
     }
 
