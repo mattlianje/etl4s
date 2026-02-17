@@ -13,6 +13,12 @@ object Platform {
   /** Sleep - on JS we can't block, so this is a no-op (immediate return) */
   def sleep(millis: Long): Unit = ()
 
+  /** Generate a random 16-char hex ID */
+  def randomId(): String = {
+    val chars = "0123456789abcdef"
+    (1 to 16).map(_ => chars((Math.random() * 16).toInt)).mkString
+  }
+
   /** Run a sequence of computations - on JS this is sequential since single-threaded */
   def runAll[A](tasks: Seq[() => A])(implicit ec: ExecutionContext): Seq[A] = {
     tasks.map(_())
