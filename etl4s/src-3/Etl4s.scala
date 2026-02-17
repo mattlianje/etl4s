@@ -143,7 +143,8 @@ package object etl4s {
             result = result,
             logs = currentTrace.logs,
             timeElapsedMillis = duration,
-            errors = currentTrace.errors
+            errors = currentTrace.errors,
+            telemetry = currentTrace.telemetry
           )
         }
       }
@@ -167,7 +168,8 @@ package object etl4s {
             result = result,
             logs = currentTrace.logs,
             timeElapsedMillis = duration,
-            errors = currentTrace.errors
+            errors = currentTrace.errors,
+            telemetry = currentTrace.telemetry
           )
         }
       }
@@ -1109,7 +1111,8 @@ package object etl4s {
     result: A,
     logs: List[Any] = List.empty,
     timeElapsedMillis: Long = 0L,
-    errors: List[Any] = List.empty
+    errors: List[Any] = List.empty,
+    telemetry: TelemetryData = TelemetryData()
   ) {
 
     /** Check if any errors occurred */
@@ -1123,6 +1126,21 @@ package object etl4s {
 
     /** Get errors as strings */
     def errorsAsStrings: List[String] = errors.map(_.toString)
+
+    /** Get all spans recorded during execution */
+    def spans: List[TelSpan] = telemetry.spans
+
+    /** Get counter totals (summed values for each counter name) */
+    def counterTotals: Map[String, Long] = telemetry.counterTotals
+
+    /** Get latest gauge values (most recent value for each gauge name) */
+    def latestGauges: Map[String, Double] = telemetry.latestGauges
+
+    /** Get histogram values grouped by name */
+    def histogramValues: Map[String, List[Double]] = telemetry.histogramValues
+
+    /** Export trace telemetry as OTEL-compatible JSON */
+    def toOtelJson: String = TraceJsonHelpers.toOtelJson(telemetry)
   }
 
   /** Utility functions */
@@ -1162,12 +1180,18 @@ package object etl4s {
    * including logs, validation errors, and execution timing.
    */
   object Trace {
-    // LocalVar that holds all trace state: (logs, errors, startTime)
-    private val traceCollector: LocalVar[Option[(List[Any], List[Any], Long)]] =
+    // Trace state: (logs, errors, startTime, telemetryData, currentSpanId, traceId)
+    private type TraceState = (List[Any], List[Any], Long, TelemetryData, Option[String], String)
+    private val traceCollector: LocalVar[Option[TraceState]] =
       Platform.newLocalVar(None)
 
+    private def generateId(): String =
+      java.util.UUID.randomUUID().toString.replace("-", "").take(16)
+
     def setCollector(startTime: Long): Unit = {
-      traceCollector.set(Some((List.empty, List.empty, startTime)))
+      traceCollector.set(
+        Some((List.empty, List.empty, startTime, TelemetryData(), None, generateId()))
+      )
     }
 
     def clearCollector(): Unit = {
@@ -1175,37 +1199,39 @@ package object etl4s {
     }
 
     /** Save current collector state for later restoration (supports nesting) */
-    def saveCollector(): Option[(List[Any], List[Any], Long)] = {
+    def saveCollector(): Option[TraceState] = {
       traceCollector.get()
     }
 
     /** Restore a previously saved collector state */
-    def restoreCollector(state: Option[(List[Any], List[Any], Long)]): Unit = {
+    def restoreCollector(state: Option[TraceState]): Unit = {
       traceCollector.set(state)
     }
 
     /**
      * Get the current execution trace as it's being built.
-     * 
+     *
      * Returns a live view of the execution state including logs, errors,
      * and current execution time.
      */
     def current: Trace[Any] = {
       traceCollector.get() match {
-        case Some((logs, errors, startTime)) =>
+        case Some((logs, errors, startTime, telData, _, _)) =>
           val timeElapsedMillis = System.currentTimeMillis() - startTime
           Trace(
             result = (), // Result not available during execution
             logs = logs.reverse,
             timeElapsedMillis = timeElapsedMillis,
-            errors = errors.reverse
+            errors = errors.reverse,
+            telemetry = telData
           )
         case None =>
           Trace(
             result = (),
             logs = List.empty,
             timeElapsedMillis = 0L,
-            errors = List.empty
+            errors = List.empty,
+            telemetry = TelemetryData()
           )
       }
     }
@@ -1213,8 +1239,10 @@ package object etl4s {
     /** Add a log value to the current execution (any type) */
     def log[T](message: T): Unit = {
       traceCollector.get() match {
-        case Some((currentLogs, currentErrors, startTime)) =>
-          traceCollector.set(Some((message :: currentLogs, currentErrors, startTime)))
+        case Some((currentLogs, currentErrors, startTime, telData, spanId, traceId)) =>
+          traceCollector.set(
+            Some((message :: currentLogs, currentErrors, startTime, telData, spanId, traceId))
+          )
         case None =>
         // No collector set, log is ignored
       }
@@ -1223,11 +1251,83 @@ package object etl4s {
     /** Add an error to the current execution (any type) */
     def error[T](err: T): Unit = {
       traceCollector.get() match {
-        case Some((currentLogs, currentErrors, startTime)) =>
-          traceCollector.set(Some((currentLogs, err :: currentErrors, startTime)))
+        case Some((currentLogs, currentErrors, startTime, telData, spanId, traceId)) =>
+          traceCollector.set(
+            Some((currentLogs, err :: currentErrors, startTime, telData, spanId, traceId))
+          )
         case None =>
         // No collector set, error is ignored
       }
+    }
+
+    /** Record a completed span to the current trace */
+    private[etl4s] def recordSpan(span: TelSpan): Unit = {
+      traceCollector.get() match {
+        case Some((logs, errors, startTime, telData, spanId, traceId)) =>
+          val updated = telData.copy(spans = span :: telData.spans)
+          traceCollector.set(Some((logs, errors, startTime, updated, spanId, traceId)))
+        case None => // No collector, ignored
+      }
+    }
+
+    /** Record a counter value to the current trace */
+    private[etl4s] def recordCounter(name: String, value: Long): Unit = {
+      traceCollector.get() match {
+        case Some((logs, errors, startTime, telData, spanId, traceId)) =>
+          val counter = TelCounter(name, value, System.nanoTime())
+          val updated = telData.copy(counters = counter :: telData.counters)
+          traceCollector.set(Some((logs, errors, startTime, updated, spanId, traceId)))
+        case None => // No collector, ignored
+      }
+    }
+
+    /** Record a gauge value to the current trace */
+    private[etl4s] def recordGauge(name: String, value: Double): Unit = {
+      traceCollector.get() match {
+        case Some((logs, errors, startTime, telData, spanId, traceId)) =>
+          val gauge   = TelGauge(name, value, System.nanoTime())
+          val updated = telData.copy(gauges = gauge :: telData.gauges)
+          traceCollector.set(Some((logs, errors, startTime, updated, spanId, traceId)))
+        case None => // No collector, ignored
+      }
+    }
+
+    /** Record a histogram value to the current trace */
+    private[etl4s] def recordHistogram(name: String, value: Double): Unit = {
+      traceCollector.get() match {
+        case Some((logs, errors, startTime, telData, spanId, traceId)) =>
+          val hist    = TelHistogram(name, value, System.nanoTime())
+          val updated = telData.copy(histograms = hist :: telData.histograms)
+          traceCollector.set(Some((logs, errors, startTime, updated, spanId, traceId)))
+        case None => // No collector, ignored
+      }
+    }
+
+    /** Get the current span ID (for parent-child relationships) */
+    private[etl4s] def getCurrentSpanId: Option[String] = {
+      traceCollector.get().flatMap { case (_, _, _, _, spanId, _) => spanId }
+    }
+
+    /** Set the current span ID */
+    private[etl4s] def setCurrentSpanId(newSpanId: Option[String]): Unit = {
+      traceCollector.get() match {
+        case Some((logs, errors, startTime, telData, _, traceId)) =>
+          traceCollector.set(Some((logs, errors, startTime, telData, newSpanId, traceId)))
+        case None => // No collector, ignored
+      }
+    }
+
+    /** Get the current trace ID */
+    private[etl4s] def getTraceId: Option[String] = {
+      traceCollector.get().map { case (_, _, _, _, _, traceId) => traceId }
+    }
+
+    /** Get the current telemetry data */
+    private[etl4s] def getTelemetryData: TelemetryData = {
+      traceCollector
+        .get()
+        .map { case (_, _, _, telData, _, _) => telData }
+        .getOrElse(TelemetryData())
     }
 
     /** Get the current trace state */
@@ -1447,6 +1547,9 @@ package object etl4s {
     private val observabilityProvider: LocalVar[Option[Etl4sTelemetry]] =
       Platform.newLocalVar(None)
 
+    private def generateSpanId(): String =
+      java.util.UUID.randomUUID().toString.replace("-", "").take(16)
+
     private[etl4s] def setProvider(provider: Etl4sTelemetry): Unit = {
       observabilityProvider.set(Some(provider))
     }
@@ -1457,14 +1560,42 @@ package object etl4s {
 
     /**
      * Execute block within a named span with optional attributes.
-     * No-op if no Etl4sTelemetry is set.
+     * Always records span to Trace, and delegates to provider if set.
      */
     def withSpan[T](name: String, attributes: (String, Any)*)(block: => T): T = {
-      val provider = observabilityProvider.get()
-      provider match {
-        case Some(p) => p.withSpan(name, attributes*)(block)
-        case None    => block
-      }
+      val provider     = observabilityProvider.get()
+      val spanId       = generateSpanId()
+      val traceId      = Trace.getTraceId.getOrElse(generateSpanId() + generateSpanId())
+      val parentSpanId = Trace.getCurrentSpanId
+      val startNanos   = System.nanoTime()
+
+      // Set this span as current for child spans
+      Trace.setCurrentSpanId(Some(spanId))
+
+      val result =
+        try {
+          provider match {
+            case Some(p) => p.withSpan(name, attributes*)(block)
+            case None    => block
+          }
+        } finally {
+          val endNanos = System.nanoTime()
+          val span     = TelSpan(
+            name = name,
+            traceId = traceId,
+            spanId = spanId,
+            parentSpanId = parentSpanId,
+            startTimeNanos = startNanos,
+            endTimeNanos = endNanos,
+            durationNanos = endNanos - startNanos,
+            attributes = attributes.toMap,
+            status = "ok"
+          )
+          Trace.recordSpan(span)
+          // Restore parent span as current
+          Trace.setCurrentSpanId(parentSpanId)
+        }
+      result
     }
 
     /**
@@ -1477,27 +1608,30 @@ package object etl4s {
 
     /**
      * Record a counter metric.
-     * No-op if no Etl4sTelemetry is set.
+     * Always records to Trace, and delegates to provider if set.
      */
     def addCounter(name: String, value: Long): Unit = {
+      Trace.recordCounter(name, value)
       val provider = observabilityProvider.get()
       provider.foreach(_.addCounter(name, value))
     }
 
     /**
      * Record a gauge metric.
-     * No-op if no Etl4sTelemetry is set.
+     * Always records to Trace, and delegates to provider if set.
      */
     def setGauge(name: String, value: Double): Unit = {
+      Trace.recordGauge(name, value)
       val provider = observabilityProvider.get()
       provider.foreach(_.setGauge(name, value))
     }
 
     /**
      * Record a histogram metric.
-     * No-op if no Etl4sTelemetry is set.
+     * Always records to Trace, and delegates to provider if set.
      */
     def recordHistogram(name: String, value: Double): Unit = {
+      Trace.recordHistogram(name, value)
       val provider = observabilityProvider.get()
       provider.foreach(_.recordHistogram(name, value))
     }
@@ -1934,6 +2068,31 @@ package object etl4s {
   }
 
   /**
+   * Type class for lifting conditions (plain or curried) to Reader-aware form.
+   * Enables clean syntax: `.If(_.age > 18)` instead of `.If((_: Cfg) => _.age > 18)`
+   */
+  trait ConditionLift[B, Cond] {
+    type Config
+    def lift(cond: Cond): Config => B => Boolean
+  }
+
+  trait ConditionLiftLowPriority {
+    // Curried form: lower priority (uses the condition's config type)
+    given curriedLift[T, B]: ConditionLift[B, T => B => Boolean] with {
+      type Config = T
+      def lift(cond: T => B => Boolean): T => B => Boolean = cond
+    }
+  }
+
+  object ConditionLift extends ConditionLiftLowPriority {
+    // Plain form: higher priority, ignore context (no config requirement)
+    given plainLift[B]: ConditionLift[B, B => Boolean] with {
+      type Config = Any
+      def lift(cond: B => Boolean): Any => B => Boolean = _ => cond
+    }
+  }
+
+  /**
    * Non-exhaustive conditional builder for Reader-wrapped nodes with heterogeneous types.
    * Config types accumulate via intersection, output types via union.
    */
@@ -1944,13 +2103,15 @@ package object etl4s {
 
     /**
      * Add another conditional branch.
+     * Supports both plain conditions ((_: Int) > 0) and curried conditions ((cfg: Config) => (n: Int) => ...).
      * For Node branches: config unchanged, output types union.
      * For Reader branches: config types intersect, output types union.
      */
-    def ElseIf[C2, Branch](condition: T => B => Boolean)(branch: Branch)(using
-      lift: BranchLift[B, C2, Branch]
-    ): ReaderPartialConditionalBuilder[T & lift.Config, A, B, C | C2] = {
-      type R   = T & lift.Config
+    def ElseIf[C2, Branch, Cond](condition: Cond)(branch: Branch)(using
+      condLift: ConditionLift[B, Cond],
+      branchLift: BranchLift[B, C2, Branch]
+    ): ReaderPartialConditionalBuilder[T & condLift.Config & branchLift.Config, A, B, C | C2] = {
+      type R   = T & condLift.Config & branchLift.Config
       type Out = C | C2
       ReaderPartialConditionalBuilder(
         sourceReader.asInstanceOf[Reader[R, Node[A, B]]],
@@ -1958,8 +2119,26 @@ package object etl4s {
           (c.asInstanceOf[R => B => Boolean], r.asInstanceOf[Reader[R, Node[B, Out]]])
         ) :+
           (
-            condition.asInstanceOf[R => B => Boolean],
-            lift.lift(branch).asInstanceOf[Reader[R, Node[B, Out]]]
+            condLift.lift(condition).asInstanceOf[R => B => Boolean],
+            branchLift.lift(branch).asInstanceOf[Reader[R, Node[B, Out]]]
+          )
+      )
+    }
+
+    /** Add branch based purely on config/environment (ignores data). */
+    def ElseIfCtx[C2, Branch](condition: T => Boolean)(branch: Branch)(using
+      branchLift: BranchLift[B, C2, Branch]
+    ): ReaderPartialConditionalBuilder[T & branchLift.Config, A, B, C | C2] = {
+      type R   = T & branchLift.Config
+      type Out = C | C2
+      ReaderPartialConditionalBuilder(
+        sourceReader.asInstanceOf[Reader[R, Node[A, B]]],
+        branches.map((c, r) =>
+          (c.asInstanceOf[R => B => Boolean], r.asInstanceOf[Reader[R, Node[B, Out]]])
+        ) :+
+          (
+            ((t: R) => (_: B) => condition(t)).asInstanceOf[R => B => Boolean],
+            branchLift.lift(branch).asInstanceOf[Reader[R, Node[B, Out]]]
           )
       )
     }
@@ -1971,7 +2150,7 @@ package object etl4s {
       type R   = T & lift.Config
       type Out = C | C2
       Reader { ctx =>
-        val source = sourceReader.asInstanceOf[Reader[R, Node[A, B]]].run(ctx)
+        val source    = sourceReader.asInstanceOf[Reader[R, Node[A, B]]].run(ctx)
         val evaluated = branches.map((c, r) =>
           (c.asInstanceOf[R => B => Boolean](ctx), r.asInstanceOf[Reader[R, Node[B, Out]]].run(ctx))
         )
@@ -1993,11 +2172,14 @@ package object etl4s {
     defaultBranch: Reader[T, Node[B, C]]
   ) {
 
-    /** Add another conditional branch before the default. */
-    def ElseIf[C2, Branch](condition: T => B => Boolean)(branch: Branch)(using
-      lift: BranchLift[B, C2, Branch]
-    ): ReaderCompleteConditionalBuilder[T & lift.Config, A, B, C | C2] = {
-      type R   = T & lift.Config
+    /** Add another conditional branch before the default.
+     * Supports both plain conditions ((_: Int) > 0) and curried conditions ((cfg: Config) => (n: Int) => ...).
+     */
+    def ElseIf[C2, Branch, Cond](condition: Cond)(branch: Branch)(using
+      condLift: ConditionLift[B, Cond],
+      branchLift: BranchLift[B, C2, Branch]
+    ): ReaderCompleteConditionalBuilder[T & condLift.Config & branchLift.Config, A, B, C | C2] = {
+      type R   = T & condLift.Config & branchLift.Config
       type Out = C | C2
       ReaderCompleteConditionalBuilder(
         sourceReader.asInstanceOf[Reader[R, Node[A, B]]],
@@ -2005,8 +2187,27 @@ package object etl4s {
           (c.asInstanceOf[R => B => Boolean], r.asInstanceOf[Reader[R, Node[B, Out]]])
         ) :+
           (
-            condition.asInstanceOf[R => B => Boolean],
-            lift.lift(branch).asInstanceOf[Reader[R, Node[B, Out]]]
+            condLift.lift(condition).asInstanceOf[R => B => Boolean],
+            branchLift.lift(branch).asInstanceOf[Reader[R, Node[B, Out]]]
+          ),
+        defaultBranch.asInstanceOf[Reader[R, Node[B, Out]]]
+      )
+    }
+
+    /** Add branch based purely on config/environment (ignores data). */
+    def ElseIfCtx[C2, Branch](condition: T => Boolean)(branch: Branch)(using
+      branchLift: BranchLift[B, C2, Branch]
+    ): ReaderCompleteConditionalBuilder[T & branchLift.Config, A, B, C | C2] = {
+      type R   = T & branchLift.Config
+      type Out = C | C2
+      ReaderCompleteConditionalBuilder(
+        sourceReader.asInstanceOf[Reader[R, Node[A, B]]],
+        branches.map((c, r) =>
+          (c.asInstanceOf[R => B => Boolean], r.asInstanceOf[Reader[R, Node[B, Out]]])
+        ) :+
+          (
+            ((t: R) => (_: B) => condition(t)).asInstanceOf[R => B => Boolean],
+            branchLift.lift(branch).asInstanceOf[Reader[R, Node[B, Out]]]
           ),
         defaultBranch.asInstanceOf[Reader[R, Node[B, Out]]]
       )
@@ -2100,29 +2301,55 @@ package object etl4s {
     /**
      * Conditional branching for Reader-wrapped Nodes.
      * Works with both Reader and plain Node branches.
+     * Supports both plain conditions ((_: User).age > 18) and curried conditions ((cfg: Config) => (u: User) => ...).
      * Config types accumulate via intersection, output types via union.
      *
      * @example
      * {{{
      * val result = sourceReader
-     *   .If(cfg => x => x > 0)(readerBranchA)
-     *   .ElseIf(cfg => x => x < 0)(readerBranchB)
+     *   .If((_: User).age > 18)(readerBranchA)
+     *   .ElseIf((cfg: Config) => (u: User) => u.age > cfg.minAge)(branchB)
      *   .Else(nodeBranchC)
-     * // Result: Reader[T & ConfigA & ConfigB, Node[A, OutA | OutB | OutC]]
      * }}}
      */
-    def If[C, Branch](condition: T => B => Boolean)(branch: Branch)(using
-      lift: BranchLift[B, C, Branch]
-    ): ReaderPartialConditionalBuilder[T & lift.Config, A, B, C] =
+    def If[C, Branch, Cond](condition: Cond)(branch: Branch)(using
+      condLift: ConditionLift[B, Cond],
+      branchLift: BranchLift[B, C, Branch]
+    ): ReaderPartialConditionalBuilder[T & condLift.Config & branchLift.Config, A, B, C] = {
+      type R = T & condLift.Config & branchLift.Config
       ReaderPartialConditionalBuilder(
-        fa.asInstanceOf[Reader[T & lift.Config, Node[A, B]]],
+        fa.asInstanceOf[Reader[R, Node[A, B]]],
         List(
           (
-            condition.asInstanceOf[(T & lift.Config) => B => Boolean],
-            lift.lift(branch).asInstanceOf[Reader[T & lift.Config, Node[B, C]]]
+            condLift.lift(condition).asInstanceOf[R => B => Boolean],
+            branchLift.lift(branch).asInstanceOf[Reader[R, Node[B, C]]]
           )
         )
       )
+    }
+
+    /** Conditional branching based purely on config/environment (ignores data).
+     * @example
+     * {{{
+     * sourceReader
+     *   .IfCtx((_: Config).isBackfill)(backfillBranch)
+     *   .Else(normalBranch)
+     * }}}
+     */
+    def IfCtx[C, Branch](condition: T => Boolean)(branch: Branch)(using
+      branchLift: BranchLift[B, C, Branch]
+    ): ReaderPartialConditionalBuilder[T & branchLift.Config, A, B, C] = {
+      type R = T & branchLift.Config
+      ReaderPartialConditionalBuilder(
+        fa.asInstanceOf[Reader[R, Node[A, B]]],
+        List(
+          (
+            ((t: R) => (_: B) => condition(t)).asInstanceOf[R => B => Boolean],
+            branchLift.lift(branch).asInstanceOf[Reader[R, Node[B, C]]]
+          )
+        )
+      )
+    }
 
   }
 
@@ -2447,7 +2674,7 @@ package object etl4s {
         inputEdges ++ outputEdges
       }
 
-      val pipelineOutputs = lineages.map(l => (l.name, l.outputs)).toMap
+      val pipelineOutputs         = lineages.map(l => (l.name, l.outputs)).toMap
       val implicitDependencyEdges = lineages.flatMap { lineage =>
         lineage.inputs.flatMap { input =>
           pipelineOutputs.collectFirst {
@@ -2500,7 +2727,7 @@ package object etl4s {
       pipeline: LineageNode,
       indent: Int
     ): Unit = {
-      val ind = "    " * indent
+      val ind           = "    " * indent
       val scheduleLabel = if (pipeline.schedule.nonEmpty) {
         "<BR/><FONT POINT-SIZE=\"9\" COLOR=\"#d63384\"><I>" + pipeline.schedule + "</I></FONT>"
       } else {

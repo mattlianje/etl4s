@@ -152,7 +152,7 @@ class BasicSpecs extends munit.FunSuite {
     val D: Transform[(String, String), String] = Transform { case (a, b) =>
       s"$a + $b"
     }
-    val E: Transform[String, String] = Transform(c => s"$c processed")
+    val E: Transform[String, String]           = Transform(c => s"$c processed")
     val F: Transform[(String, String), String] = Transform { case (d, e) =>
       s"[$d | $e]"
     }
@@ -1159,7 +1159,7 @@ class ValidationSpecs extends munit.FunSuite {
   test("ensure collects multiple input errors") {
     val isPositive = (x: Int) => if (x > 0) None else Some("positive")
     val isEven     = (x: Int) => if (x % 2 == 0) None else Some("even")
-    val node = Node[Int, String](n => s"Value: $n")
+    val node       = Node[Int, String](n => s"Value: $n")
       .ensure(input = isPositive :: isEven :: Nil)
     val ex = intercept[ValidationException](node.unsafeRun(-5))
     assert(ex.getMessage.contains("positive") && ex.getMessage.contains("even"))
@@ -1203,7 +1203,7 @@ class ValidationSpecs extends munit.FunSuite {
     case class Config(min: Int, max: Int)
     val checkMin = (cfg: Config) => (x: Int) => if (x >= cfg.min) None else Some("min")
     val checkMax = (cfg: Config) => (x: Int) => if (x <= cfg.max) None else Some("max")
-    val node = Reader[Config, Node[Int, Int]] { cfg => Node((x: Int) => x) }
+    val node     = Reader[Config, Node[Int, Int]] { cfg => Node((x: Int) => x) }
       .ensure(input = Seq(checkMin, checkMax))
     val config = Config(10, 100)
     assertEquals(node.provide(config).unsafeRun(50), 50)
@@ -1407,7 +1407,7 @@ class ValidationSpecs extends munit.FunSuite {
     import scala.concurrent.ExecutionContext.Implicits.global
     val isPositive  = (x: Int) => if (x > 0) None else Some("Must be positive")
     val lessThan100 = (x: Int) => if (x < 100) None else Some("Must be less than 100")
-    val node =
+    val node        =
       Node[Int, String](n => s"Value: $n").ensureParWarn(input = isPositive :: lessThan100 :: Nil)
     val trace = node.safeRunTrace(-5)
 
@@ -1419,7 +1419,7 @@ class ValidationSpecs extends munit.FunSuite {
   test("Reader ensureWarn logs warnings with context") {
     case class Config(min: Int)
     val checkMin = (cfg: Config) => (x: Int) => if (x >= cfg.min) None else Some("too small")
-    val node = Reader[Config, Node[Int, String]] { _ => Node(n => s"Value: $n") }
+    val node     = Reader[Config, Node[Int, String]] { _ => Node(n => s"Value: $n") }
       .ensureWarn(input = checkMin :: Nil)
     val trace = node.provide(Config(10)).safeRunTrace(5)
 
@@ -1485,6 +1485,164 @@ class ValidationSpecs extends munit.FunSuite {
     intercept[ValidationException](node.provide(config).unsafeRun(-5))
   }
 
+}
+
+class TelTraceCaptureSpecs extends munit.FunSuite {
+
+  test("Tel captured in Trace without provider") {
+    val node = Transform[String, String] { s =>
+      Tel.withSpan("op") {
+        Tel.addCounter("c", 1)
+        Tel.setGauge("g", 42.0)
+        Tel.recordHistogram("h", 100.0)
+        s.toUpperCase
+      }
+    }
+    val trace = node.unsafeRunTrace("hello")
+
+    assertEquals(trace.result, "HELLO")
+    assertEquals(trace.spans.head.name, "op")
+    assertEquals(trace.counterTotals, Map("c" -> 1L))
+    assertEquals(trace.latestGauges, Map("g" -> 42.0))
+    assertEquals(trace.histogramValues, Map("h" -> List(100.0)))
+  }
+
+  test("nested span parent-child") {
+    val node = Transform[String, Int] { s =>
+      Tel.withSpan("outer") {
+        Tel.withSpan("inner") { s.length }
+      }
+    }
+    val trace  = node.unsafeRunTrace("test")
+    val byName = trace.spans.map(s => s.name -> s).toMap
+
+    assertEquals(byName("inner").parentSpanId, Some(byName("outer").spanId))
+    assertEquals(byName("outer").parentSpanId, None)
+    assertEquals(byName("inner").traceId, byName("outer").traceId)
+  }
+
+  test("counter accumulation") {
+    val node = Transform[Unit, Unit] { _ =>
+      Tel.addCounter("x", 5L)
+      Tel.addCounter("x", 3L)
+      Tel.addCounter("y", 1L)
+    }
+    val trace = node.unsafeRunTrace(())
+
+    assertEquals(trace.counterTotals("x"), 8L)
+    assertEquals(trace.counterTotals("y"), 1L)
+  }
+
+  test("gauge latest value") {
+    val node = Transform[Unit, Unit] { _ =>
+      Tel.setGauge("m", 100.0)
+      Tel.setGauge("m", 200.0)
+    }
+    val trace = node.unsafeRunTrace(())
+    assertEquals(trace.latestGauges("m"), 200.0)
+  }
+
+  test("histogram collects values in order") {
+    val node = Transform[Unit, Unit] { _ =>
+      List(10, 20, 30).foreach(n => Tel.recordHistogram("lat", n.toDouble))
+    }
+    val trace = node.unsafeRunTrace(())
+    assertEquals(trace.histogramValues("lat"), List(10.0, 20.0, 30.0))
+  }
+
+  test("toOtelJson structure") {
+    val node = Transform[Unit, Unit] { _ =>
+      Tel.withSpan("op") { Tel.addCounter("c", 1) }
+    }
+    val json = node.unsafeRunTrace(()).toOtelJson
+
+    assert(json.contains("resourceSpans"))
+    assert(json.contains("scopeSpans"))
+    assert(json.contains("resourceMetrics"))
+    assert(json.contains("\"name\":\"op\""))
+    assert(json.contains("\"name\":\"c\""))
+  }
+
+  test("capture with provider") {
+    implicit val otel: Etl4sTelemetry = Etl4sConsoleTelemetry("[T]")
+    val node                          = Transform[String, String] { s =>
+      Tel.withSpan("op") { Tel.addCounter("c", 5); s.toUpperCase }
+    }
+    val trace = node.unsafeRunTrace("hi")
+
+    assertEquals(trace.result, "HI")
+    assertEquals(trace.spans.size, 1)
+    assertEquals(trace.counterTotals("c"), 5L)
+  }
+
+  test("3-level nesting") {
+    val node = Transform[Int, Int] { n =>
+      Tel.withSpan("l1") { Tel.withSpan("l2") { Tel.withSpan("l3") { n * 2 } } }
+    }
+    val byName = node.unsafeRunTrace(5).spans.map(s => s.name -> s).toMap
+
+    assertEquals(byName("l1").parentSpanId, None)
+    assertEquals(byName("l2").parentSpanId, Some(byName("l1").spanId))
+    assertEquals(byName("l3").parentSpanId, Some(byName("l2").spanId))
+  }
+
+  test("span attributes") {
+    val node = Transform[String, String] { s =>
+      Tel.withSpan("op", "len" -> s.length)(s.toUpperCase)
+    }
+    val span = node.unsafeRunTrace("hello").spans.head
+    assertEquals(span.attributes("len"), 5)
+  }
+
+  test("span timing") {
+    val node = Transform[Unit, Unit] { _ =>
+      Tel.withSpan("slow") { Thread.sleep(10) }
+    }
+    val span = node.unsafeRunTrace(()).spans.head
+
+    assert(span.durationNanos >= 10000000L)
+  }
+
+  test("safeRunTrace captures") {
+    val node = Transform[String, String] { s =>
+      Tel.withSpan("op") { Tel.addCounter("c", 1); s.toUpperCase }
+    }
+    val trace = node.safeRunTrace("hi")
+
+    assert(trace.result.isSuccess)
+    assertEquals(trace.spans.size, 1)
+  }
+
+  test("capture on failure") {
+    val node = Transform[String, String] { s =>
+      Tel.withSpan("op") {
+        Tel.addCounter("before", 1)
+        if (s.isEmpty) throw new RuntimeException("!")
+        s
+      }
+    }
+    val trace = node.safeRunTrace("")
+
+    assert(trace.result.isFailure)
+    assertEquals(trace.counterTotals("before"), 1L)
+  }
+
+  test("Tel + Trace integration") {
+    val p = Transform[String, String] { s =>
+      Tel.withSpan("validate") {
+        if (s.isEmpty) { Trace.error("empty"); Tel.addCounter("err", 1) }
+        else Tel.addCounter("ok", 1)
+        s
+      }
+    } ~> Transform[String, String] { s =>
+      Tel.withSpan("process") {
+        if (Trace.hasErrors) "FALLBACK" else s.toUpperCase
+      }
+    }
+
+    assertEquals(p.unsafeRunTrace("hi").result, "HI")
+    assertEquals(p.unsafeRunTrace("").result, "FALLBACK")
+  }
 }
 
 class ConditionalBranchingSpecs extends munit.FunSuite {
@@ -1758,7 +1916,7 @@ class ConditionalBranchingSpecs extends munit.FunSuite {
   test("Reader conditional ignoring context") {
     case class Config(multiplier: Int)
 
-    val source = Reader[Config, Node[Int, Int]] { _ => Node[Int, Int](identity) }
+    val source         = Reader[Config, Node[Int, Int]] { _ => Node[Int, Int](identity) }
     val formatNegative = Reader[Config, Node[Int, String]] { cfg =>
       Node(n => s"negative:${n * cfg.multiplier}")
     }
@@ -1766,8 +1924,9 @@ class ConditionalBranchingSpecs extends munit.FunSuite {
       Node(n => s"positive:${n * cfg.multiplier}")
     }
 
+    // Plain condition syntax - no config needed for this check!
     val pipeline = source
-      .If(_ => (n: Int) => n < 0)(formatNegative)
+      .If((n: Int) => n < 0)(formatNegative)
       .Else(formatPositive)
 
     val config = Config(2)
@@ -1778,8 +1937,9 @@ class ConditionalBranchingSpecs extends munit.FunSuite {
   test("Reader conditional with nested branching") {
     case class Config(threshold: Int)
 
+    // Outer condition uses plain syntax, inner uses config-aware syntax
     val outer = Reader[Config, Node[Int, Int]] { _ => Node[Int, Int](identity) }
-      .If(_ => (n: Int) => n < 0)(
+      .If((_: Int) < 0)(
         Reader[Config, Node[Int, Int]] { _ => Node(n => n.abs) }
           .If((cfg: Config) => (n: Int) => n < cfg.threshold)(
             Reader[Config, Node[Int, String]] { _ => Node(n => s"small-neg:$n") }
@@ -1812,14 +1972,16 @@ class ConditionalBranchingSpecs extends munit.FunSuite {
     val toEven  = Reader[Config, Node[Int, String]] { _ => Node(n => s"even:$n") }
     val toOdd   = Reader[Config, Node[Int, String]] { _ => Node(n => s"odd:$n") }
 
+    // Plain condition - doesn't need config
     val branch1: Reader[Config, Node[Int, String]] = source1
-      .If(_ => (n: Int) => n % 2 == 0)(toEven)
+      .If((_: Int) % 2 == 0)(toEven)
       .Else(toOdd)
 
     val source2 = Reader[Config, Node[Int, Int]] { _ => Node[Int, Int](identity) }
     val toBelow = Reader[Config, Node[Int, String]] { _ => Node[Int, String](_ => "below") }
     val toAbove = Reader[Config, Node[Int, String]] { _ => Node[Int, String](_ => "above") }
 
+    // Config-aware condition
     val branch2: Reader[Config, Node[Int, String]] = source2
       .If((cfg: Config) => (n: Int) => n < cfg.threshold)(toBelow)
       .Else(toAbove)
@@ -1839,9 +2001,10 @@ class ConditionalBranchingSpecs extends munit.FunSuite {
     val toZero     = Node[Int, String](_ => "zero")
     val toPositive = Node[Int, String](n => s"positive:$n")
 
+    // Plain conditions - the whole point of ConditionLift!
     val pipeline = source
-      .If(_ => (n: Int) => n < 0)(toNegative)
-      .ElseIf(_ => (n: Int) => n == 0)(toZero)
+      .If((n: Int) => n < 0)(toNegative)
+      .ElseIf((n: Int) => n == 0)(toZero)
       .Else(toPositive)
 
     val config = Config(10)
@@ -1857,6 +2020,7 @@ class ConditionalBranchingSpecs extends munit.FunSuite {
     val formatBelow = Node[Int, String](n => s"below:$n")
     val formatAbove = Node[Int, String](n => s"above:$n")
 
+    // Config-aware condition
     val pipeline = source
       .If((cfg: Config) => (n: Int) => n < cfg.threshold)(formatBelow)
       .Else(formatAbove)
@@ -1875,6 +2039,7 @@ class ConditionalBranchingSpecs extends munit.FunSuite {
     val toSmallNeg = Node[Int, String](n => s"small-neg:$n")
     val toLargeNeg = Node[Int, String](n => s"large-neg:$n")
 
+    // Config-aware condition
     val negBranch = toAbs
       .If((cfg: Config) => (n: Int) => n < cfg.threshold)(toSmallNeg)
       .Else(toLargeNeg)
@@ -1883,12 +2048,14 @@ class ConditionalBranchingSpecs extends munit.FunSuite {
     val toSmallPos = Node[Int, String](n => s"small-pos:$n")
     val toLargePos = Node[Int, String](n => s"large-pos:$n")
 
+    // Config-aware condition
     val posBranch = toIdentity
       .If((cfg: Config) => (n: Int) => n < cfg.threshold)(toSmallPos)
       .Else(toLargePos)
 
+    // Plain condition
     val outer = source
-      .If(_ => (n: Int) => n < 0)(negBranch)
+      .If((_: Int) < 0)(negBranch)
       .Else(posBranch)
 
     val config = Config(10)
@@ -1896,6 +2063,96 @@ class ConditionalBranchingSpecs extends munit.FunSuite {
     assertEquals(outer.provide(config).unsafeRun(-15), "large-neg:15")
     assertEquals(outer.provide(config).unsafeRun(5), "small-pos:5")
     assertEquals(outer.provide(config).unsafeRun(15), "large-pos:15")
+  }
+
+  test("Reader conditional with mixed plain and curried conditions") {
+    case class Config(threshold: Int)
+
+    val source      = Reader[Config, Node[Int, Int]] { _ => Node[Int, Int](n => n) }
+    val belowThresh = Reader[Config, Node[Int, String]] { cfg =>
+      Node(n => s"below-${cfg.threshold}:$n")
+    }
+    val aboveThresh = Node[Int, String](n => s"above:$n")
+    val negative    = Node[Int, String](n => s"negative:$n")
+
+    // Mix plain and config-aware conditions in same pipeline
+    val pipeline = source
+      .If((_: Int) < 0)(negative)                                          // plain condition
+      .ElseIf((cfg: Config) => (n: Int) => n < cfg.threshold)(belowThresh) // config-aware condition
+      .Else(aboveThresh)
+
+    val config = Config(10)
+    assertEquals(pipeline.provide(config).unsafeRun(-5), "negative:-5")
+    assertEquals(pipeline.provide(config).unsafeRun(5), "below-10:5")
+    assertEquals(pipeline.provide(config).unsafeRun(15), "above:15")
+  }
+
+  test("Reader conditional with underscore syntax for plain conditions") {
+    case class User(name: String, age: Int)
+    case class Config(minAge: Int)
+
+    val source = Reader[Config, Node[User, User]] { _ => Node[User, User](u => u) }
+    val adult  = Node[User, String](u => s"${u.name} is adult")
+    val minor  = Node[User, String](u => s"${u.name} is minor")
+
+    // Plain condition using underscore syntax
+    val pipeline = source
+      .If((_: User).age >= 18)(adult)
+      .Else(minor)
+
+    val config = Config(18)
+    assertEquals(pipeline.provide(config).unsafeRun(User("Alice", 22)), "Alice is adult")
+    assertEquals(pipeline.provide(config).unsafeRun(User("Bob", 16)), "Bob is minor")
+  }
+
+  test("Reader conditional with curried config-aware condition") {
+    case class User(name: String, age: Int)
+    case class Config(minAge: Int)
+
+    val source = Reader[Config, Node[User, User]] { _ => Node[User, User](u => u) }
+    val adult  = Node[User, String](u => s"${u.name} is adult")
+    val minor  = Node[User, String](u => s"${u.name} is minor")
+
+    // Config-aware condition
+    val pipeline = source
+      .If((cfg: Config) => (u: User) => u.age >= cfg.minAge)(adult)
+      .Else(minor)
+
+    // With minAge=18, Alice (22) is adult, Bob (16) is minor
+    assertEquals(pipeline.provide(Config(18)).unsafeRun(User("Alice", 22)), "Alice is adult")
+    assertEquals(pipeline.provide(Config(18)).unsafeRun(User("Bob", 16)), "Bob is minor")
+
+    // With minAge=25, both are minors
+    assertEquals(pipeline.provide(Config(25)).unsafeRun(User("Alice", 22)), "Alice is minor")
+    assertEquals(pipeline.provide(Config(25)).unsafeRun(User("Bob", 16)), "Bob is minor")
+  }
+
+  test("Reader conditional with IfCtx/ElseIfCtx (condition on config only)") {
+    case class Config(isBackfill: Boolean, isDryRun: Boolean)
+
+    val source   = Reader[Config, Node[Int, Int]] { _ => Node[Int, Int](n => n) }
+    val backfill = Node[Int, String](n => s"backfill:$n")
+    val dryRun   = Node[Int, String](n => s"dryrun:$n")
+    val normal   = Node[Int, String](n => s"normal:$n")
+
+    // Conditions based purely on config - clean underscore syntax!
+    val pipeline = source
+      .IfCtx(_.isBackfill)(backfill)
+      .ElseIfCtx(_.isDryRun)(dryRun)
+      .Else(normal)
+
+    assertEquals(
+      pipeline.provide(Config(isBackfill = true, isDryRun = false)).unsafeRun(42),
+      "backfill:42"
+    )
+    assertEquals(
+      pipeline.provide(Config(isBackfill = false, isDryRun = true)).unsafeRun(42),
+      "dryrun:42"
+    )
+    assertEquals(
+      pipeline.provide(Config(isBackfill = false, isDryRun = false)).unsafeRun(42),
+      "normal:42"
+    )
   }
 
 }

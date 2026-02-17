@@ -32,7 +32,7 @@ class TimingSpecs extends munit.FunSuite {
 
   test("unsafeRunTrace measures execution time accurately") {
     val sleepDuration = 100
-    val sleepNode = Node[Unit, Unit] { _ =>
+    val sleepNode     = Node[Unit, Unit] { _ =>
       Thread.sleep(sleepDuration)
     }
     val insights    = sleepNode.unsafeRunTrace(())
@@ -48,7 +48,7 @@ class TimingSpecs extends munit.FunSuite {
   }
 
   test("withRetry delays between attempts") {
-    var attempts = List.empty[Long]
+    var attempts  = List.empty[Long]
     val failTwice = Node[Unit, String] { _ =>
       attempts = attempts :+ System.currentTimeMillis()
       if (attempts.size < 3) throw new RuntimeException("fail")

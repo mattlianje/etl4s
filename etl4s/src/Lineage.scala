@@ -129,7 +129,7 @@ private[etl4s] object LineageJsonHelpers {
   def quote(s: String): String                            = s""""$s""""
   def jsonField(key: String, value: String): String       = s""""$key":$value"""
   def jsonObject(fields: String*): String                 = fields.mkString("{", ",", "}")
-  def jsonMap(m: Map[String, String]): String =
+  def jsonMap(m: Map[String, String]): String             =
     m.map { case (k, v) => s""""$k":"$v"""" }.mkString("{", ",", "}")
 
   def pipelineToJson(p: LineageNode): String = {

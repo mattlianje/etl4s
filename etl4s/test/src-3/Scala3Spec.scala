@@ -145,8 +145,9 @@ class Scala3Specs extends munit.FunSuite {
 
     val nodeBranch: Node[Int, NodeResult] = Node(n => NodeResult(s"node: $n"))
 
+    // Plain condition syntax - condition doesn't need config
     val conditional = source
-      .If(cfg => n => n > 10)(readerBranch)
+      .If((n: Int) => n > 10)(readerBranch)
       .Else(nodeBranch)
 
     val config   = new Config { val multiplier = 2 }
@@ -166,7 +167,7 @@ class Scala3Specs extends munit.FunSuite {
     }
   }
 
-  test("Reader conditional with multiple elseIf") {
+  test("Reader conditional with multiple elseIf using config-aware conditions") {
     case class Config(min: Int, max: Int)
 
     val source     = Reader[Config, Node[Int, Int]] { _ => Node[Int, Int](identity) }
@@ -174,6 +175,7 @@ class Scala3Specs extends munit.FunSuite {
     val formatHigh = Reader[Config, Node[Int, String]] { _ => Node(n => s"too-high:$n") }
     val formatOk   = Reader[Config, Node[Int, String]] { _ => Node(n => s"ok:$n") }
 
+    // Config-aware conditions with type annotations
     val classifier = source
       .If((cfg: Config) => (n: Int) => n < cfg.min)(formatLow)
       .ElseIf((cfg: Config) => (n: Int) => n > cfg.max)(formatHigh)
@@ -185,7 +187,7 @@ class Scala3Specs extends munit.FunSuite {
     assertEquals(classifier.provide(config).unsafeRun(150), "too-high:150")
   }
 
-  test("Reader conditional mixing plain Node and Reader branches") {
+  test("Reader conditional mixing plain and config-aware conditions") {
     case class Config(multiplier: Int)
 
     val source     = Reader[Config, Node[Int, Int]] { _ => Node[Int, Int](identity) }
@@ -195,9 +197,10 @@ class Scala3Specs extends munit.FunSuite {
       Node(n => s"positive:${n * cfg.multiplier}")
     }
 
+    // Plain conditions with type annotation
     val pipeline = source
-      .If((cfg: Config) => (n: Int) => n < 0)(toNegative)
-      .ElseIf((cfg: Config) => (n: Int) => n == 0)(toZero)
+      .If((_: Int) < 0)(toNegative)
+      .ElseIf((_: Int) == 0)(toZero)
       .Else(toPositive)
 
     val config = Config(2)
@@ -218,7 +221,7 @@ class Scala3Specs extends munit.FunSuite {
       }
     }
 
-    val source = Reader[Config, Node[User, User]] { _ => Node[User, User](identity) }
+    val source  = Reader[Config, Node[User, User]] { _ => Node[User, User](identity) }
     val toMinor = Reader[Config, Node[User, ProcessedUser]] { _ =>
       Node(u => ProcessedUser(u.name, "minor"))
     }

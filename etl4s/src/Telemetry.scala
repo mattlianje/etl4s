@@ -79,3 +79,140 @@ case class Etl4sConsoleTelemetry(prefix: String = "[ETL4S]") extends Etl4sTeleme
  * Exception thrown when validation fails.
  */
 class ValidationException(message: String) extends RuntimeException(message)
+
+/**
+ * Represents a span in the telemetry trace.
+ * Follows OTLP span conventions for compatibility with OpenTelemetry exporters.
+ */
+case class TelSpan(
+  name: String,
+  traceId: String,
+  spanId: String,
+  parentSpanId: Option[String] = None,
+  startTimeNanos: Long = 0L,
+  endTimeNanos: Long = 0L,
+  durationNanos: Long = 0L,
+  attributes: Map[String, Any] = Map.empty,
+  status: String = "ok"
+)
+
+/** Counter metric recorded at a specific point in time */
+case class TelCounter(name: String, value: Long, timestampNanos: Long)
+
+/** Gauge metric recorded at a specific point in time */
+case class TelGauge(name: String, value: Double, timestampNanos: Long)
+
+/** Histogram metric recorded at a specific point in time */
+case class TelHistogram(name: String, value: Double, timestampNanos: Long)
+
+/**
+ * Aggregated telemetry data collected during pipeline execution.
+ * Contains all spans and metrics recorded via Tel calls.
+ */
+case class TelemetryData(
+  spans: List[TelSpan] = List.empty,
+  counters: List[TelCounter] = List.empty,
+  gauges: List[TelGauge] = List.empty,
+  histograms: List[TelHistogram] = List.empty
+) {
+
+  /** Get total value for each counter */
+  def counterTotals: Map[String, Long] =
+    counters.groupBy(_.name).map { case (n, cs) => n -> cs.map(_.value).sum }
+
+  /** Get latest value for each gauge */
+  def latestGauges: Map[String, Double] =
+    gauges.groupBy(_.name).map { case (n, gs) => n -> gs.maxBy(_.timestampNanos).value }
+
+  /** Get all histogram values grouped by name */
+  def histogramValues: Map[String, List[Double]] =
+    histograms.groupBy(_.name).map { case (n, hs) => n -> hs.reverse.map(_.value) }
+}
+
+/**
+ * JSON helpers for producing OTEL-compatible trace output.
+ */
+private[etl4s] object TraceJsonHelpers {
+  import LineageJsonHelpers._
+
+  def anyToJson(v: Any): String = v match {
+    case s: String  => quote(s)
+    case n: Int     => n.toString
+    case n: Long    => n.toString
+    case n: Double  => n.toString
+    case n: Float   => n.toString
+    case b: Boolean => b.toString
+    case other      => quote(other.toString)
+  }
+
+  def spanToJson(s: TelSpan): String = {
+    val fields = List(
+      jsonField("name", quote(s.name)),
+      jsonField("traceId", quote(s.traceId)),
+      jsonField("spanId", quote(s.spanId)),
+      jsonField("startTimeUnixNano", s.startTimeNanos.toString),
+      jsonField("endTimeUnixNano", s.endTimeNanos.toString),
+      jsonField("status", jsonObject(jsonField("code", "1")))
+    ) ++ s.parentSpanId.map(p => jsonField("parentSpanId", quote(p))).toList ++
+      (if (s.attributes.nonEmpty)
+         List(
+           jsonField(
+             "attributes",
+             jsonArray(s.attributes.toSeq) { case (k, v) =>
+               jsonObject(jsonField("key", quote(k)), jsonField("value", anyToJson(v)))
+             }
+           )
+         )
+       else Nil)
+    jsonObject(fields: _*)
+  }
+
+  def counterToJson(name: String, total: Long): String =
+    jsonObject(
+      jsonField("name", quote(name)),
+      jsonField(
+        "sum",
+        jsonObject(
+          jsonField("dataPoints", s"""[{"asInt":"$total"}]"""),
+          jsonField("isMonotonic", "true")
+        )
+      )
+    )
+
+  def gaugeToJson(name: String, value: Double): String =
+    jsonObject(
+      jsonField("name", quote(name)),
+      jsonField("gauge", jsonObject(jsonField("dataPoints", s"""[{"asDouble":$value}]""")))
+    )
+
+  def histogramToJson(name: String, values: List[Double]): String = {
+    val count = values.size
+    val sum   = values.sum
+    jsonObject(
+      jsonField("name", quote(name)),
+      jsonField(
+        "histogram",
+        jsonObject(
+          jsonField("dataPoints", s"""[{"count":"$count","sum":$sum}]""")
+        )
+      )
+    )
+  }
+
+  def toOtelJson(telemetry: TelemetryData): String = {
+    val spansJson  = jsonArray(telemetry.spans)(spanToJson)
+    val scopeSpans =
+      s"""{"scope":{"name":"etl4s"},"spans":$spansJson}"""
+
+    val metricsJson = {
+      val counters   = telemetry.counterTotals.map { case (n, v) => counterToJson(n, v) }
+      val gauges     = telemetry.latestGauges.map { case (n, v) => gaugeToJson(n, v) }
+      val histograms = telemetry.histogramValues.map { case (n, vs) => histogramToJson(n, vs) }
+      (counters ++ gauges ++ histograms).mkString("[", ",", "]")
+    }
+    val scopeMetrics =
+      s"""{"scope":{"name":"etl4s"},"metrics":$metricsJson}"""
+
+    s"""{"resourceSpans":[{"resource":{},"scopeSpans":[$scopeSpans]}],"resourceMetrics":[{"resource":{},"scopeMetrics":[$scopeMetrics]}]}"""
+  }
+}
