@@ -1,6 +1,6 @@
 .PHONY: compile test test-jvm test-js test-native publish-local bundle clean fmt fmt-check repl docs publish-doc
 
-VERSION := 1.9.0
+VERSION := 1.9.1
 BUNDLE_DIR := bundles
 GPG_KEY := F36FE8EEBD829E6CF1A5ADB6246482D1268EDC6E
 

@@ -7,7 +7,7 @@ val scalaJSVersion     = "1.20.2"
 
 // Shared publish settings
 trait Etl4sPublishModule extends SonatypeCentralPublishModule {
-  def publishVersion = "1.9.0"
+  def publishVersion = "1.9.1"
   def artifactName   = "etl4s"
 
   def pomSettings = PomSettings(

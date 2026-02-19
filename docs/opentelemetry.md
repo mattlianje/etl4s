@@ -127,6 +127,41 @@ class PrometheusProvider extends Etl4sTelemetry {
 implicit val telemetry: Etl4sTelemetry = Etl4sConsoleTelemetry()
 ```
 
+## Telemetry Data Capture
+
+`unsafeRunTrace` and `safeRunTrace` now capture all `Tel` calls as structured `TelemetryData` on the `Trace` result:
+
+```scala
+val node = Transform[Unit, Unit] { _ =>
+  Tel.withSpan("processing") {
+    Tel.addCounter("items", 100)
+    Tel.setGauge("memory", 512.0)
+    Tel.recordHistogram("latency", 42.0)
+  }
+}
+
+val trace = node.unsafeRunTrace(())
+
+trace.spans                      // List[TelSpan] - all recorded spans
+trace.counterTotals              // Map("items" -> 100L)
+trace.latestGauges               // Map("memory" -> 512.0)
+trace.histogramValues            // Map("latency" -> List(42.0))
+```
+
+Spans include full OTLP-compatible metadata: `traceId`, `spanId`, `parentSpanId`, timing, and attributes.
+
+### OTLP JSON Export
+
+Export captured telemetry as OTLP-compatible JSON, ready for OpenTelemetry collectors:
+
+```scala
+val json = node.unsafeRunTrace(()).toOtelJson
+// {"resourceSpans":[{"resource":{},"scopeSpans":[...]}],
+//  "resourceMetrics":[{"resource":{},"scopeMetrics":[...]}]}
+```
+
+This works independently of any `Etl4sTelemetry` provider - capture always happens via the `Trace` system.
+
 ## Nested Spans
 
 Spans automatically nest:

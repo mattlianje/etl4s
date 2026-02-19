@@ -23,11 +23,11 @@ Battle-tested at [Instacart](https://www.instacart.com/). Part of [d4](https://g
 
 **etl4s** is on MavenCentral and cross-built for Scala, 2.12, 2.13, 3.x
 ```scala
-"xyz.matthieucourt" %% "etl4s" % "1.9.0"
+"xyz.matthieucourt" %% "etl4s" % "1.9.1"
 ```
 Or try in REPL:
 ```bash
-scala-cli repl --scala 3 --dep xyz.matthieucourt:etl4s_3:1.9.0
+scala-cli repl --scala 3 --dep xyz.matthieucourt:etl4s_3:1.9.1
 ```
 
 All you need:
@@ -239,6 +239,16 @@ val pipeline = extractUser
   .Else                         (toGuestNotice)
 ```
 
+Branch on config only with `IfCtx`/`ElseIfCtx`:
+```scala
+val pipeline = sourceReader
+  .IfCtx(_.isBackfill)(backfillBranch)
+  .ElseIfCtx(_.isDryRun)(dryRunBranch)
+  .Else(normalBranch)
+```
+
+Plain `Node` branches are automatically lifted to `Reader` when mixed with config-aware branches - no manual wrapping needed.
+
 Read more [here](https://mattlianje.github.io/etl4s/branching/).
 
 ## Side Effects
@@ -303,7 +313,17 @@ A.unsafeRun(data) /* metrics flow to Prometheus */
 ```
 
 The `Etl4sTelemetry` interface has just 4 methods: `withSpan`, `addCounter`, `setGauge`, `recordHistogram`
-which cover 95% of observability needs. Read more in the [Telemetry guide](https://mattlianje.github.io/etl4s/opentelemetry/).
+which cover 95% of observability needs.
+
+`unsafeRunTrace` captures all `Tel` calls as structured `TelemetryData` with OTLP-compatible spans and metrics:
+```scala
+val trace = pipeline.unsafeRunTrace(data)
+trace.spans              // List[TelSpan] with traceId, parentSpanId, timing
+trace.counterTotals      // Map[String, Long]
+trace.toOtelJson         // OTLP JSON for OpenTelemetry collectors
+```
+
+Read more in the [Telemetry guide](https://mattlianje.github.io/etl4s/opentelemetry/).
 
 ## Lineage
 
