@@ -1,4 +1,4 @@
-.PHONY: compile test test-jvm test-js test-native publish-local bundle clean fmt fmt-check repl repl-2 repl-213 docs publish-doc
+.PHONY: compile test test-jvm test-js test-native publish-local bundle clean fmt fmt-check repl docs publish-doc
 
 VERSION := 1.9.0
 BUNDLE_DIR := bundles
@@ -11,11 +11,6 @@ compile:
 repl:
 	./mill -i etl4s.jvm[3.3.7].console
 
-repl-2:
-	./mill -i etl4s.jvm[2.12.17].console
-
-repl-213:
-	./mill -i etl4s.jvm[2.13.10].console
 
 test: test-jvm test-js test-native
 
