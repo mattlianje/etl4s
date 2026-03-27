@@ -401,6 +401,22 @@
     .splash .instacart-note a:hover { color: #333; }
     .dark .splash .instacart-note a:hover { color: #ccc; }
 
+    .production-badge {
+      display: flex; align-items: center; justify-content: center;
+      gap: 0.4em; margin: 0 0 1.8em; opacity: 0.45;
+      font-size: 0.8em; color: #999; transition: opacity 0.25s;
+    }
+    .production-badge:hover { opacity: 0.8; }
+    .production-badge a {
+      display: inline-flex; align-items: center; gap: 0.3em;
+      text-decoration: none !important; color: #666;
+    }
+    .production-badge a:hover { color: #333; }
+    .production-badge span a { text-decoration: underline !important; display: inline; }
+    .dark .production-badge a { color: #888; }
+    .dark .production-badge a:hover { color: #ccc; }
+    .production-badge img { height: 18px; width: auto; }
+
     /* animation demos */
     .show-section .demo-wrap { display: flex; justify-content: center; margin: 1.5em 0; }
 
@@ -732,6 +748,13 @@
     <h1>etl4s</h1>
     <p class="tagline">Powerful, whiteboard-style ETL.</p>
 
+    <div class="production-badge">
+      <a href="https://www.instacart.com/" target="_blank">
+        <img src="{{ 'assets/instacart-logo.png'|url }}" alt="Instacart" />
+      </a>
+      <span>Used in production at <a href="https://www.instacart.com/" target="_blank">Instacart</a></span>
+    </div>
+
     <div class="actions">
       <a href="installation/">Get started</a>
     </div>
@@ -977,8 +1000,6 @@ Seq(A, B).toMermaid</code></pre>
         <h3>Why etl4s?</h3>
         <p class="show-desc">Chaotic, framework-coupled ETL codebases drive dev teams to their knees. etl4s lets you structure your code as clean, typed graphs of pure functions.</p>
       </div>
-
-      <p class="instacart-note">Used in production at <a href="https://www.instacart.com/">Instacart</a>.</p>
 
     </div>
   </div>

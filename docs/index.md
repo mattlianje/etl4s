@@ -1695,7 +1695,6 @@ hide:
 </div>
 
 <div class="get-started">
-<p class="instacart-note">Battle-tested at <a href="https://www.instacart.com/">Instacart</a> 🥕</p>
 <div class="get-started-links">
 <a href="installation/">Installation</a>
 <a href="first-pipeline/">First Pipeline</a>
