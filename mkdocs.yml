@@ -1,29 +1,10 @@
 site_name: etl4s
 site_url: https://etl4s.dev
+
 theme:
-  name: material
-  logo: assets/etl4s-logo.png
-  favicon: assets/etl4s-logo.png
-  font: false  # Use system fonts for that raw, fast feel
-  palette:
-    - media: "(prefers-color-scheme: light)"
-      scheme: default
-      primary: teal
-      accent: teal
-      toggle:
-        icon: material/toggle-switch
-        name: Switch to dark mode
-    - media: "(prefers-color-scheme: dark)"
-      scheme: slate
-      primary: deep purple
-      accent: teal
-      toggle:
-        icon: material/toggle-switch-off-outline
-        name: Switch to light mode
-  features:
-    - content.code.copy
-    - content.code.annotate
-    - navigation.footer
+  name: null
+  custom_dir: theme/
+
 nav:
   - Home: index.md
   - Getting Started:
@@ -50,6 +31,7 @@ nav:
   - Tradeoffs: tradeoffs.md
   - Philosophy: philosophy.md
   - FAQ: faq.md
+
 markdown_extensions:
   - admonition
   - pymdownx.details
@@ -73,8 +55,11 @@ markdown_extensions:
   - toc:
       permalink: true
       toc_depth: 3
+  - fenced_code
+
 repo_name: mattlianje/etl4s
 repo_url: https://github.com/mattlianje/etl4s
+
 extra:
   generator: false
 
