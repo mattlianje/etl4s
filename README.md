@@ -10,7 +10,7 @@
 **Powerful, whiteboard-style ETL**
 
 A lightweight, zero-dependency library for writing type-safe, beautiful ✨🍰  data flows in functional Scala. 
-Battle-tested at [Instacart](https://www.instacart.com/). Part of [d4](https://github.com/mattlianje/d4).
+Battle-tested at [Instacart](https://www.instacart.com/)
 
 ## Features
 - Declarative, typed pipeline endpoints
