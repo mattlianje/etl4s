@@ -1,0 +1,1205 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Parallel Execution - etl4s</title>
+  <link rel="icon" href="../assets/etl4s-logo.png" type="image/png">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Source+Code+Pro:wght@400;500;600&display=swap">
+  <script>
+    var __dark = localStorage.getItem('dark')==='true';
+    if(__dark){
+      document.documentElement.classList.add('dark');
+      document.write('<style>html.dark,html.dark body{background:#1a1a1a;color:#ccc}.dark .topbar{background:#1a1a1a;border-color:#2a2a2a}.dark .sidebar{background:#1a1a1a}.dark .content{color:#ccc}</style>');
+      document.addEventListener('DOMContentLoaded',function(){var t=document.getElementById('darkToggle');if(t)t.checked=true;});
+    }
+  </script>
+  <link rel="stylesheet" id="hl-light" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github.min.css">
+  <link rel="stylesheet" id="hl-dark" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github-dark.min.css" disabled>
+  
+  <link rel="stylesheet" href="../stylesheets/extra.css">
+  
+  <script>
+    if(__dark){
+      document.getElementById('hl-light').disabled=true;
+      document.getElementById('hl-dark').disabled=false;
+    }
+  </script>
+  <style>
+    :root { --accent: #009688; }
+    html.dark { --accent: #7c4dff; }
+    * { box-sizing: border-box; }
+    html { overflow-y: scroll; }
+    body {
+      font-family: Helvetica, Arial, sans-serif;
+      font-size: 16px;
+      line-height: 1.5;
+      color: #000;
+      background: #fff;
+      margin: 0;
+      transition: color 0.2s, background 0.2s;
+    }
+    html.dark, .dark { color: #ccc; background: #1a1a1a; }
+
+    /* top bar */
+    .topbar {
+      position: sticky;
+      top: 0;
+      z-index: 100;
+      display: flex;
+      align-items: center;
+      gap: 0.8em;
+      padding: 0.5em 1.2em;
+      background: #fff;
+      border-bottom: 1px solid #eee;
+      font-size: 13px;
+      transition: background 0.2s, border-color 0.2s;
+    }
+    .dark .topbar { background: #1a1a1a; border-color: #2a2a2a; }
+    .topbar .hamburger {
+      display: none;
+      background: none;
+      border: none;
+      cursor: pointer;
+      padding: 0.2em;
+      color: #555;
+      font-size: 18px;
+      line-height: 1;
+    }
+    .dark .topbar .hamburger { color: #999; }
+    .topbar .site-name {
+      font-weight: bold;
+      font-size: 14px;
+      text-decoration: none;
+      color: #000;
+      margin-right: auto;
+    }
+    .dark .topbar .site-name { color: #ccc; }
+
+    /* search */
+    .topbar .search-wrap { position: relative; width: 240px; }
+    .topbar .search-wrap input {
+      font-family: inherit;
+      font-size: 12px;
+      padding: 0.3em 0.5em 0.3em 1.6em;
+      border: 1px solid #ddd;
+      border-radius: 3px;
+      background: #fafafa;
+      color: #333;
+      width: 180px;
+      outline: none;
+      transition: border-color 0.15s, background 0.15s, width 0.2s;
+    }
+    .topbar .search-wrap input:focus { border-color: #aaa; width: 100%; }
+    .dark .topbar .search-wrap input { background: #222; border-color: #444; color: #ccc; }
+    .dark .topbar .search-wrap input:focus { border-color: #666; }
+    .topbar .search-wrap::before {
+      content: "\2315";
+      position: absolute;
+      left: 0.5em;
+      top: 50%;
+      transform: translateY(-50%);
+      color: #999;
+      font-size: 13px;
+      pointer-events: none;
+    }
+    .search-drop {
+      position: absolute;
+      top: calc(100% + 2px);
+      left: 0;
+      width: 320px;
+      background: #fff;
+      border: 1px solid #ddd;
+      border-radius: 3px;
+      max-height: 360px;
+      overflow-y: auto;
+      display: none;
+      font-size: 13px;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.08);
+      z-index: 200;
+    }
+    .dark .search-drop { background: #222; border-color: #444; box-shadow: 0 4px 12px rgba(0,0,0,0.3); }
+    .search-drop.open { display: block; }
+    .search-drop a {
+      display: block;
+      padding: 0.5em 0.8em;
+      text-decoration: none;
+      color: #333;
+      border-bottom: 1px solid #f0f0f0;
+    }
+    .search-drop a:last-child { border-bottom: none; }
+    .search-drop a:hover, .search-drop a.sel { background: #f4f4f4; }
+    .dark .search-drop a { color: #ccc; border-color: #333; }
+    .dark .search-drop a:hover, .dark .search-drop a.sel { background: #2a2a2a; }
+    .search-drop .sr-title { font-weight: 600; font-size: 12px; }
+    .search-drop .sr-text { font-size: 11px; color: #888; margin-top: 0.15em; line-height: 1.4; }
+    .dark .search-drop .sr-text { color: #666; }
+    .search-drop .sr-text mark { background: #ffeaa0; color: #000; padding: 0 1px; border-radius: 1px; }
+    .dark .search-drop .sr-text mark { background: #554400; color: #eee; }
+    .search-drop .no-res { padding: 0.6em 0.8em; color: #999; font-size: 12px; }
+
+    .topbar .topbar-link {
+      color: #555; text-decoration: none; font-size: 12px;
+    }
+    .topbar .topbar-link:hover { color: #000; text-decoration: underline; }
+    .dark .topbar .topbar-link { color: #888; }
+    .dark .topbar .topbar-link:hover { color: #ccc; }
+
+    .topbar .gh-link {
+      color: #555; text-decoration: none;
+      display: flex; align-items: center; gap: 0.4em;
+    }
+    .topbar .gh-link:hover { color: #000; }
+    .dark .topbar .gh-link { color: #888; }
+    .dark .topbar .gh-link:hover { color: #ccc; }
+    .topbar .gh-link svg { width: 18px; height: 18px; fill: currentColor; }
+
+    /* toggle pill */
+    .toggle { position: relative; width: 28px; height: 16px; flex-shrink: 0; }
+    .toggle input { opacity: 0; width: 0; height: 0; position: absolute; }
+    .toggle .slider {
+      position: absolute; inset: 0;
+      background: #ccc; border-radius: 16px; cursor: pointer;
+      transition: background 0.2s;
+    }
+    .toggle .slider::before {
+      content: ""; position: absolute;
+      width: 12px; height: 12px; left: 2px; bottom: 2px;
+      background: #fff; border-radius: 50%;
+      transition: transform 0.2s;
+    }
+    .toggle input:checked + .slider { background: #555; }
+    .toggle input:checked + .slider::before { transform: translateX(12px); }
+
+    .page { display: flex; max-width: 1160px; margin: 0 auto; padding: 1.5em 1.5em; }
+
+    /* sidebar */
+    .sidebar {
+      position: sticky;
+      top: 3.5em;
+      align-self: flex-start;
+      width: 200px;
+      min-width: 200px;
+      flex-shrink: 0;
+      padding-right: 2em;
+      font-size: 13.5px;
+      line-height: 1.6;
+      overflow-y: auto;
+      max-height: calc(100vh - 4em);
+    }
+    .sidebar ul { list-style: none; padding: 0; margin: 0; }
+    .sidebar li { margin: 0.15em 0; }
+    .sidebar a { text-decoration: none; color: #555; }
+    .dark .sidebar a { color: #777; }
+    .sidebar a:hover { text-decoration: underline; }
+    .sidebar a.active { color: #000; font-weight: bold; }
+    .dark .sidebar a.active { color: #eee; }
+
+    /* collapsible sections */
+    .sidebar .section-toggle {
+      display: flex; align-items: center;
+      cursor: pointer; color: #333;
+      font-size: 13px; font-weight: 600;
+      padding: 0.2em 0; user-select: none;
+      background: none; border: none;
+      font-family: inherit; width: 100%; text-align: left;
+    }
+    .dark .sidebar .section-toggle { color: #aaa; }
+    .sidebar .section-toggle:hover { color: #000; }
+    .dark .sidebar .section-toggle:hover { color: #ddd; }
+    .sidebar .section-toggle .arrow {
+      display: inline-block;
+      width: 0; height: 0;
+      border-left: 4px solid currentColor;
+      border-top: 3px solid transparent;
+      border-bottom: 3px solid transparent;
+      margin-right: 0.4em;
+      transition: transform 0.15s;
+    }
+    .sidebar .section-toggle.open .arrow { transform: rotate(90deg); }
+    .sidebar .section-pages {
+      padding-left: 1em;
+      overflow: hidden;
+      max-height: 0;
+      transition: max-height 0.2s ease;
+    }
+    .sidebar .section-pages.open { max-height: 500px; }
+
+    .sidebar .page-toc { padding-left: 0.8em; }
+    .sidebar .page-toc li { margin: 0.1em 0; }
+    .sidebar .page-toc a { color: #888; font-size: 11px; }
+    .sidebar .page-toc a.active { color: #000; font-weight: bold; }
+    .dark .sidebar .page-toc a { color: #666; }
+    .dark .sidebar .page-toc a.active { color: #eee; }
+
+    /* content */
+    .content { flex: 1; min-width: 0; max-width: 740px; }
+
+    h1 { font-size: 1.6em; border-bottom: 1px solid #ddd; padding-bottom: 0.2em; }
+    h2 { font-size: 1.3em; margin-top: 2em; }
+    h3 { font-size: 1.1em; margin-top: 1.5em; }
+    .dark h1 { border-color: #333; }
+
+    a { color: #0000ee; }
+    .dark a { color: var(--accent); }
+
+    pre {
+      background: #f8f8f8 !important; border: none;
+      padding: 0.6em 1em; overflow-x: auto;
+      font-family: "Source Code Pro", "Fira Code", "SF Mono", "Cascadia Code", Menlo, Consolas, monospace;
+      font-size: 12px; line-height: 1.35; margin: 1em 0;
+      position: relative; transition: background 0.2s;
+    }
+    .dark pre { background: #222 !important; }
+    pre .copy {
+      position: absolute; top: 0.4em; right: 0.4em;
+      background: none; border: 1px solid #ccc;
+      padding: 0.1em 0.4em; font-size: 11px;
+      cursor: pointer; color: #888;
+      opacity: 0; transition: opacity 0.15s, transform 0.15s;
+    }
+    pre:hover .copy { opacity: 1; }
+    .dark pre .copy { border-color: #555; color: #888; }
+    pre code, pre code.hljs {
+      font-family: "Source Code Pro", "Fira Code", "SF Mono", "Cascadia Code", Menlo, Consolas, monospace;
+      font-size: 12px; line-height: 1.35;
+      background: none !important; padding: 0 !important; border: none;
+    }
+
+    code {
+      font-family: "Source Code Pro", "Fira Code", "SF Mono", "Cascadia Code", Menlo, Consolas, monospace;
+      font-size: 0.85em;
+    }
+    p code, li code, td code { background: #f0f0f0; padding: 0.1em 0.25em; transition: background 0.2s; }
+    .dark p code, .dark li code, .dark td code { background: #2a2a2a; }
+
+    table { border-collapse: collapse; font-size: 0.95em; }
+    th, td { border: 1px solid #e0e0e0; padding: 0.3em 0.6em; text-align: left; }
+    .dark th, .dark td { border-color: #333; }
+
+    hr { border: none; border-top: 1px solid #e0e0e0; margin: 2em 0; }
+    .dark hr { border-color: #333; }
+
+    h2 a.permalink, h3 a.permalink {
+      text-decoration: none; color: #ccc; margin-left: 0.3em;
+      opacity: 0; transition: opacity 0.15s;
+    }
+    h2:hover a.permalink, h3:hover a.permalink { opacity: 1; }
+    .dark h2 a.permalink, .dark h3 a.permalink { color: #444; }
+
+    /* splash */
+    .splash { text-align: center; padding: 6em 1em 4em; max-width: 820px; margin: 0 auto; }
+    .splash .splash-logo { height: 64px; margin-bottom: 0.8em; }
+    .splash h1 { font-size: 3em; border: none; margin: 0 0 0.1em; padding: 0; font-weight: 300; letter-spacing: -0.02em; }
+    .splash .tagline { font-size: 1.05em; color: #666; margin-bottom: 3.5em; font-weight: 300; }
+    .dark .splash .tagline { color: #888; }
+
+    .splash .actions { margin-bottom: 1.5em; }
+    .splash .actions a {
+      display: inline-block; padding: 0.5em 1.8em; font-size: 13px;
+      text-decoration: none; border: 1px solid #000; color: #000;
+      letter-spacing: 0.03em;
+      transition: background 0.15s, color 0.15s;
+    }
+    .splash .actions a:hover { background: #000; color: #fff; }
+    .dark .splash .actions a { border-color: #ccc; color: #ccc; }
+    .dark .splash .actions a:hover { background: #ccc; color: #1a1a1a; }
+
+    .splash .links { font-size: 12px; color: #999; margin-bottom: 0; }
+    .splash .links a { color: #999; text-decoration: none; }
+    .splash .links a:hover { color: #333; text-decoration: underline; }
+    .dark .splash .links a:hover { color: #ccc; }
+    .splash .links .sep { margin: 0 0.6em; }
+
+    .splash .zen-hr { border: none; height: 1px; background: #e0e0e0; max-width: 80px; margin: 3em auto; }
+    .dark .splash .zen-hr { background: #333; }
+
+
+    /* splash tabs */
+    .splash-tabs { margin: 1.5em 0 0; text-align: left; }
+    .splash-tabs .tab-bar {
+      display: flex; gap: 0; border-bottom: 1px solid #ddd; margin-bottom: 0;
+    }
+    .dark .splash-tabs .tab-bar { border-color: #444; }
+    .splash-tabs .tab-btn {
+      background: none; border: none; border-bottom: 2px solid transparent;
+      padding: 0.4em 1em; font-family: inherit; font-size: 0.8em;
+      color: #888; cursor: pointer; transition: color 0.15s;
+    }
+    .splash-tabs .tab-btn:hover { color: #333; }
+    .dark .splash-tabs .tab-btn:hover { color: #ccc; }
+    .splash-tabs .tab-btn.active { color: #000; border-bottom-color: var(--accent); }
+    .dark .splash-tabs .tab-btn.active { color: #eee; }
+    .splash-tabs .tab-panel { display: none; padding: 0; }
+    .splash-tabs .tab-panel.active { display: block; }
+
+    .mermaid-placeholder {
+      text-align: center; padding: 1.5em 1em;
+      background: transparent; min-height: 120px;
+    }
+
+    /* typing demo */
+    .typing-demo {
+      font-family: "Source Code Pro", monospace; font-size: 12px; line-height: 1.35;
+      padding: 0.5em 0; overflow: hidden; width: 280px; margin: 0 auto;
+    }
+    .typing-demo .line { white-space: pre; overflow: hidden; width: 0; opacity: 0; }
+    .typing-demo .c { color: #6a737d; }
+    .typing-demo .k { color: #d73a49; }
+    .dark .typing-demo .c { color: #8b949e; }
+    .dark .typing-demo .k { color: #ff7b72; }
+    @keyframes type-line1 { 0%, 2% { width: 0; opacity: 1; } 12% { width: 24ch; } 85%, 100% { width: 24ch; opacity: 1; } }
+    @keyframes type-line2 { 0%, 14% { width: 0; opacity: 0; } 15% { opacity: 1; } 25% { width: 14ch; } 85%, 100% { width: 14ch; opacity: 1; } }
+    @keyframes type-line3 { 0%, 27% { width: 0; opacity: 0; } 28% { width: 1ch; opacity: 1; } 85%, 100% { width: 1ch; opacity: 1; } }
+    @keyframes type-line4 { 0%, 30% { width: 0; opacity: 0; } 31% { opacity: 1; } 42% { width: 14ch; } 85%, 100% { width: 14ch; opacity: 1; } }
+    @keyframes type-line5 { 0%, 44% { width: 0; opacity: 0; } 45% { opacity: 1; } 65% { width: 100%; } 85%, 100% { width: 100%; opacity: 1; } }
+    .typing-demo .line-1 { animation: type-line1 8s steps(24, end) infinite; }
+    .typing-demo .line-2 { animation: type-line2 8s steps(14, end) infinite; }
+    .typing-demo .line-3 { animation: type-line3 8s steps(1, end) infinite; }
+    .typing-demo .line-4 { animation: type-line4 8s steps(14, end) infinite; }
+    .typing-demo .line-5 { animation: type-line5 8s steps(28, end) infinite; }
+
+    .splash .showcase { max-width: 780px; margin: 0 auto; text-align: left; }
+    .splash .showcase > * { max-width: 560px; margin-left: auto; margin-right: auto; }
+
+    /* staggered: text left / demo right, alternating */
+    .show-stagger {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      grid-template-rows: auto auto;
+      align-content: center;
+      gap: 0 1.5em;
+    }
+    .show-stagger h3 { grid-column: 1; grid-row: 1; align-self: end; margin: 0 0 0.6em; }
+    .show-stagger .show-desc { grid-column: 1; grid-row: 2; align-self: start; margin: 0; }
+    .show-stagger .demo-wrap { grid-column: 2; grid-row: 1 / 3; margin: 0; justify-content: center; align-self: center; }
+    .show-stagger.flip h3 { grid-column: 2; }
+    .show-stagger.flip .show-desc { grid-column: 2; }
+    .show-stagger.flip .demo-wrap { grid-column: 1; }
+    .splash .show-section { margin-bottom: 3.5em; }
+    .splash .show-section h3 { font-size: 1.1em; font-weight: 600; margin: 0 0 0.6em; }
+    .splash .show-desc { font-size: 0.85em; color: #555; line-height: 1.5; margin: 0 0 1em; }
+    .dark .splash .show-desc { color: #999; }
+    .splash .show-section pre { text-align: left; margin: 0 0 0.8em; }
+    .splash .show-section pre.compiler-out { background: #fff8f0 !important; border-left: 3px solid #e8a060; }
+    .dark .splash .show-section pre.compiler-out { background: #1e1a14 !important; border-left-color: #8a6030; }
+
+
+    .splash .show-quotes { margin-bottom: 0; }
+    .splash .quote-item { position: relative; font-size: 0.95em; font-style: italic; color: #666; line-height: 1.6; margin-bottom: 1.8em; padding-left: 0.3em; }
+    .splash .quote-item::before { content: "\201C"; position: absolute; left: -0.15em; top: -0.25em; font-size: 4.5em; font-family: Georgia, serif; color: #eee; line-height: 1; z-index: 0; }
+    .dark .splash .quote-item { color: #888; }
+    .dark .splash .quote-item::before { color: #252525; }
+    .splash .quote-item .quote-text, .splash .quote-item cite { position: relative; z-index: 1; display: block; }
+    .splash .quote-item cite { font-style: normal; color: #bbb; margin-top: 0.3em; font-size: 0.85em; }
+    .dark .splash .quote-item cite { color: #555; }
+
+    .splash .instacart-note { font-size: 0.85em; color: #888; margin-bottom: 2em; }
+    .splash .instacart-note a { color: #888; text-decoration: underline; }
+    .splash .instacart-note a:hover { color: #333; }
+    .dark .splash .instacart-note a:hover { color: #ccc; }
+
+    .production-badge {
+      display: flex; align-items: center; justify-content: center;
+      gap: 0.4em; margin: 0 0 1.8em; opacity: 0.45;
+      font-size: 0.8em; color: #999; transition: opacity 0.25s;
+    }
+    .production-badge:hover { opacity: 0.8; }
+    .production-badge a {
+      display: inline-flex; align-items: center; gap: 0.3em;
+      text-decoration: none !important; color: #666;
+    }
+    .production-badge a:hover { color: #333; }
+    .production-badge span a { text-decoration: underline !important; display: inline; }
+    .dark .production-badge a { color: #888; }
+    .dark .production-badge a:hover { color: #ccc; }
+    .production-badge img { height: 18px; width: auto; }
+
+    /* animation demos */
+    .show-section .demo-wrap { display: flex; justify-content: center; margin: 1.5em 0; }
+
+    /* type safety demo */
+    .type-safety-demo {
+      position: relative; width: 220px; height: 85px;
+      font-family: monospace; font-size: 0.55rem;
+    }
+    .type-safety-demo .node {
+      position: absolute; display: flex; flex-direction: column; align-items: center; gap: 0.1rem;
+    }
+    .type-safety-demo .node-dot {
+      width: 10px; height: 10px; border-radius: 50%; background: var(--accent);
+      animation: node-pulse-green 6s ease-out infinite;
+    }
+
+    .type-safety-demo .node-label { font-size: 0.5rem; font-weight: 600; opacity: 0.8; }
+    .type-safety-demo .node-type { font-size: 0.4rem; opacity: 0.5; white-space: nowrap; }
+    .type-safety-demo .node-e { left: 10px; top: 18px; }
+    .type-safety-demo .node-t { left: 95px; top: 18px; animation: node-t-fade 6s ease-out infinite; }
+    .type-safety-demo .node-l { left: 180px; top: 18px; animation: node-l-move 6s ease-out infinite; }
+    .type-safety-demo .conn {
+      position: absolute; top: 24px; font-size: 0.5rem; opacity: 0.4; color: var(--accent);
+    }
+
+    .type-safety-demo .conn-et { left: 72px; transform: translateX(-50%); animation: conn-et-fade 6s ease-out infinite; }
+    .type-safety-demo .conn-tl { left: 158px; transform: translateX(-50%); animation: conn-tl-fade 6s ease-out infinite; }
+    .type-safety-demo .flow-dot {
+      position: absolute; width: 4px; height: 4px; border-radius: 50%;
+      background: var(--accent); box-shadow: 0 0 6px var(--accent); opacity: 0; top: 21px;
+    }
+
+    .type-safety-demo .flow-dot-1 { animation: flow-good 6s ease-out infinite; }
+    .type-safety-demo .flow-dot-2 { animation: flow-good 6s ease-out infinite 0.15s; }
+    .type-safety-demo .flow-bad {
+      position: absolute; width: 4px; height: 4px; border-radius: 50%;
+      background: #ef4444; box-shadow: 0 0 6px #ef4444; opacity: 0; top: 21px;
+      animation: flow-fail 6s ease-out infinite;
+    }
+    .type-safety-demo .result {
+      position: absolute; top: 60px; font-size: 0.5rem; opacity: 0;
+    }
+    .type-safety-demo .result-fail {
+      left: 60px; top: 68px; color: #ef4444; white-space: nowrap;
+      animation: result-fail-anim 6s ease-out infinite;
+    }
+    @keyframes node-pulse-green {
+      0%, 30% { box-shadow: none; } 35%, 42% { box-shadow: 0 0 8px var(--accent); }
+      47%, 68% { box-shadow: none; } 73%, 88% { box-shadow: 0 0 8px #ef4444; background: #ef4444; }
+      93%, 100% { box-shadow: none; }
+    }
+    @keyframes node-t-fade { 0%, 42% { opacity: 1; } 50%, 88% { opacity: 0; } 95%, 100% { opacity: 1; } }
+    @keyframes node-l-move { 0%, 42% { left: 180px; } 50%, 88% { left: 95px; } 95%, 100% { left: 180px; } }
+    @keyframes conn-tl-fade { 0%, 42% { opacity: 0.4; } 50%, 88% { opacity: 0; } 95%, 100% { opacity: 0.4; } }
+    @keyframes conn-et-fade {
+      0%, 42% { opacity: 0.4; color: var(--accent); } 50%, 70% { opacity: 0.6; color: #ef4444; }
+      75%, 88% { opacity: 0.4; color: #ef4444; } 95%, 100% { opacity: 0.4; color: var(--accent); }
+    }
+    @keyframes flow-good {
+      0%, 5% { left: 18px; opacity: 0; } 8% { opacity: 0.9; }
+      18% { left: 100px; opacity: 0.9; } 32% { left: 185px; opacity: 0.9; }
+      36%, 100% { left: 185px; opacity: 0; }
+    }
+    @keyframes flow-fail {
+      0%, 50% { left: 18px; opacity: 0; } 53% { left: 18px; opacity: 0.9; }
+      65% { left: 70px; opacity: 0.9; } 70% { left: 75px; opacity: 0; } 100% { opacity: 0; }
+    }
+    @keyframes result-fail-anim { 0%, 68% { opacity: 0; } 73%, 88% { opacity: 1; } 93%, 100% { opacity: 0; } }
+
+    /* env merge demo */
+    .env-merge-demo {
+      display: flex; align-items: center; justify-content: center;
+      gap: 0.75rem; font-family: monospace; font-size: 0.65rem;
+    }
+    .env-merge-demo .env { display: flex; flex-direction: column; align-items: center; gap: 0.4rem; }
+    .env-merge-demo .dot { width: 10px; height: 10px; border-radius: 50%; background: var(--accent); }
+
+    .env-merge-demo .env-label { font-size: 0.6rem; opacity: 0.6; white-space: nowrap; }
+    .env-merge-demo .env-a { animation: env-drift-left 5s ease-in-out infinite; }
+    .env-merge-demo .env-b { animation: env-drift-right 5s ease-in-out infinite; }
+    .env-merge-demo .env-result { animation: env-result-appear 5s ease-in-out infinite; }
+    .env-merge-demo .env-result .dot { box-shadow: 0 0 8px var(--accent); }
+
+    .env-merge-demo .env-result .env-label { opacity: 0.8; }
+    .env-merge-demo .merge-op { opacity: 0.4; animation: op-pulse 5s ease-in-out infinite; }
+    .env-merge-demo .merge-eq { opacity: 0; animation: eq-appear 5s ease-in-out infinite; }
+    @keyframes env-drift-left { 0%, 15% { transform: translateX(-12px); opacity: 0.3; } 40%, 60% { transform: translateX(0); opacity: 1; } 85%, 100% { transform: translateX(-12px); opacity: 0.3; } }
+    @keyframes env-drift-right { 0%, 15% { transform: translateX(12px); opacity: 0.3; } 40%, 60% { transform: translateX(0); opacity: 1; } 85%, 100% { transform: translateX(12px); opacity: 0.3; } }
+    @keyframes env-result-appear { 0%, 45% { opacity: 0; transform: scale(0.7); } 55%, 75% { opacity: 1; transform: scale(1); } 90%, 100% { opacity: 0; transform: scale(0.7); } }
+    @keyframes op-pulse { 0%, 20% { opacity: 0.2; } 40%, 60% { opacity: 0.6; } 80%, 100% { opacity: 0.2; } }
+    @keyframes eq-appear { 0%, 45% { opacity: 0; } 55%, 75% { opacity: 0.6; } 90%, 100% { opacity: 0; } }
+
+    /* trace demo - minimalist */
+    .trace-demo { position: relative; width: 280px; height: 105px; font-family: monospace; font-size: 0.55rem; margin: 0 auto; }
+    .trace-demo .pipeline { position: absolute; top: 0; left: 0; display: flex; align-items: flex-start; gap: 0; }
+    .trace-demo .node-group { display: flex; flex-direction: column; align-items: center; }
+    .trace-demo .trace-node { width: 10px; height: 10px; border-radius: 50%; background: var(--accent); opacity: 0.6; }
+    .trace-demo .node-label { font-size: 0.5rem; margin-top: 3px; opacity: 0.5; }
+    .trace-demo .trace-arrow { font-size: 0.55rem; opacity: 0.3; margin: 0 22px; color: var(--accent); line-height: 10px; }
+    .trace-demo .trace-dot { position: absolute; width: 5px; height: 5px; border-radius: 50%; background: var(--accent); top: 2.5px; opacity: 0; }
+    .trace-demo .trace-log { position: absolute; top: 28px; left: 0; right: 0; display: flex; flex-direction: column; gap: 4px; padding-top: 10px; opacity: 0.25; }
+    .trace-demo .log-entry { font-size: 0.5rem; opacity: 0; white-space: nowrap; }
+    .trace-demo .log-entry .log-prefix { color: var(--accent); opacity: 0.6; }
+    .trace-demo .trace-result { position: absolute; bottom: 0; left: 0; font-size: 0.5rem; opacity: 0; white-space: nowrap; }
+    .trace-demo .trace-result .val { color: var(--accent); }
+
+    .trace-demo .trace-dot-1 { animation: trace-dot-flow 7s ease-in-out infinite; }
+    .trace-demo .trace-node-1 { animation: trace-node-glow-1 7s ease-out infinite; }
+    .trace-demo .trace-node-2 { animation: trace-node-glow-2 7s ease-out infinite; }
+    .trace-demo .trace-node-3 { animation: trace-node-glow-3 7s ease-out infinite; }
+    .trace-demo .trace-log { animation: trace-log-border 7s ease-out infinite; }
+    .trace-demo .log-1 { animation: trace-log-1 7s ease-out infinite; }
+    .trace-demo .log-2 { animation: trace-log-2 7s ease-out infinite; }
+    .trace-demo .log-3 { animation: trace-log-3 7s ease-out infinite; }
+    .trace-demo .trace-result { animation: trace-result-appear 7s ease-out infinite; }
+
+    @keyframes trace-dot-flow { 0% { left: -8px; opacity: 0; } 4% { left: -2px; opacity: 0.7; } 25% { left: 4px; } 50% { left: 75px; } 75% { left: 146px; } 90% { left: 190px; opacity: 0.7; } 100% { left: 210px; opacity: 0; } }
+    @keyframes trace-node-glow-1 { 0%, 18% { opacity: 0.6; } 25%, 32% { opacity: 1; } 38%, 100% { opacity: 0.6; } }
+    @keyframes trace-node-glow-2 { 0%, 42% { opacity: 0.6; } 50%, 57% { opacity: 1; } 62%, 100% { opacity: 0.6; } }
+    @keyframes trace-node-glow-3 { 0%, 68% { opacity: 0.6; } 75%, 82% { opacity: 1; } 87%, 100% { opacity: 0.6; } }
+    @keyframes trace-log-border { 0%, 20% { opacity: 0.25; } 28%, 92% { opacity: 0.5; } 96%, 100% { opacity: 0.25; } }
+    @keyframes trace-log-1 { 0%, 30% { opacity: 0; } 36%, 90% { opacity: 0.7; } 96%, 100% { opacity: 0; } }
+    @keyframes trace-log-2 { 0%, 54% { opacity: 0; } 60%, 90% { opacity: 0.7; } 96%, 100% { opacity: 0; } }
+    @keyframes trace-log-3 { 0%, 78% { opacity: 0; } 84%, 90% { opacity: 0.7; } 96%, 100% { opacity: 0; } }
+    @keyframes trace-result-appear { 0%, 78% { opacity: 0; } 84%, 94% { opacity: 0.6; } 100% { opacity: 0; } }
+
+    /* platform demo */
+    .platform-demo { position: relative; width: 280px; height: 140px; font-family: monospace; margin: 0 auto; }
+    .platform-demo .logo-source { width: 48px; height: 48px; position: absolute; top: 0; left: 50%; transform: translateX(-50%); opacity: 0.85; }
+    .platform-demo .drop { width: 5px; height: 5px; border-radius: 50%; background: var(--accent); position: absolute; opacity: 0; box-shadow: 0 0 6px var(--accent); }
+
+    .platform-demo .drop-jvm-1 { animation: drop-to-jvm 1.6s ease-out infinite; }
+    .platform-demo .drop-jvm-2 { animation: drop-to-jvm 1.6s ease-out infinite 0.4s; }
+    .platform-demo .drop-jvm-3 { animation: drop-to-jvm 1.6s ease-out infinite 0.8s; }
+    .platform-demo .drop-jvm-4 { animation: drop-to-jvm 1.6s ease-out infinite 1.2s; }
+    .platform-demo .drop-js-1 { animation: drop-to-js 1.6s ease-out infinite 0.13s; }
+    .platform-demo .drop-js-2 { animation: drop-to-js 1.6s ease-out infinite 0.53s; }
+    .platform-demo .drop-js-3 { animation: drop-to-js 1.6s ease-out infinite 0.93s; }
+    .platform-demo .drop-js-4 { animation: drop-to-js 1.6s ease-out infinite 1.33s; }
+    .platform-demo .drop-wasm-1 { animation: drop-to-wasm 1.6s ease-out infinite 0.2s; }
+    .platform-demo .drop-wasm-2 { animation: drop-to-wasm 1.6s ease-out infinite 0.6s; }
+    .platform-demo .drop-wasm-3 { animation: drop-to-wasm 1.6s ease-out infinite 1.0s; }
+    .platform-demo .drop-wasm-4 { animation: drop-to-wasm 1.6s ease-out infinite 1.4s; }
+    .platform-demo .drop-llvm-1 { animation: drop-to-llvm 1.6s ease-out infinite 0.27s; }
+    .platform-demo .drop-llvm-2 { animation: drop-to-llvm 1.6s ease-out infinite 0.67s; }
+    .platform-demo .drop-llvm-3 { animation: drop-to-llvm 1.6s ease-out infinite 1.07s; }
+    .platform-demo .drop-llvm-4 { animation: drop-to-llvm 1.6s ease-out infinite 1.47s; }
+    .platform-demo .platform { position: absolute; bottom: 0; opacity: 0.85; display: flex; align-items: center; justify-content: center; }
+    .platform-demo .platform svg { width: 28px; height: 28px; }
+    .platform-demo .platform-jvm { left: 10%; transform: translateX(-50%); }
+    .platform-demo .platform-js { left: 36%; transform: translateX(-50%); }
+    .platform-demo .platform-wasm { left: 62%; transform: translateX(-50%); }
+    .platform-demo .platform-llvm { left: 88%; transform: translateX(-50%); font-size: 0.75rem; font-weight: bold; }
+    @keyframes drop-to-jvm { 0% { top: 48px; left: 50%; opacity: 0; transform: scale(0.5); } 8% { opacity: 0.8; transform: scale(1); } 95% { opacity: 0.8; transform: scale(1); } 100% { top: 110px; left: 10%; opacity: 0; transform: scale(0.5); } }
+    @keyframes drop-to-js { 0% { top: 48px; left: 50%; opacity: 0; transform: scale(0.5); } 8% { opacity: 0.8; transform: scale(1); } 95% { opacity: 0.8; transform: scale(1); } 100% { top: 110px; left: 36%; opacity: 0; transform: scale(0.5); } }
+    @keyframes drop-to-wasm { 0% { top: 48px; left: 50%; opacity: 0; transform: scale(0.5); } 8% { opacity: 0.8; transform: scale(1); } 95% { opacity: 0.8; transform: scale(1); } 100% { top: 110px; left: 62%; opacity: 0; transform: scale(0.5); } }
+    @keyframes drop-to-llvm { 0% { top: 48px; left: 50%; opacity: 0; transform: scale(0.5); } 8% { opacity: 0.8; transform: scale(1); } 95% { opacity: 0.8; transform: scale(1); } 100% { top: 110px; left: 88%; opacity: 0; transform: scale(0.5); } }
+
+    /* prev/next footer */
+    .page-nav {
+      display: flex; justify-content: space-between; align-items: center;
+      margin-top: 3em; padding-top: 1.5em;
+      border-top: 1px solid #e0e0e0; font-size: 13px;
+    }
+    .dark .page-nav { border-color: #333; }
+    .page-nav a {
+      text-decoration: none; color: #555; display: flex; align-items: center; gap: 0.4em;
+      transition: color 0.15s;
+    }
+    .dark .page-nav a { color: #888; }
+    .page-nav a:hover { color: #000; }
+    .dark .page-nav a:hover { color: #ccc; }
+    .page-nav .nav-dir { font-size: 11px; opacity: 0.5; display: block; }
+    .page-nav .nav-title { font-weight: 500; }
+    .page-nav .nav-next { text-align: right; margin-left: auto; }
+
+    @media (max-width: 700px) {
+      .splash { padding: 4em 1em 3em; }
+      .splash h1 { font-size: 2.2em; }
+      .show-stagger, .show-stagger.flip { grid-template-columns: 1fr; }
+      .show-stagger h3, .show-stagger .show-desc, .show-stagger .demo-wrap,
+      .show-stagger.flip h3, .show-stagger.flip .show-desc, .show-stagger.flip .demo-wrap {
+        grid-column: 1; grid-row: auto;
+      }
+    }
+
+    /* admonitions */
+    .admonition {
+      margin: 1.2em 0; padding: 0.6em 1em;
+      border-left: 3px solid #ddd; background: #fafafa;
+      font-size: 0.92em; transition: background 0.2s, border-color 0.2s;
+    }
+    .dark .admonition { background: #1e1e1e; border-color: #333; }
+    .admonition-title { font-weight: bold; font-size: 0.85em; text-transform: uppercase; letter-spacing: 0.03em; margin-bottom: 0.3em; }
+    .admonition p:last-child { margin-bottom: 0; }
+    .admonition.note { border-color: #8ac; background: #f4f9fc; }
+    .admonition.note .admonition-title { color: #4a8; }
+    .dark .admonition.note { background: #182028; border-color: #3a6a7a; }
+    .dark .admonition.note .admonition-title { color: #7cb; }
+    .admonition.tip { border-color: #8b8; background: #f4fbf4; }
+    .admonition.tip .admonition-title { color: #4a4; }
+    .dark .admonition.tip { background: #1a2418; border-color: #4a6a4a; }
+    .dark .admonition.tip .admonition-title { color: #8b8; }
+    .admonition.warning { border-color: #e8c46c; background: #fdf9ef; }
+    .admonition.warning .admonition-title { color: #b08520; }
+    .dark .admonition.warning { background: #28220e; border-color: #8a6a2a; }
+    .dark .admonition.warning .admonition-title { color: #d4a84a; }
+    .admonition.danger { border-color: #d88; background: #fdf4f4; }
+    .admonition.danger .admonition-title { color: #a44; }
+    .dark .admonition.danger { background: #281818; border-color: #7a3a3a; }
+    .dark .admonition.danger .admonition-title { color: #d88; }
+    .admonition.info { border-color: #aac; background: #f4f4fc; }
+    .admonition.info .admonition-title { color: #66a; }
+    .dark .admonition.info { background: #1a1a28; border-color: #4a4a7a; }
+    .dark .admonition.info .admonition-title { color: #99b; }
+
+    /* mobile overlay */
+    .sidebar-backdrop {
+      display: none;
+      position: fixed; inset: 0;
+      background: rgba(0,0,0,0.3);
+      z-index: 50;
+    }
+    .dark .sidebar-backdrop { background: rgba(0,0,0,0.6); }
+    .sidebar-backdrop.open { display: block; }
+
+    @media (max-width: 700px) {
+      .topbar .hamburger { display: block; }
+      .topbar .search-wrap input { width: 120px; }
+      .topbar .search-wrap input:focus { width: 160px; }
+      .search-drop { width: 260px; }
+      .page { display: block; padding: 1em; }
+      .sidebar {
+        position: fixed;
+        top: 0; left: 0;
+        width: 220px;
+        height: 100%;
+        background: #fff;
+        z-index: 60;
+        padding: 1.2em 1em;
+        overflow-y: auto;
+        transform: translateX(-100%);
+        transition: transform 0.2s ease;
+        box-shadow: none;
+      }
+      .dark .sidebar { background: #1a1a1a; }
+      .sidebar.open {
+        transform: translateX(0);
+        box-shadow: 2px 0 12px rgba(0,0,0,0.1);
+      }
+      .dark .sidebar.open { box-shadow: 2px 0 12px rgba(0,0,0,0.4); }
+      .splash h1 { font-size: 1.8em; }
+    }
+  </style>
+</head>
+<body>
+  <div class="topbar">
+    
+    <button class="hamburger" id="menuBtn" aria-label="Menu">&#9776;</button>
+    
+    <a class="site-name" href="..">etl4s</a>
+    <div class="search-wrap">
+      <input type="text" id="searchInput" placeholder="Search..." autocomplete="off">
+      <div class="search-drop" id="searchDrop"></div>
+    </div>
+    <a class="topbar-link" href="https://scastie.scala-lang.org/mattlianje/1280QhQ5RWODgizeXOIsXA/5" target="_blank" title="Try online">Scastie</a>
+    <a class="gh-link" href="https://github.com/mattlianje/etl4s" title="GitHub">
+      <svg viewBox="0 0 16 16"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27s1.36.09 2 .27c1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0016 8c0-4.42-3.58-8-8-8z"/></svg>
+    </a>
+    <label class="toggle" title="Toggle dark mode">
+      <input type="checkbox" id="darkToggle" onchange="toggleDark()">
+      <span class="slider"></span>
+    </label>
+  </div>
+  <div class="sidebar-backdrop" id="backdrop"></div>
+
+  
+  <div class="page">
+    <nav class="sidebar" id="sidebar">
+      <ul>
+        
+          
+            <li>
+              <a href="..">Home</a>
+            </li>
+          
+        
+          
+            
+            
+              
+            
+              
+            
+            <li>
+              <button class="section-toggle" onclick="this.classList.toggle('open');this.nextElementSibling.classList.toggle('open')">
+                <span class="arrow"></span>Getting Started
+              </button>
+              <ul class="section-pages">
+                
+                  <li>
+                    <a href="../installation/">Installation</a>
+                  </li>
+                
+                  <li>
+                    <a href="../first-pipeline/">Your First Pipeline</a>
+                  </li>
+                
+              </ul>
+            </li>
+          
+        
+          
+            
+            
+              
+            
+              
+            
+              
+            
+              
+            
+              
+            
+              
+            
+              
+            
+              
+            
+              
+            
+              
+            
+              
+            
+              
+            
+            <li>
+              <button class="section-toggle open" onclick="this.classList.toggle('open');this.nextElementSibling.classList.toggle('open')">
+                <span class="arrow"></span>Guide
+              </button>
+              <ul class="section-pages open">
+                
+                  <li>
+                    <a href="../core-concepts/">Core Concepts</a>
+                  </li>
+                
+                  <li>
+                    <a href="../operators/">Operators</a>
+                  </li>
+                
+                  <li>
+                    <a href="./" class="active">Parallel Execution</a>
+                  </li>
+                
+                  <li>
+                    <a href="../branching/">Conditional Branching</a>
+                  </li>
+                
+                  <li>
+                    <a href="../effect/">Side Effects</a>
+                  </li>
+                
+                  <li>
+                    <a href="../config/">Configuration</a>
+                  </li>
+                
+                  <li>
+                    <a href="../failures/">Error Handling</a>
+                  </li>
+                
+                  <li>
+                    <a href="../validation/">Ensurers</a>
+                  </li>
+                
+                  <li>
+                    <a href="../trace/">Tracing</a>
+                  </li>
+                
+                  <li>
+                    <a href="../opentelemetry/">Telemetry</a>
+                  </li>
+                
+                  <li>
+                    <a href="../lineage/">Lineage Diagrams</a>
+                  </li>
+                
+                  <li>
+                    <a href="../testing/">Testing</a>
+                  </li>
+                
+              </ul>
+            </li>
+          
+        
+          
+            
+            
+              
+            
+              
+            
+              
+            
+            <li>
+              <button class="section-toggle" onclick="this.classList.toggle('open');this.nextElementSibling.classList.toggle('open')">
+                <span class="arrow"></span>Examples
+              </button>
+              <ul class="section-pages">
+                
+                  <li>
+                    <a href="../examples/">Common Patterns</a>
+                  </li>
+                
+                  <li>
+                    <a href="../examples-spark/">etl4s + Spark</a>
+                  </li>
+                
+                  <li>
+                    <a href="../examples-flink/">etl4s + Flink</a>
+                  </li>
+                
+              </ul>
+            </li>
+          
+        
+          
+            <li>
+              <a href="../advanced/">Advanced</a>
+            </li>
+          
+        
+          
+            <li>
+              <a href="../tradeoffs/">Tradeoffs</a>
+            </li>
+          
+        
+          
+            <li>
+              <a href="../philosophy/">Philosophy</a>
+            </li>
+          
+        
+          
+            <li>
+              <a href="../faq/">FAQ</a>
+            </li>
+          
+        
+      </ul>
+    </nav>
+    <div class="content">
+      <p><strong>etl4s</strong> has an elegant shorthand for grouping and parallelizing operations that share the same input type:
+<div class="language-scala highlight"><pre><span></span><code><span id="__span-0-1"><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="k">import</span><span class="w"> </span><span class="nn">etl4s</span><span class="p">.</span><span class="n">_</span>
+</span><span id="__span-0-2"><a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a>
+</span><span id="__span-0-3"><a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a><span class="cm">/* Simulate slow IO operations (e.g: DB calls, API requests) */</span>
+</span><span id="__span-0-4"><a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a>
+</span><span id="__span-0-5"><a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a><span class="kd">val</span><span class="w"> </span><span class="n">e1</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nc">Extract</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="nc">Thread</span><span class="p">.</span><span class="n">sleep</span><span class="p">(</span><span class="mi">100</span><span class="p">);</span><span class="w"> </span><span class="mi">42</span><span class="w"> </span><span class="p">}</span>
+</span><span id="__span-0-6"><a id="__codelineno-0-6" name="__codelineno-0-6" href="#__codelineno-0-6"></a><span class="kd">val</span><span class="w"> </span><span class="n">e2</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nc">Extract</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="nc">Thread</span><span class="p">.</span><span class="n">sleep</span><span class="p">(</span><span class="mi">100</span><span class="p">);</span><span class="w"> </span><span class="s">&quot;hello&quot;</span><span class="w"> </span><span class="p">}</span>
+</span><span id="__span-0-7"><a id="__codelineno-0-7" name="__codelineno-0-7" href="#__codelineno-0-7"></a><span class="kd">val</span><span class="w"> </span><span class="n">e3</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nc">Extract</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="nc">Thread</span><span class="p">.</span><span class="n">sleep</span><span class="p">(</span><span class="mi">100</span><span class="p">);</span><span class="w"> </span><span class="kc">true</span><span class="w"> </span><span class="p">}</span>
+</span></code></pre></div></p>
+<p>Sequential run of e1, e2, and e3 <strong>(~300ms total)</strong>
+<div class="language-scala highlight"><pre><span></span><code><span id="__span-1-1"><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a><span class="kd">val</span><span class="w"> </span><span class="n">sequential</span><span class="p">:</span><span class="w"> </span><span class="nc">Extract</span><span class="p">[</span><span class="nc">Unit</span><span class="p">,</span><span class="w"> </span><span class="p">(</span><span class="nc">Int</span><span class="p">,</span><span class="w"> </span><span class="nc">String</span><span class="p">,</span><span class="w"> </span><span class="nc">Boolean</span><span class="p">)]</span><span class="w"> </span><span class="o">=</span>
+</span><span id="__span-1-2"><a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a><span class="w">     </span><span class="n">e1</span><span class="w"> </span><span class="n">&amp;</span><span class="w"> </span><span class="n">e2</span><span class="w"> </span><span class="n">&amp;</span><span class="w"> </span><span class="n">e3</span>
+</span></code></pre></div></p>
+<p>Parallel run of e1, e2, e3 on their own JVM threads with Scala Futures <strong>(~100ms total, same result, 3X faster)</strong>
+<div class="language-scala highlight"><pre><span></span><code><span id="__span-2-1"><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a><span class="k">import</span><span class="w"> </span><span class="nn">scala</span><span class="p">.</span><span class="nn">concurrent</span><span class="p">.</span><span class="nc">ExecutionContext</span><span class="p">.</span><span class="nc">Implicits</span><span class="p">.</span><span class="n">global</span>
+</span><span id="__span-2-2"><a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a>
+</span><span id="__span-2-3"><a id="__codelineno-2-3" name="__codelineno-2-3" href="#__codelineno-2-3"></a><span class="kd">val</span><span class="w"> </span><span class="n">parallel</span><span class="p">:</span><span class="w"> </span><span class="nc">Extract</span><span class="p">[</span><span class="nc">Unit</span><span class="p">,</span><span class="w"> </span><span class="p">(</span><span class="nc">Int</span><span class="p">,</span><span class="w"> </span><span class="nc">String</span><span class="p">,</span><span class="w"> </span><span class="nc">Boolean</span><span class="p">)]</span><span class="w"> </span><span class="o">=</span>
+</span><span id="__span-2-4"><a id="__codelineno-2-4" name="__codelineno-2-4" href="#__codelineno-2-4"></a><span class="w">     </span><span class="n">e1</span><span class="w"> </span><span class="o">&amp;&gt;</span><span class="w"> </span><span class="n">e2</span><span class="w"> </span><span class="o">&amp;&gt;</span><span class="w"> </span><span class="n">e3</span>
+</span></code></pre></div></p>
+<p>Mix sequential and parallel execution (first two parallel (~100ms), then third (~100ms)):
+<div class="language-scala highlight"><pre><span></span><code><span id="__span-3-1"><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a><span class="kd">val</span><span class="w"> </span><span class="n">mixed</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">(</span><span class="n">e1</span><span class="w"> </span><span class="o">&amp;&gt;</span><span class="w"> </span><span class="n">e2</span><span class="p">)</span><span class="w"> </span><span class="n">&amp;</span><span class="w"> </span><span class="n">e3</span>
+</span></code></pre></div></p>
+<p>Full example of a parallel pipeline:
+<div class="language-scala highlight"><pre><span></span><code><span id="__span-4-1"><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a><span class="kd">val</span><span class="w"> </span><span class="n">consoleLoad</span><span class="p">:</span><span class="w"> </span><span class="nc">Load</span><span class="p">[</span><span class="nc">String</span><span class="p">,</span><span class="w"> </span><span class="nc">Unit</span><span class="p">]</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nc">Load</span><span class="p">(</span><span class="n">println</span><span class="p">(</span><span class="n">_</span><span class="p">))</span>
+</span><span id="__span-4-2"><a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a><span class="kd">val</span><span class="w"> </span><span class="n">dbLoad</span><span class="p">:</span><span class="w">      </span><span class="nc">Load</span><span class="p">[</span><span class="nc">String</span><span class="p">,</span><span class="w"> </span><span class="nc">Unit</span><span class="p">]</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nc">Load</span><span class="p">(</span><span class="n">x</span><span class="w"> </span><span class="o">=&gt;</span><span class="w"> </span><span class="n">println</span><span class="p">(</span><span class="s">s&quot;DB Load: </span><span class="si">${</span><span class="n">x</span><span class="si">}</span><span class="s">&quot;</span><span class="p">))</span>
+</span><span id="__span-4-3"><a id="__codelineno-4-3" name="__codelineno-4-3" href="#__codelineno-4-3"></a>
+</span><span id="__span-4-4"><a id="__codelineno-4-4" name="__codelineno-4-4" href="#__codelineno-4-4"></a><span class="kd">val</span><span class="w"> </span><span class="n">merge</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nc">Transform</span><span class="p">[(</span><span class="nc">Int</span><span class="p">,</span><span class="w"> </span><span class="nc">String</span><span class="p">,</span><span class="w"> </span><span class="nc">Boolean</span><span class="p">),</span><span class="w"> </span><span class="nc">String</span><span class="p">]</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="k">case</span><span class="w"> </span><span class="p">(</span><span class="n">i</span><span class="p">,</span><span class="w"> </span><span class="n">s</span><span class="p">,</span><span class="w"> </span><span class="n">b</span><span class="p">)</span><span class="w"> </span><span class="o">=&gt;</span>
+</span><span id="__span-4-5"><a id="__codelineno-4-5" name="__codelineno-4-5" href="#__codelineno-4-5"></a><span class="w">    </span><span class="s">s&quot;</span><span class="si">$</span><span class="n">i</span><span class="s">-</span><span class="si">$</span><span class="n">s</span><span class="s">-</span><span class="si">$</span><span class="n">b</span><span class="s">&quot;</span>
+</span><span id="__span-4-6"><a id="__codelineno-4-6" name="__codelineno-4-6" href="#__codelineno-4-6"></a><span class="w">  </span><span class="p">}</span>
+</span><span id="__span-4-7"><a id="__codelineno-4-7" name="__codelineno-4-7" href="#__codelineno-4-7"></a>
+</span><span id="__span-4-8"><a id="__codelineno-4-8" name="__codelineno-4-8" href="#__codelineno-4-8"></a><span class="kd">val</span><span class="w"> </span><span class="n">pipeline</span><span class="w"> </span><span class="o">=</span>
+</span><span id="__span-4-9"><a id="__codelineno-4-9" name="__codelineno-4-9" href="#__codelineno-4-9"></a><span class="w">  </span><span class="p">(</span><span class="n">e1</span><span class="w"> </span><span class="o">&amp;&gt;</span><span class="w"> </span><span class="n">e2</span><span class="w"> </span><span class="o">&amp;&gt;</span><span class="w"> </span><span class="n">e3</span><span class="p">)</span><span class="w"> </span><span class="o">~&gt;</span><span class="w"> </span><span class="n">merge</span><span class="w"> </span><span class="o">~&gt;</span><span class="w"> </span><span class="p">(</span><span class="n">consoleLoad</span><span class="w"> </span><span class="o">&amp;&gt;</span><span class="w"> </span><span class="n">dbLoad</span><span class="p">)</span>
+</span></code></pre></div></p>
+      <nav class="page-nav">
+        
+        <a class="nav-prev" href="../operators/">
+          <span>&larr;</span>
+          <span><span class="nav-dir">Previous</span><span class="nav-title">Operators</span></span>
+        </a>
+        
+        
+        <a class="nav-next" href="../branching/">
+          <span><span class="nav-dir">Next</span><span class="nav-title">Conditional Branching</span></span>
+          <span>&rarr;</span>
+        </a>
+        
+      </nav>
+    </div>
+  </div>
+  
+
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/scala.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
+  <script src="../search/lunr.js"></script>
+  <script>var base_url = '..';</script>
+  <script>
+    /* highlight.js: only process blocks not already handled by pygments */
+    document.querySelectorAll('pre code').forEach(function(el) {
+      if (!el.closest('.highlight') && !el.classList.contains('hljs')) {
+        hljs.highlightElement(el);
+      }
+    });
+
+    /* splash tabs */
+    (function() {
+      var tabs = document.getElementById('splashTabs');
+      if (!tabs) return;
+      var btns = tabs.querySelectorAll('.tab-btn');
+      var panels = tabs.querySelectorAll('.tab-panel');
+      var diagramRendered = false;
+      btns.forEach(function(btn) {
+        btn.addEventListener('click', function() {
+          var t = btn.getAttribute('data-tab');
+          btns.forEach(function(b) { b.classList.remove('active'); });
+          panels.forEach(function(p) { p.classList.remove('active'); });
+          btn.classList.add('active');
+          var panel = tabs.querySelector('.tab-panel[data-tab="' + t + '"]');
+          panel.classList.add('active');
+          /* highlight newly visible code */
+          panel.querySelectorAll('pre code:not(.hljs)').forEach(function(el) {
+            hljs.highlightElement(el);
+          });
+          /* render mermaid diagram on first show */
+          if (t === 'diagram' && !diagramRendered) {
+            diagramRendered = true;
+            var placeholder = document.getElementById('diagramMermaid');
+            if (placeholder && typeof mermaid !== 'undefined') {
+              var graph = placeholder.textContent;
+              placeholder.textContent = '';
+              placeholder.classList.add('mermaid');
+              placeholder.textContent = graph;
+              mermaid.run({ nodes: [placeholder] });
+            }
+          }
+        });
+      });
+    })();
+
+    /* mermaid */
+    mermaid.initialize({
+      startOnLoad: false,
+      theme: document.body.classList.contains('dark') ? 'dark' : 'default'
+    });
+    document.querySelectorAll('.mermaid').forEach(function(el) {
+      if (el.tagName === 'PRE') {
+        var code = el.querySelector('code');
+        if (code) {
+          var div = document.createElement('div');
+          div.className = 'mermaid';
+          div.textContent = code.textContent;
+          el.parentNode.replaceChild(div, el);
+        }
+      }
+    });
+    mermaid.run();
+
+    /* dark mode */
+    function setDark(dark) {
+      document.documentElement.classList.toggle('dark', dark);
+      document.body.classList.toggle('dark', dark);
+      document.getElementById('hl-light').disabled = dark;
+      document.getElementById('hl-dark').disabled = !dark;
+      if (typeof mermaid !== 'undefined') {
+        mermaid.initialize({ theme: dark ? 'dark' : 'default' });
+      }
+    }
+    function toggleDark() {
+      var dark = !document.body.classList.contains('dark');
+      localStorage.setItem('dark', dark);
+      setDark(dark);
+    }
+    // apply on load (html.dark already set by blocking script if needed)
+    if (localStorage.getItem('dark') === 'true') {
+      setDark(true);
+      document.getElementById('darkToggle').checked = true;
+    }
+
+    /* copy buttons */
+    document.querySelectorAll('pre').forEach(function(pre) {
+      var btn = document.createElement('button');
+      btn.className = 'copy';
+      btn.innerHTML = '&#x2398;';
+      btn.addEventListener('click', function() {
+        navigator.clipboard.writeText(pre.querySelector('code').textContent);
+        btn.style.transform = 'scale(1.3)';
+        setTimeout(function() { btn.style.transform = ''; }, 150);
+      });
+      pre.appendChild(btn);
+    });
+
+    /* section permalinks */
+    document.querySelectorAll('h2[id], h3[id]').forEach(function(h) {
+      var a = document.createElement('a');
+      a.className = 'permalink';
+      a.href = '#' + h.id;
+      a.textContent = '#';
+      h.appendChild(a);
+    });
+
+    /* scroll-spy */
+    var tocLinks = document.querySelectorAll('.page-toc a');
+    if (tocLinks.length) {
+      var tocHeadings = [];
+      tocLinks.forEach(function(a) {
+        var el = document.getElementById(a.getAttribute('href').slice(1));
+        if (el) tocHeadings.push({ el: el, a: a });
+      });
+      function updateActive() {
+        var current = tocHeadings[0];
+        for (var i = 0; i < tocHeadings.length; i++) {
+          if (tocHeadings[i].el.getBoundingClientRect().top <= 80) current = tocHeadings[i];
+        }
+        tocHeadings.forEach(function(h) { h.a.classList.remove('active'); });
+        if (current) current.a.classList.add('active');
+      }
+      window.addEventListener('scroll', updateActive);
+      updateActive();
+    }
+
+    /* mobile menu */
+    var menuBtn = document.getElementById('menuBtn');
+    var sidebar = document.getElementById('sidebar');
+    var backdrop = document.getElementById('backdrop');
+    function closeSidebar() {
+      if (sidebar) sidebar.classList.remove('open');
+      backdrop.classList.remove('open');
+    }
+    if (menuBtn && sidebar) {
+      menuBtn.addEventListener('click', function() {
+        sidebar.classList.toggle('open');
+        backdrop.classList.toggle('open');
+      });
+    }
+    if (backdrop) backdrop.addEventListener('click', closeSidebar);
+
+    /* search with lunr */
+    (function() {
+      var input = document.getElementById('searchInput');
+      var drop = document.getElementById('searchDrop');
+      if (!input || !drop) return;
+
+      var idx = null;
+      var docs = {};
+      var selIdx = -1;
+
+      fetch('../search/search_index.json')
+        .then(function(r) { return r.json(); })
+        .then(function(data) {
+          var records = data.docs || [];
+          // dedupe: keep only page-level entries (no # anchors) for cleaner results
+          var seen = {};
+          var filtered = [];
+          records.forEach(function(d) {
+            var loc = d.location.replace(/#.*$/, '');
+            if (!seen[loc]) {
+              seen[loc] = true;
+              filtered.push(d);
+            } else if (d.text && (!docs[loc] || docs[loc].text.length < d.text.length)) {
+              // keep the one with more text
+              docs[loc] = d;
+              return;
+            }
+            docs[d.location] = d;
+          });
+
+          idx = lunr(function() {
+            this.ref('location');
+            this.field('title', { boost: 10 });
+            this.field('text');
+            records.forEach(function(doc) {
+              this.add(doc);
+            }, this);
+          });
+        });
+
+      function snippet(text, query) {
+        if (!text) return '';
+        var lower = text.toLowerCase();
+        var qi = lower.indexOf(query.toLowerCase());
+        var start = Math.max(0, qi - 40);
+        var end = Math.min(text.length, qi + query.length + 80);
+        var s = (start > 0 ? '...' : '') + text.substring(start, end) + (end < text.length ? '...' : '');
+        // highlight
+        var re = new RegExp('(' + query.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + ')', 'gi');
+        return s.replace(re, '<mark>$1</mark>');
+      }
+
+      function render(results, query) {
+        drop.innerHTML = '';
+        selIdx = -1;
+        if (!results.length) {
+          drop.innerHTML = '<div class="no-res">No results</div>';
+          drop.classList.add('open');
+          return;
+        }
+        results.slice(0, 10).forEach(function(r) {
+          var doc = docs[r.ref];
+          if (!doc) return;
+          var a = document.createElement('a');
+          a.href = base_url + '/' + doc.location;
+          var title = document.createElement('div');
+          title.className = 'sr-title';
+          title.textContent = doc.title || doc.location;
+          a.appendChild(title);
+          if (doc.text) {
+            var txt = document.createElement('div');
+            txt.className = 'sr-text';
+            txt.innerHTML = snippet(doc.text, query);
+            a.appendChild(txt);
+          }
+          drop.appendChild(a);
+        });
+        drop.classList.add('open');
+      }
+
+      var debounce;
+      input.addEventListener('input', function() {
+        clearTimeout(debounce);
+        var q = input.value.trim();
+        if (!q || q.length < 2 || !idx) {
+          drop.classList.remove('open');
+          return;
+        }
+        debounce = setTimeout(function() {
+          var results;
+          try {
+            results = idx.search(q + '*');
+            if (!results.length) results = idx.search(q + '~1');
+          } catch(e) {
+            results = [];
+          }
+          render(results, q);
+        }, 80);
+      });
+
+      input.addEventListener('keydown', function(e) {
+        var items = drop.querySelectorAll('a');
+        if (!items.length) return;
+        if (e.key === 'ArrowDown') {
+          e.preventDefault();
+          selIdx = Math.min(selIdx + 1, items.length - 1);
+        } else if (e.key === 'ArrowUp') {
+          e.preventDefault();
+          selIdx = Math.max(selIdx - 1, 0);
+        } else if (e.key === 'Enter' && selIdx >= 0) {
+          e.preventDefault();
+          items[selIdx].click();
+          return;
+        } else if (e.key === 'Escape') {
+          drop.classList.remove('open');
+          input.blur();
+          return;
+        } else {
+          return;
+        }
+        items.forEach(function(a) { a.classList.remove('sel'); });
+        items[selIdx].classList.add('sel');
+        items[selIdx].scrollIntoView({ block: 'nearest' });
+      });
+
+      document.addEventListener('click', function(e) {
+        if (!input.contains(e.target) && !drop.contains(e.target)) {
+          drop.classList.remove('open');
+        }
+      });
+    })();
+
+  </script>
+</body>
+</html>

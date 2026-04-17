@@ -1,0 +1,149 @@
+/* ===== Pygments syntax highlighting (github-like) ===== */
+.highlight { background: transparent; margin: 1em 0; }
+.highlight pre {
+  background: #f8f8f8 !important; padding: 0.6em 1em; overflow-x: auto; margin: 0; position: relative;
+  font-family: "Source Code Pro", "Fira Code", "SF Mono", "Cascadia Code", Menlo, Consolas, monospace;
+  font-size: 13px; line-height: 1.4;
+}
+.highlight pre code, .highlight pre span {
+  font-family: inherit; font-size: inherit; line-height: inherit;
+}
+.dark .highlight pre { background: #222 !important; }
+
+.highlight .hll { background-color: #ffffcc; }
+.highlight .c, .highlight .cm, .highlight .c1, .highlight .cs { color: #6a737d; font-style: italic; }
+.highlight .k, .highlight .kd, .highlight .kn, .highlight .kp, .highlight .kr, .highlight .kt { color: #d73a49; }
+.highlight .o, .highlight .ow { color: #d73a49; }
+.highlight .n { color: #24292e; }
+.highlight .na { color: #6f42c1; }
+.highlight .nb { color: #005cc5; }
+.highlight .nc { color: #6f42c1; }
+.highlight .nf, .highlight .fm { color: #6f42c1; }
+.highlight .s, .highlight .sa, .highlight .sb, .highlight .sc, .highlight .dl, .highlight .sd, .highlight .s2, .highlight .se, .highlight .sh, .highlight .si, .highlight .sx, .highlight .sr, .highlight .s1, .highlight .ss { color: #032f62; }
+.highlight .m, .highlight .mb, .highlight .mf, .highlight .mh, .highlight .mi, .highlight .mo, .highlight .il { color: #005cc5; }
+.highlight .p { color: #24292e; }
+.highlight .err { color: #cb2431; }
+
+/* dark mode overrides */
+.dark .highlight .c, .dark .highlight .cm, .dark .highlight .c1, .dark .highlight .cs { color: #8b949e; }
+.dark .highlight .k, .dark .highlight .kd, .dark .highlight .kn, .dark .highlight .kp, .dark .highlight .kr, .dark .highlight .kt { color: #ff7b72; }
+.dark .highlight .o, .dark .highlight .ow { color: #ff7b72; }
+.dark .highlight .n { color: #c9d1d9; }
+.dark .highlight .na { color: #d2a8ff; }
+.dark .highlight .nb { color: #79c0ff; }
+.dark .highlight .nc { color: #d2a8ff; }
+.dark .highlight .nf, .dark .highlight .fm { color: #d2a8ff; }
+.dark .highlight .s, .dark .highlight .sa, .dark .highlight .sb, .dark .highlight .sc, .dark .highlight .dl, .dark .highlight .sd, .dark .highlight .s2, .dark .highlight .se, .dark .highlight .sh, .dark .highlight .si, .dark .highlight .sx, .dark .highlight .sr, .dark .highlight .s1, .dark .highlight .ss { color: #a5d6ff; }
+.dark .highlight .m, .dark .highlight .mb, .dark .highlight .mf, .dark .highlight .mh, .dark .highlight .mi, .dark .highlight .mo, .dark .highlight .il { color: #79c0ff; }
+.dark .highlight .p { color: #c9d1d9; }
+
+/* ===== pymdownx.tabbed ===== */
+.tabbed-set { position: relative; display: flex; flex-wrap: wrap; margin: 1em 0; border-bottom: 1px solid #ddd; }
+.dark .tabbed-set { border-color: #444; }
+.tabbed-set > input { display: none; }
+.tabbed-set label {
+  padding: 0.4em 1em; cursor: pointer; font-size: 0.85em;
+  border-bottom: 2px solid transparent; color: #666; transition: color 0.15s;
+}
+.dark .tabbed-set label { color: #999; }
+.tabbed-set label:hover { color: #000; }
+.dark .tabbed-set label:hover { color: #ccc; }
+.tabbed-set > input:checked + label { color: #000; border-bottom-color: #4a90d9; }
+.dark .tabbed-set > input:checked + label { color: #eee; border-bottom-color: #4a90d9; }
+.tabbed-content { display: none; width: 100%; order: 99; padding: 0.8em 0; }
+.tabbed-set > input:nth-child(1):checked ~ .tabbed-content:nth-child(2),
+.tabbed-set > input:nth-child(3):checked ~ .tabbed-content:nth-child(4),
+.tabbed-set > input:nth-child(5):checked ~ .tabbed-content:nth-child(6),
+.tabbed-set > input:nth-child(7):checked ~ .tabbed-content:nth-child(8),
+.tabbed-set > input:nth-child(9):checked ~ .tabbed-content:nth-child(10) { display: block; }
+
+/* pymdownx.tabbed alternate style */
+.tabbed-alternate { margin: 1em 0; }
+.tabbed-alternate .tabbed-set { border-bottom: none; }
+.tabbed-alternate .tabbed-content { border-top: 1px solid #ddd; padding-top: 1em; }
+.dark .tabbed-alternate .tabbed-content { border-color: #444; }
+
+/* ===== TOC permalink ===== */
+.headerlink { text-decoration: none; color: #ccc; margin-left: 0.3em; opacity: 0; transition: opacity 0.15s; }
+h2:hover .headerlink, h3:hover .headerlink { opacity: 1; }
+.dark .headerlink { color: #444; }
+
+/* ===== pymdownx.details ===== */
+details { margin: 1em 0; }
+details summary { cursor: pointer; font-weight: 600; font-size: 0.92em; }
+
+/* ===== Animation keyframes for index.md demos ===== */
+
+/* Magnetic snap */
+@keyframes magnet-left {
+  0%, 10% { transform: translateX(-12px); opacity: 0.5; }
+  40%, 60% { transform: translateX(0); opacity: 0.9; }
+  90%, 100% { transform: translateX(-12px); opacity: 0.5; }
+}
+@keyframes magnet-right {
+  0%, 10% { transform: translateX(12px); opacity: 0.5; }
+  40%, 60% { transform: translateX(0); opacity: 0.9; }
+  90%, 100% { transform: translateX(12px); opacity: 0.5; }
+}
+@keyframes connector-appear {
+  0%, 30% { opacity: 0; }
+  45%, 55% { opacity: 0.6; }
+  70%, 100% { opacity: 0; }
+}
+
+/* Environment merge */
+@keyframes env-drift-left {
+  0%, 15% { transform: translateX(-12px); opacity: 0.3; }
+  40%, 60% { transform: translateX(0); opacity: 1; }
+  85%, 100% { transform: translateX(-12px); opacity: 0.3; }
+}
+@keyframes env-drift-right {
+  0%, 15% { transform: translateX(12px); opacity: 0.3; }
+  40%, 60% { transform: translateX(0); opacity: 1; }
+  85%, 100% { transform: translateX(12px); opacity: 0.3; }
+}
+@keyframes env-result-appear {
+  0%, 45% { opacity: 0; transform: scale(0.7); }
+  55%, 75% { opacity: 1; transform: scale(1); }
+  90%, 100% { opacity: 0; transform: scale(0.7); }
+}
+@keyframes op-pulse {
+  0%, 20% { opacity: 0.2; }
+  40%, 60% { opacity: 0.6; }
+  80%, 100% { opacity: 0.2; }
+}
+@keyframes eq-appear {
+  0%, 45% { opacity: 0; }
+  55%, 75% { opacity: 0.6; }
+  90%, 100% { opacity: 0; }
+}
+
+/* Platform drops */
+@keyframes drop-to-jvm {
+  0% { top: 48px; left: 50%; opacity: 0; transform: scale(0.5); }
+  8% { opacity: 0.8; transform: scale(1); }
+  95% { opacity: 0.8; transform: scale(1); }
+  100% { top: 110px; left: 10%; opacity: 0; transform: scale(0.5); }
+}
+@keyframes drop-to-js {
+  0% { top: 48px; left: 50%; opacity: 0; transform: scale(0.5); }
+  8% { opacity: 0.8; transform: scale(1); }
+  95% { opacity: 0.8; transform: scale(1); }
+  100% { top: 110px; left: 36%; opacity: 0; transform: scale(0.5); }
+}
+@keyframes drop-to-wasm {
+  0% { top: 48px; left: 50%; opacity: 0; transform: scale(0.5); }
+  8% { opacity: 0.8; transform: scale(1); }
+  95% { opacity: 0.8; transform: scale(1); }
+  100% { top: 110px; left: 62%; opacity: 0; transform: scale(0.5); }
+}
+@keyframes drop-to-llvm {
+  0% { top: 48px; left: 50%; opacity: 0; transform: scale(0.5); }
+  8% { opacity: 0.8; transform: scale(1); }
+  95% { opacity: 0.8; transform: scale(1); }
+  100% { top: 110px; left: 88%; opacity: 0; transform: scale(0.5); }
+}
+
+/* Mermaid diagram centering */
+.mermaid { text-align: center; margin: 1em 0; }
+.mermaid svg { max-width: 100%; }
