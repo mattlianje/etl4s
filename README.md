@@ -322,9 +322,11 @@ which cover 95% of observability needs.
 `unsafeRunTrace` captures all `Tel` calls as structured `TelemetryData` with OTLP-compatible spans and metrics:
 ```scala
 val trace = pipeline.unsafeRunTrace(data)
-trace.spans              // List[TelSpan] with traceId, parentSpanId, timing
-trace.counterTotals      // Map[String, Long]
-trace.toOtelJson         // OTLP JSON for OpenTelemetry collectors
+
+/* Then collects what you want ... */
+trace.spans
+trace.counterTotals
+trace.toOtelJson
 ```
 
 Read more in the [Telemetry guide](https://mattlianje.github.io/etl4s/opentelemetry/).
