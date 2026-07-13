@@ -11,7 +11,10 @@
 .dark .highlight pre { background: #222 !important; }
 
 .highlight .hll { background-color: #ffffcc; }
-.highlight .c, .highlight .cm, .highlight .c1, .highlight .cs { color: #6a737d; font-style: italic; }
+.highlight .c, .highlight .cm, .highlight .c1, .highlight .cs { color: #6a737d; font-style: normal; }
+
+/* highlight.js (splash tabs / unprocessed blocks): kill the github theme's italic comments */
+.hljs-comment, .hljs-quote { font-style: normal; }
 .highlight .k, .highlight .kd, .highlight .kn, .highlight .kp, .highlight .kr, .highlight .kt { color: #d73a49; }
 .highlight .o, .highlight .ow { color: #d73a49; }
 .highlight .n { color: #24292e; }
