@@ -1,6 +1,5 @@
-
 <div align="right">
-  <sub><em><a href="https://github.com/mattlianje/d4"><img src="https://raw.githubusercontent.com/mattlianje/d4/master/pix/cabinet6-mark-adaptive-light.svg" width="26" align="top"> c6</a></em></sub>
+  <sub><em>Part of <a href="https://github.com/mattlianje/d4"><img src="https://raw.githubusercontent.com/mattlianje/d4/master/pix/cabinet6-mark-adaptive-light.svg" width="28" align="top"> c6</a></em></sub>
 </div>
 
 <p align="center">
