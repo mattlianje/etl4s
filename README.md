@@ -203,17 +203,15 @@ val pipeline =
 ```
 
 ## Batch collections
-You often want to run a sub-pipeline over a batch in your dataflows. This is why etl4s has `each`,
-`eachPar` and `eachSlice`, they work on `List`, `Vector`, `Seq`, `Set`, and `Iterable` out of the box:
-
-- `each(node)` - runs `node` on **every element**, one at a time
-- `eachPar(N)(node)` - runs `node` on **every element**, up to N at once
-- `eachSlice(N)(node)` - runs `node` on **each window of N elements** (great for bulk upserts / batched API calls)
+Run a sub-pipeline over a collection with `each`, `eachPar` and `eachSlice` - works on `List`,
+`Vector`, `Seq`, `Set`, and `Iterable` out of the box:
 
 ```scala
-fetchOrders ~> each(validateOrder ~> enrichOrder) ~> writeOrdersToDB
-fetchOrders ~> eachPar(8)(validateOrder ~> enrichOrder) ~> writeOrdersToDB
-fetchOrders ~> eachSlice(500)(bulkUpsertOrders) ~> writeReport
+fetchOrders ~> each(validateOrder ~> enrichOrder) ~> writeOrdersToDB // one at a time
+
+fetchOrders ~> eachPar(8)(validateOrder ~> enrichOrder) ~> writeOrdersToDB // N at once
+
+fetchOrders ~> eachSlice(500)(bulkUpsertOrders) ~> writeReport // windows of N
 ```
 
 ### Custom batchables
