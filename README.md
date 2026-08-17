@@ -133,11 +133,9 @@ pipeline.provide(ApiConfig("secret")).unsafeRun(())  /* "secret: data" */
 Read more [here](https://mattlianje.github.io/etl4s/config/)
 
 ## Effect polymorphism
-An **etl4s** pipeline is merely data - you choose how it runs by compiling it to an effect `F[_]`
-via `.compile[F]`. **etl4s** ships `Id`, `Try`, and `Future` out of the box:
+Since an **etl4s** pipeline is just a [free(ish)-arrow](https://arxiv.org/pdf/2506.12212): you choose how to run it by compiling it to an effect `F[_]` via `.compile[F]`. **etl4s** ships `Id`, `Try`, and `Future` out of the box:
 
 ```scala
-val stringToInt = Transform[String, Int](_.toInt)
 val p = Extract("41") ~> stringToInt
 
 p.compile[Try].unsafeRun(()) // Success(41)
@@ -146,7 +144,7 @@ p.compile[Future].unsafeRun(()) // Future(41)
 
 ### Add your own effects
 For example, to run your etl4s pipeline on the [Cats Effect](https://typelevel.org/cats-effect/)
-fiber runtime, provide one instance:
+fiber runtime just implement `etl4s.Effect`:
 ```scala
 import cats.effect.IO
 
@@ -325,7 +323,6 @@ trace.timeElapsedMillis // 2L
 ```
 
 ## Lineage
-
 Track data lineage and visualize pipeline dependencies. Attach metadata to any Node or Reader then call `.toDot`, `.toJson` or `.toMermaid`
 on individual instances or on Sequences:
 
