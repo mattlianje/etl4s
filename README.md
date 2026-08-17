@@ -131,6 +131,34 @@ pipeline.provide(ApiConfig("secret")).unsafeRun(())  /* "secret: data" */
 
 Read more [here](https://mattlianje.github.io/etl4s/config/)
 
+## Effect polymorphism
+An **etl4s** pipeline is merely data - you choose how it runs by compiling it to an effect `F[_]`
+via `.compile[F]`. **etl4s** ships `Id`, `Try`, and `Future` out of the box:
+
+```scala
+val parseAmount = Extract("41") ~> Transform[String, Int](_.toInt)
+
+parseAmount.compile[Try].unsafeRun(())     // Success(41)
+parseAmount.compile[Future].unsafeRun(())  // Future(41)
+```
+
+### Add your own effects
+For example, to run your etl4s pipeline on the [Cats Effect](https://typelevel.org/cats-effect/)
+fiber runtime, provide one instance:
+```scala
+import cats.effect.IO
+
+given etl4s.Effect[IO] with {
+  def pure[A](a: A): IO[A]                                    = IO.pure(a)
+  def delay[A](thunk: => A): IO[A]                            = IO(thunk)
+  def flatMap[A, B](fa: IO[A])(f: A => IO[B]): IO[B]          = fa.flatMap(f)
+  def handleErrorWith[A](fa: => IO[A])(h: Throwable => IO[A]) = fa.handleErrorWith(h)
+  override def both[A, B](fa: IO[A], fb: IO[B]): IO[(A, B)]   = IO.both(fa, fb)
+}
+
+val program: IO[Int] = parseAmount.compile[IO].unsafeRun(())
+```
+
 ## Parallelizing Tasks
 **etl4s** has an elegant shorthand for grouping and parallelizing operations that share the same input type:
 ```scala
@@ -174,57 +202,26 @@ val pipeline =
   (e1 &> e2 &> e3) ~> merge ~> (consoleLoad &> dbLoad)
 ```
 
-Where `&` / `&>` feed the **same** input to every branch, `**` / `**>` pair up nodes that take
-**different** inputs and tuples them
-```scala
-val parseUser  = Transform[String, User](parse)
-val fetchOrder = Transform[Int, Order](lookup)
-
-/* takes (String, Int), returns (User, Order) */
-val enrich = parseUser **> fetchOrder
-```
-
-## Effect polymorphism
-An **etl4s** pipeline is merely data, and you chose how the concurrency works by compiling it to an effect F[_]
-via `.compile[F]`. etl4s ships `Id`, `Try`, and `Future` out of the box.
-
-### Add your own effects
-
-For example if you wanted to run your etl4s pipeline on the [Cats Effect](https://typelevel.org/cats-effect/)
-fiber rutime
-```scala
-import cats.effect.IO
-
-given etl4s.Effect[IO] with {
-  def pure[A](a: A): IO[A]                                    = IO.pure(a)
-  def delay[A](thunk: => A): IO[A]                            = IO(thunk)
-  def flatMap[A, B](fa: IO[A])(f: A => IO[B]): IO[B]          = fa.flatMap(f)
-  def handleErrorWith[A](fa: => IO[A])(h: Throwable => IO[A]) = fa.handleErrorWith(h)
-  override def both[A, B](fa: IO[A], fb: IO[B]): IO[(A, B)]   = IO.both(fa, fb)
-}
-
-val pipeline = Extract("41") ~> stringToInt
-
-val pipeline: IO[Int] = parseAmount.compile[IO].unsafeRun(())
-```
-
 ## Batch collections
 You often want to run a sub-pipeline over a batch in your dataflows. This is why etl4s has `each`,
-`eachPar` and `eachSlice`
-
-| Combinator | Runs the sub-pipeline... |
-|------------|--------------------------|
-| `each(node)` | on every element, one at a time |
-| `eachPar(N)(node)` | on every element, up to **N at once** (concurrency from the effect you compile to) |
-| `eachSlice(N)(node)` | on each **window of N** elements - great for bulk upserts / batched API calls |
+`eachPar` and `eachSlice`, they work on `List`, `Vector`, `Seq`, `Set`, and `Iterable` out of the box:
 
 ```scala
-fetchOrders ~> each(validateOrder ~> enrichOrder)       ~> writeOrdersToDB
-fetchOrders ~> eachPar(8)(validateOrder ~> enrichOrder) ~> writeOrdersToDB
-fetchOrders ~> eachSlice(500)(bulkUpsertOrders)         ~> writeReport
-```
+/* `each` on every element:
+ * one at a time
+ */
+fetchOrders ~> each(validateOrder ~> enrichOrder) ~> writeOrdersToDB
 
-They work on `List`, `Vector`, `Seq`, `Set`, and `Iterable` out of the box:
+/* `eachPar(N)(...)` on every element:
+ * up to N at once (concurrency from the effect you compile to)
+ */
+fetchOrders ~> eachPar(8)(validateOrder ~> enrichOrder) ~> writeOrdersToDB
+
+/* `eachSlice(N)(...)` on each window of N elements:
+ * great for bulk upserts / batched API calls
+ */
+fetchOrders ~> eachSlice(500)(bulkUpsertOrders) ~> writeReport
+```
 
 ### Custom batchables
 Implement `etl4s.Batchable` to use your own container types:
@@ -324,8 +321,8 @@ holding the result and how long it took
 val wordLength = Transform[String, Int](_.length)
 
 val trace = wordLength.unsafeRunTrace("hello")
-trace.result  // 5
-trace.timeElapsedMillis  // 2L
+trace.result // 5
+trace.timeElapsedMillis // 2L
 ```
 
 ## Lineage
