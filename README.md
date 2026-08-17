@@ -185,61 +185,46 @@ val enrich = parseUser **> fetchOrder
 ```
 
 ## Effect polymorphism
-An *etl4s* pipeline is merely data, and you chose how the concurrency operators like `&>`, `**>` and `eachPar` actually work by compiling it into an effect `F[_]` with
-`.compile[F]`. etl4s ships `Id`, `Try`, and `Future` out of the box.
+An **etl4s** pipeline is merely data, and you chose how the concurrency works by compiling it to an effect F[_]
+via `.compile[F]`. etl4s ships `Id`, `Try`, and `Future` out of the box.
 
 ### Add your own effects
-Just implement the `etl4s.Effect` typeclass
-```scala
-trait Effect[F[_]] {
-  def pure[A](a: A): F[A]
-  def delay[A](thunk: => A): F[A]
-  def flatMap[A, B](fa: F[A])(f: A => F[B]): F[B]
-  def map[A, B](fa: F[A])(f: A => B): F[B] = flatMap(fa)(a => pure(f(a)))
-  def handleErrorWith[A](fa: => F[A])(h: Throwable => F[A]): F[A]
-
-  /* Powers &>, **> , eachPar and ensurePar */
-  def both[A, B](fa: F[A], fb: F[B]): F[(A, B)] =
-    flatMap(fa)(a => map(fb)(b => (a, b)))
-}
-```
 
 For example if you wanted to run your etl4s pipeline on the [Cats Effect](https://typelevel.org/cats-effect/)
 fiber rutime
 ```scala
 import cats.effect.IO
 
-given Effect[IO] with {
-  def pure[A](a: A): IO[A]                                     = IO.pure(a)
+given etl4s.Effect[IO] with {
+  def pure[A](a: A): IO[A]                                    = IO.pure(a)
   def delay[A](thunk: => A): IO[A]                            = IO(thunk)
   def flatMap[A, B](fa: IO[A])(f: A => IO[B]): IO[B]          = fa.flatMap(f)
   def handleErrorWith[A](fa: => IO[A])(h: Throwable => IO[A]) = fa.handleErrorWith(h)
   override def both[A, B](fa: IO[A], fb: IO[B]): IO[(A, B)]   = IO.both(fa, fb)
 }
 
-val parseAmount = Extract("41") ~> Transform[String, Int](_.trim.toInt)
+val pipeline = Extract("41") ~> stringToInt
 
-val program: IO[Int] = parseAmount.compile[IO].unsafeRun(())
+val pipeline: IO[Int] = parseAmount.compile[IO].unsafeRun(())
 ```
 
 ## Batch collections
-You often want to run sub-pipelines over batchable inputs in your dataflows. This is why etl4s has
-`each`, `eachPar` and `eachSlice` (that work on `List`, `Vector`, `Seq`, `Set`, and `Iterable` out of the box)
+You often want to run a sub-pipeline over a batch in your dataflows. This is why etl4s has `each`,
+`eachPar` and `eachSlice`
 
-- `each` the sub-pipeline on every element, one at a time
-```scala
-fetchOrders ~> each(validateOrder ~> enrichOrder) ~> writeOrdersToDB
-```
+| Combinator | Runs the sub-pipeline... |
+|------------|--------------------------|
+| `each(node)` | on every element, one at a time |
+| `eachPar(N)(node)` | on every element, up to **N at once** (concurrency from the effect you compile to) |
+| `eachSlice(N)(node)` | on each **window of N** elements - great for bulk upserts / batched API calls |
 
-- `eachPar(N)(...)` does the same, but runs up to N elements at once
 ```scala
+fetchOrders ~> each(validateOrder ~> enrichOrder)       ~> writeOrdersToDB
 fetchOrders ~> eachPar(8)(validateOrder ~> enrichOrder) ~> writeOrdersToDB
+fetchOrders ~> eachSlice(500)(bulkUpsertOrders)         ~> writeReport
 ```
 
-- `eachSlice(N)(...)` run it on each window of N elements. Good for bulk upserts, batched API calls
-```
-fetchOrders ~> eachSlice(500)(bulkUpsertOrders) ~> writeReport
-```
+They work on `List`, `Vector`, `Seq`, `Set`, and `Iterable` out of the box:
 
 ### Custom batchables
 Implement `etl4s.Batchable` to use your own container types:
@@ -339,8 +324,8 @@ holding the result and how long it took
 val wordLength = Transform[String, Int](_.length)
 
 val trace = wordLength.unsafeRunTrace("hello")
-trace.result  /* 5 */
-trace.timeElapsedMillis  /* 2L */
+trace.result  // 5
+trace.timeElapsedMillis  // 2L
 ```
 
 ## Lineage
