@@ -136,10 +136,11 @@ An **etl4s** pipeline is merely data - you choose how it runs by compiling it to
 via `.compile[F]`. **etl4s** ships `Id`, `Try`, and `Future` out of the box:
 
 ```scala
-val parseAmount = Extract("41") ~> Transform[String, Int](_.toInt)
+val stringToInt = Transform[String, Int](_.toInt)
+val p = Extract("41") ~> stringToInt
 
-parseAmount.compile[Try].unsafeRun(())     // Success(41)
-parseAmount.compile[Future].unsafeRun(())  // Future(41)
+p.compile[Try].unsafeRun(()) // Success(41)
+p.compile[Future].unsafeRun(()) // Future(41)
 ```
 
 ### Add your own effects
@@ -194,9 +195,9 @@ Full example of a parallel pipeline:
 val consoleLoad: Load[String, Unit] = Load(println(_))
 val dbLoad:      Load[String, Unit] = Load(x => println(s"DB Load: ${x}"))
 
-val merge = Transform[(Int, String, Boolean), String] { case (userId, name, active) =>
-    s"$userId-$name-$active"
-  }
+val merge = Transform[(Int, String, Boolean), String] {
+  case (userId, name, active) => s"$userId-$name-$active"
+}
 
 val pipeline =
   (e1 &> e2 &> e3) ~> merge ~> (consoleLoad &> dbLoad)
