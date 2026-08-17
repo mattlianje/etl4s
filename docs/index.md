@@ -1169,21 +1169,18 @@ hide:
         class s1,s2,s3,s4,s5 dataSource
     ```
 
-=== "Telemetry"
+=== "Tracing"
 
     ```scala
     import etl4s._
 
     val process = Transform[List[Row], List[Row]] { rows =>
-      Tel.addCounter("rows.processed", rows.size)
-      Tel.setGauge("batch.size", rows.size.toDouble)
       rows.filter(_.isValid)
     }
 
-    process.unsafeRun(rows)  // no-ops (zero cost)
-
-    implicit val t: Etl4sTelemetry = Prometheus()
-    process.unsafeRun(rows)  // metrics flowing
+    val trace = process.unsafeRunTrace(rows)
+    trace.result             // the filtered rows
+    trace.timeElapsedMillis  // how long it took
     ```
 
 ---
@@ -1275,7 +1272,7 @@ hide:
 <div class="feature-row reverse">
 <div class="feature-text">
 <h3>Built-in tracing.</h3>
-<p>Shared execution state across pipeline nodes. Write logs, flag errors, react to upstream failures, track timing. Retrieve with <code>.unsafeRunTrace()</code>.</p>
+<p>Call <code>.unsafeRunTrace()</code> for a plain <code>Trace[A]</code> with the result and how long it took. No ambient state &mdash; bring your own tools for logging and metrics.</p>
 </div>
 <div class="feature-visual">
 <div class="trace-demo">
@@ -1297,11 +1294,11 @@ hide:
   </div>
   <span class="trace-dot trace-dot-1"></span>
   <div class="trace-log">
-    <span class="log-entry log-1"><span class="log-prefix">E</span> read 1420 rows</span>
-    <span class="log-entry log-2"><span class="log-prefix">T</span> validated 89</span>
-    <span class="log-entry log-3"><span class="log-prefix">L</span> wrote batch</span>
+    <span class="log-entry log-1"><span class="log-prefix">E</span> extract</span>
+    <span class="log-entry log-2"><span class="log-prefix">T</span> transform</span>
+    <span class="log-entry log-3"><span class="log-prefix">L</span> load</span>
   </div>
-  <div class="trace-result">Trace[B] &mdash; <span class="val">3 logs, 4ms</span></div>
+  <div class="trace-result">Trace[B] &mdash; <span class="val">result, 4ms</span></div>
 </div>
 </div>
 </div>

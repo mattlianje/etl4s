@@ -1,4 +1,4 @@
-.PHONY: compile test test-jvm test-js test-native publish-local bundle clean fmt fmt-check repl docs publish-doc
+.PHONY: compile test test-jvm test-js test-native publish-local bundle clean fmt fmt-check repl repl-2.12 repl-2.13 repl-3 docs publish-doc
 
 VERSION := 1.9.1
 BUNDLE_DIR := bundles
@@ -8,8 +8,24 @@ GPG_KEY := F36FE8EEBD829E6CF1A5ADB6246482D1268EDC6E
 compile:
 	./mill etl4s.__.compile
 
-repl:
+SCALA2_JDK := $(shell /usr/libexec/java_home -v 17 2>/dev/null || /usr/libexec/java_home -v 11 2>/dev/null)
+
+repl: repl-3
+
+repl-3:
 	./mill -i etl4s.jvm[3.3.7].console
+
+repl-2.13:
+	./mill etl4s.jvm[2.13.10].compile
+	JAVA_HOME="$(SCALA2_JDK)" scala-cli repl --scala 2.13.10 --jvm system \
+	  --extra-jars out/etl4s/jvm/2.13.10/compile.dest/classes \
+	  --extra-jars out/etl4s/macros/2.13.10/compile.dest/classes
+
+repl-2.12:
+	./mill etl4s.jvm[2.12.17].compile
+	JAVA_HOME="$(SCALA2_JDK)" scala-cli repl --scala 2.12.17 --jvm system \
+	  --extra-jars out/etl4s/jvm/2.12.17/compile.dest/classes \
+	  --extra-jars out/etl4s/macros/2.12.17/compile.dest/classes
 
 
 test: test-jvm test-js test-native

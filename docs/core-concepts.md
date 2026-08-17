@@ -46,19 +46,18 @@ pipeline.unsafeRun()
 
 **Error handling:**
 ```scala
+import scala.util.Try
+
 val risky = Pipeline[String, Int](_.toInt)
 
-risky.safeRun("42")    // Success(42)
-risky.safeRun("oops")  // Failure(...)
+Try(risky.unsafeRun("42"))    // Success(42)
+Try(risky.unsafeRun("oops"))  // Failure(...)
 ```
 
 **Execution details:**
 ```scala
 val trace = pipeline.unsafeRunTrace(())
-// trace.result, trace.logs, trace.timeElapsedMillis, trace.errors
-
-val safeTrace = pipeline.safeRunTrace(())
-// safeTrace.result is a Try[Out]
+// trace.result, trace.timeElapsedMillis
 ```
 
 !!! note

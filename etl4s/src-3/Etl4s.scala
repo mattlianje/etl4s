@@ -1,14 +1,3 @@
-/*
- * +==========================================================================+
- * |                                 etl4s                                    |
- * |                     Powerful, whiteboard-style ETL                       |
- * |                        Compatible with Scala 3                           |
- * |                                                                          |
- * | Copyright 2025 Matthieu Court (matthieu.court@protonmail.com)            |
- * | Apache License 2.0                                                       |
- * +==========================================================================+
- */
-
 /**
  * A lightweight, zero-dep library for writing whiteboard-style dataflows
  * using the core [[Node]] and [[Reader]] abstractions.
@@ -20,7 +9,8 @@ package object etl4s {
   import scala.concurrent.{Future, ExecutionContext}
   import scala.concurrent.duration._
   import scala.concurrent.Await
-  import scala.util.Try
+  import scala.util.{Try, Success, Failure}
+  import scala.util.control.NonFatal
 
   /**
    * The core abstraction of etl4s: a composable wrapper around a function `A => B`.
@@ -31,28 +21,16 @@ package object etl4s {
    * @tparam A the input type
    * @tparam B the output type
    */
-  trait Node[A, B] {
+  sealed trait Node[-A, +B] {
 
     /**
-     * The core function wrapped by this node.
-     * This is the actual computation that transforms input `A` to output `B`.
+     * The compiled function this node folds down to.
+     *
+     * A Node is a reified data structure. Every structural combinator (`~>`, `&`, `&>`, `>>`, `map`, `flatMap`, ...)
+     * builds a tree, so the whole graph stays introspectable via [[stages]] / [[mermaid]].
+     * [[Node.interpret]] interprets that tree to a function
      */
-    val f: A => B
-
-    /** Sets up trace collectors, executes block, cleans up. Supports nesting. */
-    private def withTraceSetup[T](
-      block: Long => T
-    ): T = {
-      val parentState = Trace.saveCollector()
-      val startTime   = System.currentTimeMillis()
-      Trace.setCollector(startTime)
-
-      try {
-        block(startTime)
-      } finally {
-        Trace.restoreCollector(parentState)
-      }
-    }
+    final lazy val f: A => B = Node.interpret(this)
 
     /**
      * Optional metadata that can be attached to a Node at compile time.
@@ -64,7 +42,7 @@ package object etl4s {
      *   .withMetadata("String length calculator")
      * }}}
      */
-    val metadata: Any = None
+    def metadata: Any = None
 
     /**
      * Optional lineage information for data pipeline visualization.
@@ -84,137 +62,29 @@ package object etl4s {
      * Runs the node without any input (for Node[Any, B]).
      * Only available when the node accepts Any as input.
      */
-    def unsafeRun()(using ev: A =:= Any): B =
-      unsafeRun(null.asInstanceOf[A])(using Etl4sNoOpTelemetry)
+    def unsafeRun()(using ev: Any <:< A): B =
+      unsafeRun(null.asInstanceOf[A])
 
     /**
      * Runs the node without any error handling.
-     * Trace information is collected internally but only accessible via unsafeRunTraced.
      *
      * @param a the input value
-     * @param otelProvider optional OTel provider for observability (defaults to Etl4sNoOpTelemetry)
      * @return the transformed output
      * @throws any exception thrown by the underlying function
      */
-    def unsafeRun(a: A)(using otelProvider: Etl4sTelemetry = Etl4sNoOpTelemetry): B =
-      withOtelSetup(otelProvider) {
-        withTraceSetup { _ =>
-          f(a)
-        }
-      }
+    def unsafeRun(a: A): B =
+      f(a)
 
     /**
-     * Runs the node with error handling, wrapping the result in a Try.
-     * Trace information is collected internally but only accessible via safeRunTraced.
+     * Runs the node and measures its execution time.
      *
      * @param a the input value
-     * @param otelProvider optional OTel provider for observability (defaults to Etl4sNoOpTelemetry)
-     * @return Success(result) or Failure(exception)
+     * @return Trace containing the result and elapsed time
      */
-    def safeRun(a: A)(using otelProvider: Etl4sTelemetry = Etl4sNoOpTelemetry): Try[B] =
-      withOtelSetup(otelProvider) {
-        withTraceSetup { _ =>
-          Try(f(a))
-        }
-      }
-
-    /**
-     * Runs the node with error handling without any input (for Node[Any, B]).
-     */
-    def safeRun()(using ev: A =:= Any): Try[B] =
-      safeRun(null.asInstanceOf[A])(using Etl4sNoOpTelemetry)
-
-    /**
-     * Runs the node and collects insights about the execution.
-     *
-     * @param a the input value
-     * @param otelProvider optional OTel provider for observability (defaults to Etl4sNoOpTelemetry)
-     * @return Trace containing result and collected information
-     */
-    def unsafeRunTrace(a: A)(using otelProvider: Etl4sTelemetry = Etl4sNoOpTelemetry): Trace[B] =
-      withOtelSetup(otelProvider) {
-        withTraceSetup { startTime =>
-          val result       = f(a)
-          val endTime      = System.currentTimeMillis()
-          val duration     = endTime - startTime
-          val currentTrace = Trace.current
-
-          Trace(
-            result = result,
-            logs = currentTrace.logs,
-            timeElapsedMillis = duration,
-            errors = currentTrace.errors,
-            telemetry = currentTrace.telemetry
-          )
-        }
-      }
-
-    /**
-     * Runs the node safely and collects insights about the execution.
-     *
-     * @param a the input value
-     * @param otelProvider optional OTel provider for observability (defaults to Etl4sNoOpTelemetry)
-     * @return Trace with Try[B] as result
-     */
-    def safeRunTrace(a: A)(using otelProvider: Etl4sTelemetry = Etl4sNoOpTelemetry): Trace[Try[B]] =
-      withOtelSetup(otelProvider) {
-        withTraceSetup { startTime =>
-          val result       = Try(f(a))
-          val endTime      = System.currentTimeMillis()
-          val duration     = endTime - startTime
-          val currentTrace = Trace.current
-
-          Trace(
-            result = result,
-            logs = currentTrace.logs,
-            timeElapsedMillis = duration,
-            errors = currentTrace.errors,
-            telemetry = currentTrace.telemetry
-          )
-        }
-      }
-
-    /** Sets up OTel provider, executes block, cleans up. */
-    private def withOtelSetup[T](otelProvider: Etl4sTelemetry)(block: => T): T = {
-      if (otelProvider != Etl4sNoOpTelemetry) {
-        Tel.setProvider(otelProvider)
-      }
-      try {
-        block
-      } finally {
-        if (otelProvider != Etl4sNoOpTelemetry) {
-          Tel.clearProvider()
-        }
-      }
-    }
-
-    /**
-     * Makes this node depend on some configuration type `T`.
-     *
-     * This method transforms a regular Node into a Reader-wrapped Node,
-     * enabling dependency injection patterns.
-     *
-     * @tparam T the configuration/context type
-     * @param f a function that takes config and returns the node function
-     * @return a Reader that produces a Node when given configuration
-     *
-     * @example
-     * {{{
-     * case class Config(multiplier: Int)
-     * 
-     * val configNode = someNode.requires[Config] { config => input =>
-     *   input * config.multiplier
-     * }
-     * 
-     * val result = configNode.provide(Config(5)).unsafeRun(10) // 50
-     * }}}
-     */
-    def requires[T](f: T => A => B): Reader[T, Node[A, B]] = {
-      Reader { config =>
-        Node { a =>
-          f(config)(a)
-        }
-      }
+    def unsafeRunTrace(a: A): Trace[B] = {
+      val startTime = System.currentTimeMillis()
+      val result    = f(a)
+      Trace(result, System.currentTimeMillis() - startTime)
     }
 
     /**
@@ -229,14 +99,9 @@ package object etl4s {
      * val versioned = node.withMetadata(("v1.2", "Critical path"))
      * }}}
      */
-    def withMetadata(meta: Any): Node[A, B] = {
-      val currentF       = this.f
-      val currentLineage = this.getLineage
-      new Node[A, B] {
-        val f: A => B                            = currentF
-        override val metadata: Any               = meta
-        override def getLineage: Option[Lineage] = currentLineage
-      }
+    def withMetadata(meta: Any): Node[A, B] = this match {
+      case d: Node.Decorated[a, b] => d.copy(meta = meta)
+      case other                   => Node.Decorated(other, meta, this.getLineage)
     }
 
     /**
@@ -245,14 +110,19 @@ package object etl4s {
      * @param lin the lineage to attach
      * @return a new Node with the attached lineage
      */
-    def withLineage(lin: Lineage): Node[A, B] = {
-      val currentF        = this.f
-      val currentMetadata = this.metadata
-      new Node[A, B] {
-        val f: A => B                            = currentF
-        override val metadata: Any               = currentMetadata
-        override def getLineage: Option[Lineage] = Some(lin)
-      }
+    def withLineage(lin: Lineage): Node[A, B] = this match {
+      case d: Node.Decorated[a, b] => d.copy(lin = Some(lin))
+      case other                   => Node.Decorated(other, this.metadata, Some(lin))
+    }
+
+    /**
+     * Overrides the introspection name of a leaf node. Naming precedence for a
+     * leaf is: the enclosing `val`/`def` name (auto-captured) -> `.withName`
+     * -> "???". On composite nodes this is a no-op.
+     */
+    final def withName(name: String): Node[A, B] = this match {
+      case s: Node.Step[a, b] => s.copy(name = name)
+      case other              => other
     }
 
     /**
@@ -302,7 +172,7 @@ package object etl4s {
      * doubledNode("hello") // returns 10
      * }}}
      */
-    def map[C](g: B => C): Node[A, C] = Node(a => g(f(a)))
+    def map[C](g: B => C): Node[A, C] = Node.Mapped(this, g)
 
     /**
      * Monadic binding: allows dynamic node selection based on intermediate results.
@@ -318,10 +188,7 @@ package object etl4s {
      * process("5") // returns "~~~~~"
      * }}}
      */
-    def flatMap[C](g: B => Node[A, C]): Node[A, C] = Node { a =>
-      val b = f(a)
-      g(b)(a)
-    }
+    def flatMap[A1 <: A, C](g: B => Node[A1, C]): Node[A1, C] = Node.FlatMap(this, g)
 
     /**
      * Sequential composition: chains two nodes together.
@@ -347,7 +214,7 @@ package object etl4s {
         case (None, Some(l))      => Some(l)
         case _                    => None
       }
-      val result = Node[A, C](a => next(f(a)))
+      val result: Node[A, C] = Node.AndThen(this, next)
       combined.fold(result)(lin => result.withLineage(lin))
     }
 
@@ -392,24 +259,21 @@ package object etl4s {
      * val storeBoth = storeToS3 >> storeToDb  // Both receive the same Int
      * }}}
      */
-    def >>[C](next: Node[A, C]): Node[A, C] = {
+    def >>[A1 <: A, C](next: Node[A1, C]): Node[A1, C] = {
       val combined = (this.getLineage, next.getLineage) match {
         case (Some(l1), Some(l2)) => Some(l1.combine(l2))
         case (Some(l), None)      => Some(l)
         case (None, Some(l))      => Some(l)
         case _                    => None
       }
-      val result = Node[A, C] { a =>
-        f(a)
-        next(a)
-      }
+      val result: Node[A1, C] = Node.Then(this, next)
       combined.fold(result)(lin => result.withLineage(lin))
     }
 
     /**
      * Side effect composition with a Reader-wrapped node.
      */
-    def >>[T, C](next: Reader[T, Node[A, C]]): Reader[T, Node[A, C]] = {
+    def >>[T, A1 <: A, C](next: Reader[T, Node[A1, C]]): Reader[T, Node[A1, C]] = {
       val combined = (this.getLineage, next.getLineage) match {
         case (Some(l1), Some(l2)) => Some(l1.combine(l2))
         case (Some(l), None)      => Some(l)
@@ -437,25 +301,25 @@ package object etl4s {
      * val getAll = getName & getAge & getEmail  // returns (String, Int, String) - auto-flattened!
      * }}}
      */
-    def &[C](that: Node[A, C])(using ta: TupleAppend[B, C]): Node[A, ta.Out] = {
+    def &[A1 <: A, C, O <: Tuple](that: Node[A1, C])(using
+      ta: TupleAppend.Aux[B, C, O]
+    ): Node[A1, O] = {
       val combined = (this.getLineage, that.getLineage) match {
         case (Some(l1), Some(l2)) => Some(l1.combine(l2))
         case (Some(l), None)      => Some(l)
         case (None, Some(l))      => Some(l)
         case _                    => None
       }
-      val result = Node[A, ta.Out] { a =>
-        ta.append(f(a), that(a))
-      }
+      val result: Node[A1, O] = Node.Par(this, that, false, ta.append)
       combined.fold(result)(lin => result.withLineage(lin))
     }
 
     /**
      * Parallel composition with a Reader-wrapped node.
      */
-    def &[T, C](
-      that: Reader[T, Node[A, C]]
-    )(using ta: TupleAppend[B, C]): Reader[T, Node[A, ta.Out]] = {
+    def &[T, A1 <: A, C, O <: Tuple](
+      that: Reader[T, Node[A1, C]]
+    )(using ta: TupleAppend.Aux[B, C, O]): Reader[T, Node[A1, O]] = {
       val combined = (this.getLineage, that.getLineage) match {
         case (Some(l1), Some(l2)) => Some(l1.combine(l2))
         case (Some(l), None)      => Some(l)
@@ -469,45 +333,42 @@ package object etl4s {
     /**
      * Concurrent parallel composition: runs both nodes concurrently with the same input.
      *
-     * Unlike `&`, this version uses Future to execute both nodes simultaneously,
-     * potentially improving performance for I/O bound operations.
+     * Concurrency is realized by the effect runner: under `as[Future]`/`as[IO]`
+     * the two branches run via [[Effect]]`#both`. The plain synchronous
+     * `unsafeRun` (the `Id` interpreter) has no threads, so it runs them
+     * sequentially — same result, no `ExecutionContext` needed.
      *
      * @tparam C the output type of the other node
      * @param that the other node to run concurrently
-     * @param ec implicit ExecutionContext for Future execution
      * @return a new Node that returns a tuple of both results
      *
      * @example
      * {{{
-     * implicit val ec = ExecutionContext.global
      * val fetchUser = Node[UserId, User](id => fetchFromDB(id))
      * val fetchPrefs = Node[UserId, Preferences](id => fetchPrefsFromCache(id))
-     * val fetchBoth = fetchUser &> fetchPrefs  // concurrent execution
+     * val fetchBoth = fetchUser &> fetchPrefs  // concurrent under as[Future]
      * val fetchAll = fetchUser &> fetchPrefs &> fetchSettings  // auto-flattened!
      * }}}
      */
-    def &>[C](
-      that: Node[A, C]
-    )(using ec: ExecutionContext, ta: TupleAppend[B, C]): Node[A, ta.Out] = {
+    def &>[A1 <: A, C, O <: Tuple](
+      that: Node[A1, C]
+    )(using ta: TupleAppend.Aux[B, C, O]): Node[A1, O] = {
       val combined = (this.getLineage, that.getLineage) match {
         case (Some(l1), Some(l2)) => Some(l1.combine(l2))
         case (Some(l), None)      => Some(l)
         case (None, Some(l))      => Some(l)
         case _                    => None
       }
-      val result = Node[A, ta.Out] { a =>
-        val (r1, r2) = Platform.runParallel(f(a), that(a))
-        ta.append(r1, r2)
-      }
+      val result: Node[A1, O] = Node.Par(this, that, true, ta.append)
       combined.fold(result)(lin => result.withLineage(lin))
     }
 
     /**
      * Concurrent parallel composition with a Reader-wrapped node.
      */
-    def &>[T, C](
-      that: Reader[T, Node[A, C]]
-    )(using ec: ExecutionContext, ta: TupleAppend[B, C]): Reader[T, Node[A, ta.Out]] = {
+    def &>[T, A1 <: A, C, O <: Tuple](
+      that: Reader[T, Node[A1, C]]
+    )(using ta: TupleAppend.Aux[B, C, O]): Reader[T, Node[A1, O]] = {
       val combined = (this.getLineage, that.getLineage) match {
         case (Some(l1), Some(l2)) => Some(l1.combine(l2))
         case (Some(l), None)      => Some(l)
@@ -515,6 +376,52 @@ package object etl4s {
         case _                    => None
       }
       val result = that.map(thatNode => this &> thatNode)
+      combined.fold(result)(lin => result.withLineage(lin))
+    }
+
+    /**
+     * Product composition: pairs two pipelines that have different inputs into
+     * one block whose requirement is a tuple of both inputs.
+     *
+     * Unlike `&`/`&>` (which broadcast a single shared input), `**` feeds `_._1` to the left and
+     * `_._2` to the right: `Node[A, B] ** Node[C, D] => Node[(A, C), (B, D)]`
+     *
+     * @example
+     * {{{
+     * val parseName = Node[String, Name](Name(_))
+     * val parseAge  = Node[Int, Age](Age(_))
+     * val both      = parseName ** parseAge   // Node[(String, Int), (Name, Age)]
+     * both.unsafeRun(("alice", 30))
+     * }}}
+     */
+    def **[C, D, O <: Tuple](that: Node[C, D])(using
+      ta: TupleAppend.Aux[B, D, O]
+    ): Node[(A, C), O] = {
+      val combined = (this.getLineage, that.getLineage) match {
+        case (Some(l1), Some(l2)) => Some(l1.combine(l2))
+        case (Some(l), None)      => Some(l)
+        case (None, Some(l))      => Some(l)
+        case _                    => None
+      }
+      val result: Node[(A, C), O] = Node.Prod(this, that, false, ta.append)
+      combined.fold(result)(lin => result.withLineage(lin))
+    }
+
+    /**
+     * Concurrent product composition: like `**`, but marks the two independent
+     * branches to run concurrently under an effect runner (via [[Effect]]).
+     * The plain synchronous `unsafeRun` runs them sequentially...
+     */
+    def **>[C, D, O <: Tuple](
+      that: Node[C, D]
+    )(using ta: TupleAppend.Aux[B, D, O]): Node[(A, C), O] = {
+      val combined = (this.getLineage, that.getLineage) match {
+        case (Some(l1), Some(l2)) => Some(l1.combine(l2))
+        case (Some(l), None)      => Some(l)
+        case (None, Some(l))      => Some(l)
+        case _                    => None
+      }
+      val result: Node[(A, C), O] = Node.Prod(this, that, true, ta.append)
       combined.fold(result)(lin => result.withLineage(lin))
     }
 
@@ -534,11 +441,7 @@ package object etl4s {
      *   .tap(result => println(s"Transformation complete: $result"))
      * }}}
      */
-    def tap(g: B => Any): Node[A, B] = Node { a =>
-      val result = f(a)
-      g(result)
-      result
-    }
+    def tap(g: B => Any): Node[A, B] = Node.Tap(this, g)
 
     /**
      * Error handling: provides a fallback value when this node fails.
@@ -557,13 +460,7 @@ package object etl4s {
      * }}}
      */
     def onFailure[BB >: B](handler: Throwable => BB): Node[A, BB] =
-      Node { a =>
-        try {
-          f(a)
-        } catch {
-          case t: Throwable => handler(t)
-        }
-      }
+      Node.Recover(this, handler)
 
     /**
      * Adds retry capability to any node.
@@ -585,19 +482,7 @@ package object etl4s {
       maxAttempts: Int = 3,
       initialDelayMs: Long = 100,
       backoffFactor: Double = 2.0
-    ): Node[A, B] = Node { a =>
-      def attempt(remaining: Int, delay: Long): B = {
-        try {
-          f(a)
-        } catch {
-          case e: Throwable if remaining > 1 =>
-            Platform.sleep(delay)
-            attempt(remaining - 1, (delay * backoffFactor).toLong)
-          case e: Throwable => throw e
-        }
-      }
-      attempt(maxAttempts, initialDelayMs)
-    }
+    ): Node[A, B] = Node.Retry(this, maxAttempts, initialDelayMs, backoffFactor)
 
     /**
      * Creates an asynchronous version of this node.
@@ -636,7 +521,23 @@ package object etl4s {
      * }}}
      */
     def zip[BB >: B, Out](using flattener: Flatten.Aux[BB, Out]): Node[A, Out] =
-      Node { a => flattener(f(a)) }
+      Node.Mapped(this, (b: BB) => flattener(b))
+
+    /**
+     * The pipeline as a flat list of leaf stages (name + in/out type names),
+     * in execution order.
+     */
+    def stages: List[Node.StageInfo] = Node.stages(this)
+
+    /**
+     * A Mermaid `flowchart LR` of the whole graph
+     */
+    def mermaid: String = Node.mermaid(this)
+
+    /**
+     * A Graphviz `digraph` (DOT) of the whole graph
+     */
+    def dot: String = Node.dot(this)
   }
 
   /** Node companion object with factory methods */
@@ -645,9 +546,10 @@ package object etl4s {
     /**
      * Creates a node from a function A => B.
      */
-    def apply[A, B](func: A => B): Node[A, B] = new Node[A, B] {
-      val f: A => B = func
-    }
+    def apply[A, B](
+      func: A => B
+    )(using name: Name, inN: TypeName[A], outN: TypeName[B]): Node[A, B] =
+      Step(name.value, func, inN, outN)
 
     /**
      * Creates a lazy node that evaluates the value when run (not at construction time).
@@ -668,19 +570,537 @@ package object etl4s {
      * // Nothing prints until you call getUserInput.unsafeRun(...)
      * }}}
      */
-    def apply[B](value: => B): Node[Any, B] = Node((_: Any) => value)
+    def apply[B](value: => B)(using name: Name, outN: TypeName[B]): Node[Any, B] =
+      Node((_: Any) => value)
 
-    def identity[A]: Node[A, A]                   = Node(a => a)
-    def unit[B](value: => B): Node[Unit, B]       = Node(_ => value)
-    def effect(action: => Unit): Node[Unit, Unit] = Node(_ => action)
-    def pure[A, B](b: B): Node[A, B]              = Node(_ => b)
+    def identity[A](using name: Name, tn: TypeName[A]): Node[A, A] =
+      Node(a => a)
+    def unit[B](value: => B)(using name: Name, outN: TypeName[B]): Node[Unit, B] =
+      Node(_ => value)
+    def effect(action: => Unit)(using name: Name): Node[Unit, Unit] =
+      Node(_ => action)
+    def pure[A, B](b: B)(using name: Name, inN: TypeName[A], outN: TypeName[B]): Node[A, B] =
+      Node(_ => b)
 
-    def requires[T, A, B](f: T => A => B): Reader[T, Node[A, B]] = {
+    def requires[T, A, B](
+      f: T => A => B
+    )(using name: Name, inN: TypeName[A], outN: TypeName[B]): Reader[T, Node[A, B]] = {
       Reader { config =>
-        Node { a =>
-          f(config)(a)
-        }
+        Step(name.value, f(config), inN, outN)
       }
+    }
+
+    /** A leaf: an opaque `A => B` with its captured name and type names */
+    final case class Step[A, B](
+      name: String,
+      run: A => B,
+      inN: TypeName[A],
+      outN: TypeName[B]
+    ) extends Node[A, B]
+
+    /** `a ~> b` : sequential composition */
+    final case class AndThen[A, B, C](first: Node[A, B], second: Node[B, C]) extends Node[A, C]
+
+    /**
+     * `a & b` (sequential) / `a &> b` (concurrent) shared-input fan-out
+     */
+    final case class Par[A, B, C, O](
+      left: Node[A, B],
+      right: Node[A, C],
+      concurrent: Boolean,
+      append: (B, C) => O
+    ) extends Node[A, O]
+
+    /**
+     * `a ** b` (sequential) / `a **> b` (concurrent) product composition
+     */
+    final case class Prod[A, C, B, D, O](
+      left: Node[A, B],
+      right: Node[C, D],
+      concurrent: Boolean,
+      append: (B, D) => O
+    ) extends Node[(A, C), O]
+
+    /**
+     * `each` / `eachPar` : apply `inner` to every element of a batch,
+     * preserving the collection type
+     */
+    final case class Batch[CA, A, B, CB](
+      inner: Node[A, B],
+      parallelism: Int,
+      toSeq: CA => Seq[A],
+      fromSeq: Seq[B] => CB
+    ) extends Node[CA, CB]
+
+    /**
+     * `a.ensure(...)` / `a.ensurePar(...)` reified input/output/change
+     * validation around `inner`. Each check is `V => Option[String]` (None = ok)
+     */
+    final case class Validate[A, B](
+      inner: Node[A, B],
+      input: Seq[A => Option[String]],
+      output: Seq[B => Option[String]],
+      change: Seq[((A, B)) => Option[String]],
+      concurrent: Boolean
+    ) extends Node[A, B]
+
+    /** `a >> b` : run `a` for effect, then `b` on the same input ... keep `b` */
+    final case class Then[A, B, C](first: Node[A, B], second: Node[A, C]) extends Node[A, C]
+
+    /** `a.map(g)` / `a.zip` : transform the output */
+    final case class Mapped[A, B, C](inner: Node[A, B], g: B => C) extends Node[A, C]
+
+    /** `a.tap(g)` : peek at the output, pass it through unchanged */
+    final case class Tap[A, B](inner: Node[A, B], g: B => Any) extends Node[A, B]
+
+    /** `a.onFailure(h)` : fall back to `h(t)` on any throwable */
+    final case class Recover[A, B](inner: Node[A, B], handler: Throwable => B) extends Node[A, B]
+
+    /** `a.withRetry(...)` : retry with exponential backoff */
+    final case class Retry[A, B](
+      inner: Node[A, B],
+      maxAttempts: Int,
+      initialDelayMs: Long,
+      backoffFactor: Double
+    ) extends Node[A, B]
+
+    final case class FlatMap[A, B, C](src: Node[A, B], k: B => Node[A, C]) extends Node[A, C]
+
+    /**
+     * `If(...) / .ElseIf(...) / .Else(...)` reified conditional branching
+     */
+    final case class Cond[A, B, C](
+      source: Node[A, B],
+      branches: List[(B => Boolean, Node[B, C])],
+      default: Option[Node[B, C]]
+    ) extends Node[A, C]
+
+    /** Carries metadata / lineage without disturbing the structural fold */
+    final case class Decorated[A, B](
+      inner: Node[A, B],
+      meta: Any,
+      lin: Option[Lineage]
+    ) extends Node[A, B] {
+      override def metadata: Any               = meta
+      override def getLineage: Option[Lineage] = lin
+    }
+
+    /** Raises a `ValidationException` collecting `errors` for a `Validate` stage */
+    private[etl4s] def raiseIfInvalid(stage: String, errors: Seq[String]): Unit =
+      if (errors.nonEmpty)
+        throw new ValidationException(
+          s"$stage validation failed:\n${errors.map(e => s"  - $e").mkString("\n")}"
+        )
+
+    private[etl4s] def interpret[A, B](node: Node[A, B]): A => B = node match {
+      case Step(_, run, _, _) => run
+      case AndThen(x, y)      => interpret(x).andThen(interpret(y))
+      case Par(l, r, _, app)  =>
+        val lf = interpret(l)
+        val rf = interpret(r)
+        (a: A) => app(lf(a), rf(a))
+      case p: Prod[a, c, b, d, o] =>
+        val lf                 = interpret(p.left)
+        val rf                 = interpret(p.right)
+        val app                = p.append
+        val run: ((a, c)) => o = (in: (a, c)) => app(lf(in._1), rf(in._2))
+        run.asInstanceOf[A => B]
+      case b: Batch[ca, a, bb, cb] =>
+        val innerF        = interpret(b.inner)
+        val run: ca => cb = (in: ca) => b.fromSeq(b.toSeq(in).map(innerF))
+        run.asInstanceOf[A => B]
+      case v: Validate[a, b] =>
+        val cf          = interpret(v.inner)
+        val run: a => b = (in: a) => {
+          raiseIfInvalid("Input", v.input.flatMap(c => c(in)))
+          val out = cf(in)
+          raiseIfInvalid("Output", v.output.flatMap(c => c(out)))
+          raiseIfInvalid("Change", v.change.flatMap(c => c((in, out))))
+          out
+        }
+        run.asInstanceOf[A => B]
+      case Then(x, y) =>
+        val xf = interpret(x)
+        val yf = interpret(y)
+        (a: A) => { xf(a); yf(a) }
+      case Mapped(inner, g) => interpret(inner).andThen(g)
+      case Tap(inner, g)    =>
+        val cf = interpret(inner)
+        (a: A) => { val b = cf(a); g(b); b }
+      case Recover(inner, h) =>
+        val cf = interpret(inner)
+        (a: A) =>
+          try cf(a)
+          catch { case t: Throwable => h(t) }
+      case Retry(inner, max, delay0, factor) =>
+        val cf = interpret(inner)
+        (a: A) => {
+          def attempt(remaining: Int, delay: Long): B =
+            try cf(a)
+            catch {
+              case _: Throwable if remaining > 1 =>
+                Platform.sleep(delay)
+                attempt(remaining - 1, (delay * factor).toLong)
+            }
+          attempt(max, delay0)
+        }
+      case FlatMap(s, k) =>
+        val sf = interpret(s)
+        (a: A) => interpret(k(sf(a)))(a)
+      case Cond(source, branches, default) =>
+        val sf  = interpret(source)
+        val bfs = branches.map { case (p, n) => (p, interpret(n)) }
+        val dfO = default.map(interpret)
+        (a: A) => {
+          val b = sf(a)
+          bfs.find(_._1(b)) match {
+            case Some((_, nf)) => nf(b)
+            case None          =>
+              dfO match {
+                case Some(df) => df(b)
+                case None     => b.asInstanceOf[B] // pass-through (B <: output)
+              }
+          }
+        }
+      case Decorated(inner, _, _) => interpret(inner)
+    }
+
+    /* Run in an effect F
+     * The same reified tree folded into `A => F[B]` for any `F` with a
+     * [[Effect]] instance (`Id`/`Future`/`Try` shipped; anything else is one
+     * user `given`)
+     */
+    private[etl4s] def interpretF[F[_], A, B](node: Node[A, B])(using E: Effect[F]): A => F[B] =
+      node match {
+        case Step(_, run, _, _) => (a: A) => E.delay(run(a))
+        case AndThen(x, y)      =>
+          val xf = interpretF[F, Any, Any](x.asInstanceOf[Node[Any, Any]])
+          val yf = interpretF[F, Any, Any](y.asInstanceOf[Node[Any, Any]])
+          ((a: A) => E.flatMap(xf(a))(yf)).asInstanceOf[A => F[B]]
+        case p: Par[a, b, c, o] =>
+          val lf  = interpretF[F, a, b](p.left)
+          val rf  = interpretF[F, a, c](p.right)
+          val app = p.append
+          (
+            (in: a) =>
+              if (p.concurrent) E.map(E.both(lf(in), rf(in)))(bc => app(bc._1, bc._2))
+              else E.flatMap(lf(in))(bv => E.map(rf(in))(cv => app(bv, cv)))
+          ).asInstanceOf[A => F[B]]
+        case p: Prod[a, c, b, d, o] =>
+          val lf  = interpretF[F, a, b](p.left)
+          val rf  = interpretF[F, c, d](p.right)
+          val app = p.append
+          (
+            (in: (a, c)) =>
+              if (p.concurrent) E.map(E.both(lf(in._1), rf(in._2)))(bd => app(bd._1, bd._2))
+              else E.flatMap(lf(in._1))(bv => E.map(rf(in._2))(dv => app(bv, dv)))
+          ).asInstanceOf[A => F[B]]
+        case b: Batch[ca, a, bb, cb] =>
+          val innerF = interpretF[F, a, bb](b.inner)
+          val par    = math.max(1, b.parallelism)
+
+          /** Elements within a group run concurrently via `both`... groups
+            *  sequence via flatMap, which bounds parallelism to `par` for eager effects (e.g. Future)
+            */
+          def group(fbs: List[F[bb]]): F[List[bb]] = fbs match {
+            case Nil       => E.pure(Nil)
+            case x :: Nil  => E.map(x)(List(_))
+            case x :: rest => E.map(E.both(x, group(rest)))(t => t._1 :: t._2)
+          }
+          def runGroups(gs: List[Seq[a]]): F[List[bb]] = gs match {
+            case Nil       => E.pure(Nil)
+            case g :: rest =>
+              E.flatMap(group(g.toList.map(innerF)))(head =>
+                E.map(runGroups(rest))(tail => head ++ tail)
+              )
+          }
+          ((in: ca) => E.map(runGroups(b.toSeq(in).grouped(par).toList))(bs => b.fromSeq(bs)))
+            .asInstanceOf[A => F[B]]
+        case v: Validate[a, b] =>
+          val cf   = interpretF[F, a, b](v.inner)
+          val conc = v.concurrent
+
+          /** Checks in a stage run concurrently via `both` when `conc`, else
+            * sequentially... a stage fails via `delay(throw ...)` (an F-failure)
+            */
+          def collect(fos: List[F[Option[String]]]): F[List[Option[String]]] =
+            fos match {
+              case Nil       => E.pure(Nil)
+              case x :: Nil  => E.map(x)(List(_))
+              case x :: rest =>
+                if (conc) E.map(E.both(x, collect(rest)))(t => t._1 :: t._2)
+                else E.flatMap(x)(o => E.map(collect(rest))(o :: _))
+            }
+          def guard[T](stage: String, checks: Seq[T => Option[String]], t: T): F[Unit] =
+            if (checks.isEmpty) E.pure(())
+            else
+              E.flatMap(collect(checks.toList.map(c => E.delay(c(t)))))(os =>
+                E.delay(raiseIfInvalid(stage, os.flatten))
+              )
+          (
+            (in: a) =>
+              E.flatMap(guard("Input", v.input, in))(_ =>
+                E.flatMap(cf(in))(out =>
+                  E.flatMap(guard("Output", v.output, out))(_ =>
+                    E.map(guard[(a, b)]("Change", v.change, (in, out)))(_ => out)
+                  )
+                )
+              )
+          ).asInstanceOf[A => F[B]]
+        case Then(x, y) =>
+          val xf = interpretF[F, Any, Any](x.asInstanceOf[Node[Any, Any]])
+          val yf = interpretF[F, Any, Any](y.asInstanceOf[Node[Any, Any]])
+          ((a: A) => E.flatMap(xf(a))(_ => yf(a))).asInstanceOf[A => F[B]]
+        case Mapped(inner, g) =>
+          val cf = interpretF[F, Any, Any](inner.asInstanceOf[Node[Any, Any]])
+          (a: A) => E.map(cf(a))(g.asInstanceOf[Any => B])
+        case t: Tap[a, b] =>
+          val cf = interpretF[F, a, b](t.inner)
+          val g  = t.g
+          ((in: a) => E.flatMap(cf(in))(bv => E.map(E.delay(g(bv)))(_ => bv)))
+            .asInstanceOf[A => F[B]]
+        case Recover(inner, h) =>
+          val cf = interpretF[F, A, B](inner.asInstanceOf[Node[A, B]])
+          (a: A) => E.handleErrorWith(cf(a))(t => E.pure(h(t)))
+        case Retry(inner, max, delay0, factor) =>
+          val cf = interpretF[F, A, B](inner.asInstanceOf[Node[A, B]])
+          (a: A) => {
+            def attempt(remaining: Int, d: Long): F[B] =
+              if (remaining <= 1) cf(a)
+              else
+                E.handleErrorWith(cf(a)) { _ =>
+                  Platform.sleep(d); attempt(remaining - 1, (d * factor).toLong)
+                }
+            attempt(max, delay0)
+          }
+        case FlatMap(s, k) =>
+          val sf = interpretF[F, A, Any](s.asInstanceOf[Node[A, Any]])
+          (a: A) =>
+            E.flatMap(sf(a))(b => interpretF[F, A, B](k.asInstanceOf[Any => Node[A, B]](b))(a))
+        case Cond(source, branches, default) =>
+          val sf  = interpretF[F, A, Any](source.asInstanceOf[Node[A, Any]])
+          val bfs = branches
+            .asInstanceOf[List[(Any => Boolean, Node[Any, B])]]
+            .map { case (p, n) => (p, interpretF[F, Any, B](n)) }
+          val dfO = default.asInstanceOf[Option[Node[Any, B]]].map(interpretF[F, Any, B](_))
+          (a: A) =>
+            E.flatMap(sf(a)) { b =>
+              bfs.find(_._1(b)) match {
+                case Some((_, nf)) => nf(b)
+                case None          =>
+                  dfO match {
+                    case Some(df) => df(b)
+                    case None     => E.pure(b.asInstanceOf[B])
+                  }
+              }
+            }
+        case Decorated(inner, _, _) =>
+          interpretF[F, A, B](inner.asInstanceOf[Node[A, B]])
+      }
+
+    /**
+     * The effect a pipeline was asked to run in (via `node.compile[F]`). Its
+     * `unsafeRun` folds the graph through [[interpretF]] into `F`
+     */
+    final class Runner[A, B, F[_]](node: Node[A, B])(using E: Effect[F]) {
+
+      /** Runs the pipeline on `a`, producing an `F[B]` */
+      def unsafeRun(a: A): F[B] = interpretF[F, A, B](node)(a)
+
+      /** Runs an input-free pipeline (`Node[Any, B]`), producing an `F[B]` */
+      def unsafeRun()(using ev: Any <:< A): F[B] =
+        interpretF[F, A, B](node)(null.asInstanceOf[A])
+    }
+
+    /** One leaf stage of a pipeline: its name and in/out type names */
+    final case class StageInfo(name: String, in: String, out: String)
+
+    /**
+     * Simple interpreter just to inspect pipeline
+     */
+    def stages(node: Node[?, ?]): List[StageInfo] = node match {
+      case Step(name, _, inN, outN)        => List(StageInfo(name, inN.show, outN.show))
+      case AndThen(x, y)                   => stages(x) ++ stages(y)
+      case Par(l, r, _, _)                 => stages(l) ++ stages(r)
+      case Prod(l, r, _, _)                => stages(l) ++ stages(r)
+      case Batch(inner, _, _, _)           => stages(inner)
+      case Validate(inner, _, _, _, _)     => stages(inner)
+      case Then(x, y)                      => stages(x) ++ stages(y)
+      case Mapped(inner, _)                => stages(inner)
+      case Tap(inner, _)                   => stages(inner)
+      case Recover(inner, _)               => stages(inner)
+      case Retry(inner, _, _, _)           => stages(inner)
+      case Decorated(inner, _, _)          => stages(inner)
+      case FlatMap(s, _)                   => stages(s) :+ StageInfo("<dynamic>", "?", "?")
+      case Cond(source, branches, default) =>
+        stages(source) ++ branches.flatMap(bn => stages(bn._2)) ++ default.toList.flatMap(stages)
+    }
+
+    /**
+     * Interpreter to render mermaid diagrams
+     */
+    def mermaid(node: Node[?, ?]): String = {
+      val lines                   = scala.collection.mutable.ArrayBuffer.empty[String]
+      var counter                 = 0
+      def fresh(): Int            = { val c = counter; counter += 1; c }
+      def box(label: String): Int = { val id = fresh(); lines += s"""  n$id["$label"]"""; id }
+      def edge(a: Int, b: Int, dashed: Boolean = false): Unit =
+        lines += (if (dashed) s"  n$a -.-> n$b" else s"  n$a --> n$b")
+
+      def go(f: Node[?, ?]): (List[Int], List[Int]) = f match {
+        case Step(name, _, inN, outN) =>
+          val id = box(s"$name<br/>${inN.show} &rArr; ${outN.show}")
+          (List(id), List(id))
+        case AndThen(x, y) =>
+          val (xin, xout) = go(x)
+          val (yin, yout) = go(y)
+          for (a <- xout; b <- yin) edge(a, b)
+          (xin, yout)
+        case Par(l, r, _, _) =>
+          val (lin, lout) = go(l)
+          val (rin, rout) = go(r)
+          (lin ++ rin, lout ++ rout) // fan-out on entry, fan-in on exit
+        case Prod(l, r, _, _) =>
+          val (lin, lout) = go(l)
+          val (rin, rout) = go(r)
+          (lin ++ rin, lout ++ rout) // two independent inputs, fan-in on exit
+        case Batch(inner, _, _, _)       => go(inner)
+        case Validate(inner, _, _, _, _) => go(inner)
+        case Then(x, y)                  =>
+          val (xin, _)    = go(x)
+          val (yin, yout) = go(y)
+          (xin ++ yin, yout) // x is a side-effect branch, y is the continuation
+        case Mapped(inner, _)       => go(inner)
+        case Tap(inner, _)          => go(inner)
+        case Recover(inner, _)      => go(inner)
+        case Retry(inner, _, _, _)  => go(inner)
+        case Decorated(inner, _, _) => go(inner)
+        case FlatMap(s, _)          =>
+          val (sin, sout) = go(s)
+          val dyn         = box("&lt;dynamic&gt;<br/>runtime-decided")
+          for (a <- sout) edge(a, dyn, dashed = true)
+          (sin, List(dyn))
+        case Cond(source, branches, default) =>
+          val (sin, sout) = go(source)
+          val branchIO    = (branches.map(_._2) ++ default.toList).map(go)
+          for (a <- sout; (bin, _) <- branchIO; b <- bin) edge(a, b, dashed = true)
+          val branchOuts  = branchIO.flatMap(_._2)
+          val passthrough = if (default.isEmpty) sout else Nil
+          (sin, branchOuts ++ passthrough)
+      }
+      go(node)
+      ("flowchart LR" +: lines.toList).mkString("\n")
+    }
+
+    /**
+      * Interpreter to render Graphviz DOT diagrams
+      */
+    def dot(node: Node[?, ?]): String = {
+      val lines                   = scala.collection.mutable.ArrayBuffer.empty[String]
+      var counter                 = 0
+      def fresh(): Int            = { val c = counter; counter += 1; c }
+      def box(label: String): Int = {
+        val id = fresh(); lines += s"""  n$id [label="$label"];"""; id
+      }
+      def edge(a: Int, b: Int, dashed: Boolean = false): Unit =
+        lines += (if (dashed) s"  n$a -> n$b [style=dashed];" else s"  n$a -> n$b;")
+
+      def go(f: Node[?, ?]): (List[Int], List[Int]) = f match {
+        case Step(name, _, inN, outN) =>
+          val id = box(s"$name\\n${inN.show} => ${outN.show}")
+          (List(id), List(id))
+        case AndThen(x, y) =>
+          val (xin, xout) = go(x)
+          val (yin, yout) = go(y)
+          for (a <- xout; b <- yin) edge(a, b)
+          (xin, yout)
+        case Par(l, r, _, _) =>
+          val (lin, lout) = go(l)
+          val (rin, rout) = go(r)
+          (lin ++ rin, lout ++ rout)
+        case Prod(l, r, _, _) =>
+          val (lin, lout) = go(l)
+          val (rin, rout) = go(r)
+          (lin ++ rin, lout ++ rout)
+        case Batch(inner, _, _, _)       => go(inner)
+        case Validate(inner, _, _, _, _) => go(inner)
+        case Then(x, y)                  =>
+          val (xin, _)    = go(x)
+          val (yin, yout) = go(y)
+          (xin ++ yin, yout)
+        case Mapped(inner, _)       => go(inner)
+        case Tap(inner, _)          => go(inner)
+        case Recover(inner, _)      => go(inner)
+        case Retry(inner, _, _, _)  => go(inner)
+        case Decorated(inner, _, _) => go(inner)
+        case FlatMap(s, _)          =>
+          val (sin, sout) = go(s)
+          val dyn         = box("<dynamic>\\nruntime-decided")
+          for (a <- sout) edge(a, dyn, dashed = true)
+          (sin, List(dyn))
+        case Cond(source, branches, default) =>
+          val (sin, sout) = go(source)
+          val branchIO    = (branches.map(_._2) ++ default.toList).map(go)
+          for (a <- sout; (bin, _) <- branchIO; b <- bin) edge(a, b, dashed = true)
+          val branchOuts  = branchIO.flatMap(_._2)
+          val passthrough = if (default.isEmpty) sout else Nil
+          (sin, branchOuts ++ passthrough)
+      }
+      go(node)
+      ("digraph G {\n  rankdir=LR;" +: lines.toList).mkString("\n") + "\n}"
+    }
+  }
+
+  /**
+   * The identity effect: `Id[A] = A`. Running a pipeline with `unsafeRun[Id]`
+   * (or the plain `unsafeRun`) is fully synchronous
+   */
+  type Id[A] = A
+
+  /**
+   * Folds a pipeline into any `F` that has an [[Effect]] instance in scope. etl4s
+   * ships `Id` (synchronous), `Future`, and `Try`; add your own with one instance
+   */
+  trait Effect[F[_]] {
+    def pure[A](a: A): F[A]
+    def delay[A](thunk: => A): F[A]
+    def flatMap[A, B](fa: F[A])(f: A => F[B]): F[B]
+    def map[A, B](fa: F[A])(f: A => B): F[B] = flatMap(fa)(a => pure(f(a)))
+    def handleErrorWith[A](fa: => F[A])(h: Throwable => F[A]): F[A]
+    def both[A, B](fa: F[A], fb: F[B]): F[(A, B)] = flatMap(fa)(a => map(fb)(b => (a, b)))
+  }
+
+  object Effect {
+
+    given idEffect: Effect[Id] with {
+      def pure[A](a: A): Id[A]                                           = a
+      def delay[A](thunk: => A): Id[A]                                   = thunk
+      def flatMap[A, B](fa: Id[A])(f: A => Id[B]): Id[B]                 = f(fa)
+      def handleErrorWith[A](fa: => Id[A])(h: Throwable => Id[A]): Id[A] =
+        try fa
+        catch { case NonFatal(t) => h(t) }
+    }
+
+    given futureEffect(using ec: ExecutionContext): Effect[Future] with {
+      def pure[A](a: A): Future[A]                                   = Future.successful(a)
+      def delay[A](thunk: => A): Future[A]                           = Future(thunk)
+      def flatMap[A, B](fa: Future[A])(f: A => Future[B]): Future[B] = fa.flatMap(f)
+      def handleErrorWith[A](fa: => Future[A])(h: Throwable => Future[A]): Future[A] =
+        (try fa
+        catch { case NonFatal(t) => Future.failed(t) }).recoverWith { case t => h(t) }
+      override def both[A, B](fa: Future[A], fb: Future[B]): Future[(A, B)] = fa.zip(fb)
+    }
+
+    given tryEffect: Effect[Try] with {
+      def pure[A](a: A): Try[A]                                             = Success(a)
+      def delay[A](thunk: => A): Try[A]                                     = Try(thunk)
+      def flatMap[A, B](fa: Try[A])(f: A => Try[B]): Try[B]                 = fa.flatMap(f)
+      def handleErrorWith[A](fa: => Try[A])(h: Throwable => Try[A]): Try[A] =
+        (try fa
+        catch { case NonFatal(t) => Failure(t) }) match {
+          case Failure(t) => h(t)
+          case s          => s
+        }
     }
   }
 
@@ -692,31 +1112,49 @@ package object etl4s {
 
   /** Factory objects for semantic clarity */
   object Pipeline {
-    def apply[A, B](func: A => B): Pipeline[A, B]                = Node(func)
-    def apply[B](value: => B): Pipeline[Any, B]                  = Node(value)
-    def pure[A]: Pipeline[A, A]                                  = Node.identity[A]
-    def requires[T, A, B](f: T => A => B): Reader[T, Node[A, B]] = Node.requires[T, A, B](f)
+    def apply[A, B](func: A => B)(using Name, TypeName[A], TypeName[B]): Pipeline[A, B] = Node(func)
+    def apply[B](value: => B)(using Name, TypeName[B]): Pipeline[Any, B] = Node(value)
+    def pure[A](using Name, TypeName[A]): Pipeline[A, A]                 = Node.identity[A]
+    def requires[T, A, B](f: T => A => B)(using
+      Name,
+      TypeName[A],
+      TypeName[B]
+    ): Reader[T, Node[A, B]] = Node.requires[T, A, B](f)
   }
 
   object Extract {
-    def apply[A, B](func: A => B): Extract[A, B]                 = Node(func)
-    def apply[B](value: => B): Extract[Any, B]                   = Node(value)
-    def pure[A]: Extract[A, A]                                   = Node.identity[A]
-    def requires[T, A, B](f: T => A => B): Reader[T, Node[A, B]] = Node.requires[T, A, B](f)
+    def apply[A, B](func: A => B)(using Name, TypeName[A], TypeName[B]): Extract[A, B] = Node(func)
+    def apply[B](value: => B)(using Name, TypeName[B]): Extract[Any, B]                = Node(value)
+    def pure[A](using Name, TypeName[A]): Extract[A, A] = Node.identity[A]
+    def requires[T, A, B](f: T => A => B)(using
+      Name,
+      TypeName[A],
+      TypeName[B]
+    ): Reader[T, Node[A, B]] = Node.requires[T, A, B](f)
   }
 
   object Transform {
-    def apply[A, B](func: A => B): Transform[A, B]               = Node(func)
-    def apply[B](value: => B): Transform[Any, B]                 = Node(value)
-    def pure[A]: Transform[A, A]                                 = Node.identity[A]
-    def requires[T, A, B](f: T => A => B): Reader[T, Node[A, B]] = Node.requires[T, A, B](f)
+    def apply[A, B](func: A => B)(using Name, TypeName[A], TypeName[B]): Transform[A, B] = Node(
+      func
+    )
+    def apply[B](value: => B)(using Name, TypeName[B]): Transform[Any, B] = Node(value)
+    def pure[A](using Name, TypeName[A]): Transform[A, A]                 = Node.identity[A]
+    def requires[T, A, B](f: T => A => B)(using
+      Name,
+      TypeName[A],
+      TypeName[B]
+    ): Reader[T, Node[A, B]] = Node.requires[T, A, B](f)
   }
 
   object Load {
-    def apply[A, B](func: A => B): Load[A, B]                    = Node(func)
-    def apply[B](value: => B): Load[Any, B]                      = Node(value)
-    def pure[A]: Load[A, A]                                      = Node.identity[A]
-    def requires[T, A, B](f: T => A => B): Reader[T, Node[A, B]] = Node.requires[T, A, B](f)
+    def apply[A, B](func: A => B)(using Name, TypeName[A], TypeName[B]): Load[A, B] = Node(func)
+    def apply[B](value: => B)(using Name, TypeName[B]): Load[Any, B]                = Node(value)
+    def pure[A](using Name, TypeName[A]): Load[A, A] = Node.identity[A]
+    def requires[T, A, B](f: T => A => B)(using
+      Name,
+      TypeName[A],
+      TypeName[B]
+    ): Reader[T, Node[A, B]] = Node.requires[T, A, B](f)
   }
 
   /**
@@ -732,6 +1170,33 @@ package object etl4s {
         }
       }
     }
+  }
+
+  /**
+   * Makes an existing node depend on some configuration type `T`, reusing its
+   * `A => B` shape...
+   *
+   * @example
+   * {{{
+   * val configNode = someNode.requires[Config] { config => input =>
+   *   input * config.multiplier
+   * }
+   * configNode.provideContext(Config(5)).unsafeRun(10) // 50
+   * }}}
+   */
+  extension [A, B](node: Node[A, B]) {
+    def requires[T](
+      f: T => A => B
+    )(using name: Name, inN: TypeName[A], outN: TypeName[B]): Reader[T, Node[A, B]] =
+      Reader(config => Node.Step(name.value, f(config), inN, outN))
+
+    /**
+     * Compiles the pure pipeline into the effect `F`, returning a [[Node.Runner]] whose
+     * `unsafeRun` folds the graph into that `F`: `pipeline.compile[Future].unsafeRun(x)`
+     * yields `Future[B]`, `compile[Try].unsafeRun(x)` a `Try[B]` ... etc etc
+     */
+    def compile[F[_]](using E: Effect[F]): Node.Runner[A, B, F] =
+      new Node.Runner[A, B, F](node)
   }
 
   /**
@@ -792,8 +1257,6 @@ package object etl4s {
       }
   }
 
-  // Lineage case class is defined in shared src/Lineage.scala
-
   /**
    * Type class for types that can carry metadata.
    */
@@ -827,7 +1290,7 @@ package object etl4s {
    * @param run the function that computes A given environment R
    * @param metadata optional metadata that can be attached at compile time
    */
-  case class Reader[R, A](run: R => A, metadata: Any = None, getLineage: Option[Lineage] = None) {
+  case class Reader[R, +A](run: R => A, metadata: Any = None, getLineage: Option[Lineage] = None) {
     def map[B](f: A => B): Reader[R, B] = Reader(r => f(run(r)), metadata, getLineage)
     def flatMap[B](f: A => Reader[R, B]): Reader[R, B] =
       Reader(r => f(run(r)).run(r), metadata, getLineage)
@@ -893,7 +1356,6 @@ package object etl4s {
    * HasMetadata instances for Node and Reader.
    */
   object HasMetadata {
-    // Scala 3 type lambda syntax: [X] =>> Node[A, B]
     given nodeHasMetadata[A, B]: HasMetadata[[X] =>> Node[A, B]] =
       new HasMetadata[[X] =>> Node[A, B]] {
         def metadata[X](fa: Node[A, B]): Any                       = fa.metadata
@@ -955,16 +1417,19 @@ package object etl4s {
      * Uses ReaderCompat to handle type compatibility automatically.
      * Auto-flattens tuples: r1 & r2 & r3 produces (Out1, Out2, Out3)
      */
-    def &[T2, C, R](
+    def &[T2, C, R, O <: Tuple](
       fb: Reader[T2, Node[A, C]]
-    )(using compat: ReaderCompat[T1, T2, R], ta: TupleAppend[B, C]): Reader[R, Node[A, ta.Out]] = {
+    )(using
+      compat: ReaderCompat[T1, T2, R],
+      ta: TupleAppend.Aux[B, C, O]
+    ): Reader[R, Node[A, O]] = {
       val combined = (fa.getLineage, fb.getLineage) match {
         case (Some(l1), Some(l2)) => Some(l1.combine(l2))
         case (Some(l), None)      => Some(l)
         case (None, Some(l))      => Some(l)
         case _                    => None
       }
-      val result = Reader[R, Node[A, ta.Out]] { (env: R) =>
+      val result = Reader[R, Node[A, O]] { (env: R) =>
         val nodeA = fa.run(compat.toT1(env))
         val nodeB = fb.run(compat.toT2(env))
         nodeA & nodeB
@@ -976,7 +1441,9 @@ package object etl4s {
      * Parallel composition: Reader(Node) & Node
      * Auto-flattens tuples.
      */
-    def &[C](node: Node[A, C])(using ta: TupleAppend[B, C]): Reader[T1, Node[A, ta.Out]] = {
+    def &[C, O <: Tuple](node: Node[A, C])(using
+      ta: TupleAppend.Aux[B, C, O]
+    ): Reader[T1, Node[A, O]] = {
       val combined = (fa.getLineage, node.getLineage) match {
         case (Some(l1), Some(l2)) => Some(l1.combine(l2))
         case (Some(l), None)      => Some(l)
@@ -992,18 +1459,17 @@ package object etl4s {
      * Uses ReaderCompat to handle type compatibility automatically.
      * Auto-flattens tuples.
      */
-    def &>[T2, C, R](fb: Reader[T2, Node[A, C]])(using
+    def &>[T2, C, R, O <: Tuple](fb: Reader[T2, Node[A, C]])(using
       compat: ReaderCompat[T1, T2, R],
-      ec: ExecutionContext,
-      ta: TupleAppend[B, C]
-    ): Reader[R, Node[A, ta.Out]] = {
+      ta: TupleAppend.Aux[B, C, O]
+    ): Reader[R, Node[A, O]] = {
       val combined = (fa.getLineage, fb.getLineage) match {
         case (Some(l1), Some(l2)) => Some(l1.combine(l2))
         case (Some(l), None)      => Some(l)
         case (None, Some(l))      => Some(l)
         case _                    => None
       }
-      val result = Reader[R, Node[A, ta.Out]] { (env: R) =>
+      val result = Reader[R, Node[A, O]] { (env: R) =>
         val nodeA = fa.run(compat.toT1(env))
         val nodeB = fb.run(compat.toT2(env))
         nodeA &> nodeB
@@ -1015,9 +1481,9 @@ package object etl4s {
      * Concurrent parallel composition: Reader(Node) &> Node
      * Auto-flattens tuples.
      */
-    def &>[C](
+    def &>[C, O <: Tuple](
       node: Node[A, C]
-    )(using ec: ExecutionContext, ta: TupleAppend[B, C]): Reader[T1, Node[A, ta.Out]] = {
+    )(using ta: TupleAppend.Aux[B, C, O]): Reader[T1, Node[A, O]] = {
       val combined = (fa.getLineage, node.getLineage) match {
         case (Some(l1), Some(l2)) => Some(l1.combine(l2))
         case (Some(l), None)      => Some(l)
@@ -1087,6 +1553,11 @@ package object etl4s {
         fa.run(ctx).tap(result => g(ctx)(result))
       }
     }
+
+    private def skeleton: Node[A, B] = fa.run(null.asInstanceOf[T1])
+    def stages: List[Node.StageInfo] = skeleton.stages
+    def mermaid: String              = skeleton.mermaid
+    def dot: String                  = skeleton.dot
   }
 
   /**
@@ -1103,44 +1574,15 @@ package object etl4s {
    *
    * @tparam A the result type
    * @param result the final result value
-   * @param logs collected log values (any type)
    * @param timeElapsedMillis execution duration in milliseconds
-   * @param errors errors encountered (any type)
    */
-  case class Trace[A](
+  case class Trace[+A](
     result: A,
-    logs: List[Any] = List.empty,
-    timeElapsedMillis: Long = 0L,
-    errors: List[Any] = List.empty,
-    telemetry: TelemetryData = TelemetryData()
+    timeElapsedMillis: Long = 0L
   ) {
-
-    /** Check if any errors occurred */
-    def hasErrors: Boolean = errors.nonEmpty
 
     /** Get timing in seconds */
     def seconds: Double = timeElapsedMillis / 1000.0
-
-    /** Get logs as strings */
-    def logsAsStrings: List[String] = logs.map(_.toString)
-
-    /** Get errors as strings */
-    def errorsAsStrings: List[String] = errors.map(_.toString)
-
-    /** Get all spans recorded during execution */
-    def spans: List[TelSpan] = telemetry.spans
-
-    /** Get counter totals (summed values for each counter name) */
-    def counterTotals: Map[String, Long] = telemetry.counterTotals
-
-    /** Get latest gauge values (most recent value for each gauge name) */
-    def latestGauges: Map[String, Double] = telemetry.latestGauges
-
-    /** Get histogram values grouped by name */
-    def histogramValues: Map[String, List[Double]] = telemetry.histogramValues
-
-    /** Export trace telemetry as OTEL-compatible JSON */
-    def toOtelJson: String = TraceJsonHelpers.toOtelJson(telemetry)
   }
 
   /** Utility functions */
@@ -1162,8 +1604,6 @@ package object etl4s {
    */
   given function1ToNode[A, B]: Conversion[A => B, Node[A, B]] = Node(_)
 
-  // ValidationCheck, CurriedCheck, PlainCheck defined in shared src/Core.scala
-
   /**
    * Implicit conversions for validation checks
    */
@@ -1172,200 +1612,6 @@ package object etl4s {
 
   implicit def plainToCheck[T, A](f: A => Option[String]): ValidationCheck[T, A] =
     PlainCheck(f)
-
-  /**
-   * Access to current pipeline execution state.
-   * 
-   * Provides unified access to the currently executing pipeline's runtime state,
-   * including logs, validation errors, and execution timing.
-   */
-  object Trace {
-    // Trace state: (logs, errors, startTime, telemetryData, currentSpanId, traceId)
-    private type TraceState = (List[Any], List[Any], Long, TelemetryData, Option[String], String)
-    private val traceCollector: LocalVar[Option[TraceState]] =
-      Platform.newLocalVar(None)
-
-    private def generateId(): String = Platform.randomId()
-
-    def setCollector(startTime: Long): Unit = {
-      traceCollector.set(
-        Some((List.empty, List.empty, startTime, TelemetryData(), None, generateId()))
-      )
-    }
-
-    def clearCollector(): Unit = {
-      traceCollector.set(None)
-    }
-
-    /** Save current collector state for later restoration (supports nesting) */
-    def saveCollector(): Option[TraceState] = {
-      traceCollector.get()
-    }
-
-    /** Restore a previously saved collector state */
-    def restoreCollector(state: Option[TraceState]): Unit = {
-      traceCollector.set(state)
-    }
-
-    /**
-     * Get the current execution trace as it's being built.
-     *
-     * Returns a live view of the execution state including logs, errors,
-     * and current execution time.
-     */
-    def current: Trace[Any] = {
-      traceCollector.get() match {
-        case Some((logs, errors, startTime, telData, _, _)) =>
-          val timeElapsedMillis = System.currentTimeMillis() - startTime
-          Trace(
-            result = (), // Result not available during execution
-            logs = logs.reverse,
-            timeElapsedMillis = timeElapsedMillis,
-            errors = errors.reverse,
-            telemetry = telData
-          )
-        case None =>
-          Trace(
-            result = (),
-            logs = List.empty,
-            timeElapsedMillis = 0L,
-            errors = List.empty,
-            telemetry = TelemetryData()
-          )
-      }
-    }
-
-    /** Add a log value to the current execution (any type) */
-    def log[T](message: T): Unit = {
-      traceCollector.get() match {
-        case Some((currentLogs, currentErrors, startTime, telData, spanId, traceId)) =>
-          traceCollector.set(
-            Some((message :: currentLogs, currentErrors, startTime, telData, spanId, traceId))
-          )
-        case None =>
-      }
-    }
-
-    /** Add an error to the current execution (any type) */
-    def error[T](err: T): Unit = {
-      traceCollector.get() match {
-        case Some((currentLogs, currentErrors, startTime, telData, spanId, traceId)) =>
-          traceCollector.set(
-            Some((currentLogs, err :: currentErrors, startTime, telData, spanId, traceId))
-          )
-        case None =>
-      }
-    }
-
-    /** Record a completed span to the current trace */
-    private[etl4s] def recordSpan(span: TelSpan): Unit = {
-      traceCollector.get() match {
-        case Some((logs, errors, startTime, telData, spanId, traceId)) =>
-          val updated = telData.copy(spans = span :: telData.spans)
-          traceCollector.set(Some((logs, errors, startTime, updated, spanId, traceId)))
-        case None =>
-      }
-    }
-
-    /** Record a counter value to the current trace */
-    private[etl4s] def recordCounter(name: String, value: Long): Unit = {
-      traceCollector.get() match {
-        case Some((logs, errors, startTime, telData, spanId, traceId)) =>
-          val counter = TelCounter(name, value, System.nanoTime())
-          val updated = telData.copy(counters = counter :: telData.counters)
-          traceCollector.set(Some((logs, errors, startTime, updated, spanId, traceId)))
-        case None =>
-      }
-    }
-
-    /** Record a gauge value to the current trace */
-    private[etl4s] def recordGauge(name: String, value: Double): Unit = {
-      traceCollector.get() match {
-        case Some((logs, errors, startTime, telData, spanId, traceId)) =>
-          val gauge   = TelGauge(name, value, System.nanoTime())
-          val updated = telData.copy(gauges = gauge :: telData.gauges)
-          traceCollector.set(Some((logs, errors, startTime, updated, spanId, traceId)))
-        case None =>
-      }
-    }
-
-    /** Record a histogram value to the current trace */
-    private[etl4s] def recordHistogram(name: String, value: Double): Unit = {
-      traceCollector.get() match {
-        case Some((logs, errors, startTime, telData, spanId, traceId)) =>
-          val hist    = TelHistogram(name, value, System.nanoTime())
-          val updated = telData.copy(histograms = hist :: telData.histograms)
-          traceCollector.set(Some((logs, errors, startTime, updated, spanId, traceId)))
-        case None =>
-      }
-    }
-
-    /** Get the current span ID (for parent-child relationships) */
-    private[etl4s] def getCurrentSpanId: Option[String] = {
-      traceCollector.get().flatMap { case (_, _, _, _, spanId, _) => spanId }
-    }
-
-    /** Set the current span ID */
-    private[etl4s] def setCurrentSpanId(newSpanId: Option[String]): Unit = {
-      traceCollector.get() match {
-        case Some((logs, errors, startTime, telData, _, traceId)) =>
-          traceCollector.set(Some((logs, errors, startTime, telData, newSpanId, traceId)))
-        case None =>
-      }
-    }
-
-    /** Get the current trace ID */
-    private[etl4s] def getTraceId: Option[String] = {
-      traceCollector.get().map { case (_, _, _, _, _, traceId) => traceId }
-    }
-
-    /** Get the current telemetry data */
-    private[etl4s] def getTelemetryData: TelemetryData = {
-      traceCollector
-        .get()
-        .map { case (_, _, _, telData, _, _) => telData }
-        .getOrElse(TelemetryData())
-    }
-
-    /** Get the current trace state */
-    def getCurrent: Trace[Any] = current
-
-    /** Get current logs */
-    def getLogs: List[Any] = current.logs
-
-    /** Get current errors */
-    def getErrors: List[Any] = current.errors
-
-    /** Get elapsed time in milliseconds */
-    def getElapsedTimeMillis: Long = current.timeElapsedMillis
-
-    /** Get elapsed time in seconds */
-    def getElapsedTimeSeconds: Double = current.seconds
-
-    /** Get logs as strings */
-    def getLogsAsStrings: List[String] = current.logsAsStrings
-
-    /** Get errors as strings */
-    def getErrorsAsStrings: List[String] = current.errorsAsStrings
-
-    /** Check if there are any errors */
-    def hasErrors: Boolean = current.hasErrors
-
-    /** Check if there are any logs */
-    def hasLogs: Boolean = current.logs.nonEmpty
-
-    /** Get the number of logs */
-    def getLogCount: Int = current.logs.size
-
-    /** Get the number of errors */
-    def getErrorCount: Int = current.errors.size
-
-    /** Get the last log (most recent) */
-    def getLastLog: Option[Any] = current.logs.headOption
-
-    /** Get the last error (most recent) */
-    def getLastError: Option[Any] = current.errors.headOption
-  }
 
   /**
    * Type-level function to flatten nested left-associated tuples into flat tuples.
@@ -1378,8 +1624,6 @@ package object etl4s {
    *
    * This helps transform nested tuples like `((a,b),c)` into flat tuples like `(a,b,c)`.
    * Makes pipelines that combine multiple steps more ergonomic.
-   *
-   * Scala 3 implementation uses match types for arbitrary tuple lengths.
    *
    * @tparam A the input type to flatten
    */
@@ -1430,7 +1674,7 @@ package object etl4s {
    * This enables: node1 & node2 & node3 to produce Node[In, (Out1, Out2, Out3)]
    * instead of Node[In, ((Out1, Out2), Out3)]
    */
-  trait TupleAppend[A, B] {
+  trait TupleAppend[-A, -B] {
     type Out <: Tuple
     def append(a: A, b: B): Out
   }
@@ -1488,180 +1732,53 @@ package object etl4s {
      * Use as: `Context.Extract[A, B] { ctx => in => out }`
      */
     object Context {
-      def Extract[A, B](f: T => A => B): Reader[T, Extract[A, B]] =
+      def Extract[A, B](
+        f: T => A => B
+      )(using Name, TypeName[A], TypeName[B]): Reader[T, Extract[A, B]] =
         etl4s.Extract.requires[T, A, B](f)
 
-      def Transform[A, B](f: T => A => B): Reader[T, Transform[A, B]] =
+      def Transform[A, B](
+        f: T => A => B
+      )(using Name, TypeName[A], TypeName[B]): Reader[T, Transform[A, B]] =
         etl4s.Transform.requires[T, A, B](f)
 
-      def Load[A, B](f: T => A => B): Reader[T, Load[A, B]] =
+      def Load[A, B](f: T => A => B)(using Name, TypeName[A], TypeName[B]): Reader[T, Load[A, B]] =
         etl4s.Load.requires[T, A, B](f)
 
-      def Pipeline[A, B](f: T => A => B): Reader[T, Pipeline[A, B]] =
+      def Pipeline[A, B](
+        f: T => A => B
+      )(using Name, TypeName[A], TypeName[B]): Reader[T, Pipeline[A, B]] =
         etl4s.Pipeline.requires[T, A, B](f)
 
-      def Node[A, B](f: T => A => B): Reader[T, Node[A, B]] =
+      def Node[A, B](f: T => A => B)(using Name, TypeName[A], TypeName[B]): Reader[T, Node[A, B]] =
         etl4s.Node.requires[T, A, B](f)
 
-      def tap[A](f: T => A => Any): Reader[T, Node[A, A]] =
+      def tap[A](f: T => A => Any)(using name: Name, tn: TypeName[A]): Reader[T, Node[A, A]] =
         Reader { ctx =>
-          etl4s.Node { a =>
-            f(ctx)(a)
-            a
-          }
+          etl4s.Node.Step[A, A](name.value, a => { f(ctx)(a); a }, tn, tn)
         }
-    }
-  }
 
-  /**
-   * OpenTelemetry integration for etl4s pipelines.
-   * 
-   * Provides span, counter, gauge, and histogram recording within pipeline execution.
-   * Uses ThreadLocal to automatically work when Etl4sTelemetry is set via implicit parameter
-   * to run methods.
-   * 
-   * @example
-   * {{{
-   * val extract = Extract[String, List[User]] { input =>
-   *   Tel.withSpan("user-parsing") {
-   *     Trace.log("Starting extraction")
-   *     val users = parseUsers(input)
-   *     Tel.addCounter("users.extracted", users.size.toLong)
-   *     Tel.recordHistogram("batch.size", users.size.toDouble)
-   *     users
-   *   }
-   * }
-   * 
-   * // With OTel provider
-   * implicit val otel: Etl4sTelemetry = ConsoleEtl4sTelemetry()
-   * pipeline.unsafeRun(data)
-   * 
-   * // Without OTel provider - all calls are no-ops
-   * pipeline.unsafeRun(data)
-   * }}}
-   */
-  object Tel {
-    private val observabilityProvider: LocalVar[Option[Etl4sTelemetry]] =
-      Platform.newLocalVar(None)
-
-    private def generateSpanId(): String = Platform.randomId()
-
-    private[etl4s] def setProvider(provider: Etl4sTelemetry): Unit = {
-      observabilityProvider.set(Some(provider))
-    }
-
-    private[etl4s] def clearProvider(): Unit = {
-      observabilityProvider.set(None)
-    }
-
-    /**
-     * Execute block within a named span with optional attributes.
-     * Always records span to Trace, and delegates to provider if set.
-     */
-    def withSpan[T](name: String, attributes: (String, Any)*)(block: => T): T = {
-      val provider     = observabilityProvider.get()
-      val spanId       = generateSpanId()
-      val traceId      = Trace.getTraceId.getOrElse(generateSpanId() + generateSpanId())
-      val parentSpanId = Trace.getCurrentSpanId
-      val startNanos   = System.nanoTime()
-
-      // Set this span as current for child spans
-      Trace.setCurrentSpanId(Some(spanId))
-
-      val result =
-        try {
-          provider match {
-            case Some(p) => p.withSpan(name, attributes*)(block)
-            case None    => block
-          }
-        } finally {
-          val endNanos = System.nanoTime()
-          val span     = TelSpan(
-            name = name,
-            traceId = traceId,
-            spanId = spanId,
-            parentSpanId = parentSpanId,
-            startTimeNanos = startNanos,
-            endTimeNanos = endNanos,
-            durationNanos = endNanos - startNanos,
-            attributes = attributes.toMap,
-            status = "ok"
+      /**
+       * Starts a context-aware pipeline with a conditional branch on config.
+       * Without a trailing `Else`, unmatched inputs pass through unchanged.
+       */
+      def If[A, C, Branch](condition: T => Boolean)(branch: Branch)(using
+        branchLift: BranchLift[A, C, Branch],
+        tn: TypeName[A]
+      ): ReaderPartialConditionalBuilder[T & branchLift.Config, A, A, C] = {
+        type R = T & branchLift.Config
+        ReaderPartialConditionalBuilder[R, A, A, C](
+          Reader.pure(etl4s.Node.identity[A](using Name("input"), tn)),
+          List(
+            (
+              ((t: R) => (_: A) => condition(t)).asInstanceOf[R => A => Boolean],
+              branchLift.lift(branch).asInstanceOf[Reader[R, Node[A, C]]]
+            )
           )
-          Trace.recordSpan(span)
-          // Restore parent span as current
-          Trace.setCurrentSpanId(parentSpanId)
-        }
-      result
-    }
-
-    /**
-     * Add an event to the current span.
-     */
-    def addEvent(name: String, attributes: (String, Any)*): Unit = {
-      // Implementation provided by actual telemetry integration
-    }
-
-    /**
-     * Record a counter metric.
-     * Always records to Trace, and delegates to provider if set.
-     */
-    def addCounter(name: String, value: Long): Unit = {
-      Trace.recordCounter(name, value)
-      val provider = observabilityProvider.get()
-      provider.foreach(_.addCounter(name, value))
-    }
-
-    /**
-     * Record a gauge metric.
-     * Always records to Trace, and delegates to provider if set.
-     */
-    def setGauge(name: String, value: Double): Unit = {
-      Trace.recordGauge(name, value)
-      val provider = observabilityProvider.get()
-      provider.foreach(_.setGauge(name, value))
-    }
-
-    /**
-     * Record a histogram metric.
-     * Always records to Trace, and delegates to provider if set.
-     */
-    def recordHistogram(name: String, value: Double): Unit = {
-      Trace.recordHistogram(name, value)
-      val provider = observabilityProvider.get()
-      provider.foreach(_.recordHistogram(name, value))
+        )
+      }
     }
   }
-
-  /**
-   * Minimal interface for OpenTelemetry integration.
-   * Direct method calls avoid intermediate object creation.
-   * 
-   * @example
-   * {{{
-   * class MyEtl4sTelemetry extends Etl4sTelemetry {
-   *   private val tracer = GlobalOpenTelemetry.getTracer("my-app")
-   *   private val meter = GlobalOpenTelemetry.getMeter("my-app")
-   *   
-   *   def withSpan[T](name: String, attributes: (String, Any)*)(block: => T): T = {
-   *     val span = tracer.spanBuilder(name).startSpan()
-   *     try block finally span.end()
-   *   }
-   *   
-   *   def addCounter(name: String, value: Long): Unit = {
-   *     meter.counterBuilder(name).build().add(value)
-   *   }
-   *   
-   *   def setGauge(name: String, value: Double): Unit = {
-   *     meter.gaugeBuilder(name).build().set(value)
-   *   }
-   *   
-   *   def recordHistogram(name: String, value: Double): Unit = {
-   *     meter.histogramBuilder(name).build().record(value)
-   *   }
-   * }
-   * }}}
-   */
-  // Etl4sTelemetry, Etl4sNoOpTelemetry, Etl4sConsoleTelemetry defined in shared src/Telemetry.scala
 
   /**
    * Typeclass for rendering lineage information to various formats.
@@ -1761,81 +1878,13 @@ package object etl4s {
   }
 
   // LineageNode, LineageEdge, LineageCluster, LineageGraph defined in shared src/Lineage.scala
-  // ValidationException defined in shared src/Telemetry.scala
-
-  /**
-   * Private helper object for validation operations.
-   */
-  private object ValidationHelpers {
-    def validateInput[A](a: A, checks: Seq[A => Option[String]], parallel: Boolean)(using
-      ec: ExecutionContext
-    ): Unit = {
-      val errors = if (parallel && checks.size > 1) {
-        checks.map(check => Platform.runParallel(check(a), ())._1).flatten
-      } else {
-        checks.flatMap(_(a))
-      }
-      if (errors.nonEmpty) {
-        val errorMsg = s"Input validation failed:\n${errors.map(e => s"  - $e").mkString("\n")}"
-        Trace.error(errorMsg)
-        throw new ValidationException(errorMsg)
-      }
-    }
-
-    def validateOutput[B](b: B, checks: Seq[B => Option[String]], parallel: Boolean)(using
-      ec: ExecutionContext
-    ): Unit = {
-      val errors = if (parallel && checks.size > 1) {
-        checks.map(check => Platform.runParallel(check(b), ())._1).flatten
-      } else {
-        checks.flatMap(_(b))
-      }
-      if (errors.nonEmpty) {
-        val errorMsg = s"Output validation failed:\n${errors.map(e => s"  - $e").mkString("\n")}"
-        Trace.error(errorMsg)
-        throw new ValidationException(errorMsg)
-      }
-    }
-
-    def validateChange[A, B](
-      pair: (A, B),
-      checks: Seq[((A, B)) => Option[String]],
-      parallel: Boolean
-    )(using ec: ExecutionContext): Unit = {
-      val errors = if (parallel && checks.size > 1) {
-        checks.map(check => Platform.runParallel(check(pair), ())._1).flatten
-      } else {
-        checks.flatMap(_(pair))
-      }
-      if (errors.nonEmpty) {
-        val errorMsg = s"Change validation failed:\n${errors.map(e => s"  - $e").mkString("\n")}"
-        Trace.error(errorMsg)
-        throw new ValidationException(errorMsg)
-      }
-    }
-
-    def logWarnings[V](
-      stage: String,
-      checks: Seq[V => Option[String]],
-      value: V,
-      parallel: Boolean
-    )(using ec: ExecutionContext): Unit = {
-      val errors = if (parallel && checks.size > 1) {
-        checks.map(check => Platform.runParallel(check(value), ())._1).flatten
-      } else {
-        checks.flatMap(_(value))
-      }
-      if (errors.nonEmpty) {
-        Trace.log(s"$stage validation warning:\n${errors.map(e => s"  - $e").mkString("\n")}")
-      }
-    }
-  }
+  // ValidationException defined in shared src/Core.scala
 
   /**
    * Extension methods for adding validation to Nodes.
    *
    * Validation functions return None if valid, Some(errorMessage) if invalid.
-   * All validation errors are collected and logged to Trace before throwing.
+   * All validation errors are collected into the thrown exception message.
    */
   extension [A, B](node: Node[A, B]) {
 
@@ -1862,89 +1911,19 @@ package object etl4s {
       change: Seq[((A, B)) => Option[String]] = Nil
     ): Node[A, B] =
       if (input.isEmpty && output.isEmpty && change.isEmpty) node
-      else
-        Node { a =>
-          if (input.nonEmpty)
-            ValidationHelpers.validateInput(a, input, parallel = false)(using
-              ExecutionContext.global
-            )
-          val result = node.f(a)
-          if (output.nonEmpty)
-            ValidationHelpers.validateOutput(result, output, parallel = false)(using
-              ExecutionContext.global
-            )
-          if (change.nonEmpty)
-            ValidationHelpers.validateChange((a, result), change, parallel = false)(using
-              ExecutionContext.global
-            )
-          result
-        }
+      else Node.Validate(node, input, output, change, concurrent = false)
 
     /**
-     * Adds multiple validation checks in one call with parallel execution.
+     * Like `ensure`, but the checks within each stage are eligible to run
+     * concurrently
      */
     def ensurePar(
       input: Seq[A => Option[String]] = Nil,
       output: Seq[B => Option[String]] = Nil,
       change: Seq[((A, B)) => Option[String]] = Nil
-    )(using ec: ExecutionContext = ExecutionContext.global): Node[A, B] =
-      if (input.isEmpty && output.isEmpty && change.isEmpty) node
-      else
-        Node { a =>
-          if (input.nonEmpty) ValidationHelpers.validateInput(a, input, parallel = true)
-          val result = node.f(a)
-          if (output.nonEmpty) ValidationHelpers.validateOutput(result, output, parallel = true)
-          if (change.nonEmpty)
-            ValidationHelpers.validateChange((a, result), change, parallel = true)
-          result
-        }
-
-    /**
-     * Adds validation checks that log warnings instead of throwing exceptions.
-     */
-    def ensureWarn(
-      input: Seq[A => Option[String]] = Nil,
-      output: Seq[B => Option[String]] = Nil,
-      change: Seq[((A, B)) => Option[String]] = Nil
     ): Node[A, B] =
       if (input.isEmpty && output.isEmpty && change.isEmpty) node
-      else
-        Node { a =>
-          if (input.nonEmpty)
-            ValidationHelpers.logWarnings("Input", input, a, parallel = false)(using
-              ExecutionContext.global
-            )
-          val result = node.f(a)
-          if (output.nonEmpty)
-            ValidationHelpers.logWarnings("Output", output, result, parallel = false)(using
-              ExecutionContext.global
-            )
-          if (change.nonEmpty)
-            ValidationHelpers.logWarnings("Change", change, (a, result), parallel = false)(using
-              ExecutionContext.global
-            )
-          result
-        }
-
-    /**
-     * Adds validation checks with parallel execution that log warnings instead of throwing exceptions.
-     */
-    def ensureParWarn(
-      input: Seq[A => Option[String]] = Nil,
-      output: Seq[B => Option[String]] = Nil,
-      change: Seq[((A, B)) => Option[String]] = Nil
-    )(using ec: ExecutionContext = ExecutionContext.global): Node[A, B] =
-      if (input.isEmpty && output.isEmpty && change.isEmpty) node
-      else
-        Node { a =>
-          if (input.nonEmpty) ValidationHelpers.logWarnings("Input", input, a, parallel = true)
-          val result = node.f(a)
-          if (output.nonEmpty)
-            ValidationHelpers.logWarnings("Output", output, result, parallel = true)
-          if (change.nonEmpty)
-            ValidationHelpers.logWarnings("Change", change, (a, result), parallel = true)
-          result
-        }
+      else Node.Validate(node, input, output, change, concurrent = true)
 
     /**
      * Conditional branching for Nodes.
@@ -1985,16 +1964,12 @@ package object etl4s {
      * Complete the conditional with a default branch.
      * Output type becomes C | C2 (union of all branches including default).
      */
-    def Else[C2](branch: Node[B, C2]): Node[A, C | C2] = {
-      val castBranches = branches.map { case (cond, node) =>
-        (cond, node.asInstanceOf[Node[B, C | C2]])
-      }
-      val castDefault = branch.asInstanceOf[Node[B, C | C2]]
-      Node { a =>
-        val b = sourceNode.f(a)
-        castBranches.find(_._1(b)).map(_._2.f(b)).getOrElse(castDefault.f(b))
-      }
-    }
+    def Else[C2](branch: Node[B, C2]): Node[A, C | C2] =
+      Node.Cond[A, B, C | C2](
+        sourceNode,
+        branches.map { case (cond, node) => (cond, node.asInstanceOf[Node[B, C | C2]]) },
+        Some(branch.asInstanceOf[Node[B, C | C2]])
+      )
   }
 
   /**
@@ -2027,15 +2002,38 @@ package object etl4s {
         defaultBranch.asInstanceOf[Node[B, C | C2]]
       )
 
-    def build: Node[A, C] = Node { a =>
-      val b = sourceNode.f(a)
-      branches.find(_._1(b)).map(_._2.f(b)).getOrElse(defaultBranch.f(b))
-    }
+    def build: Node[A, C] =
+      Node.Cond[A, B, C](sourceNode, branches, Some(defaultBranch))
   }
 
   implicit def conditionalBuilderToNode[A, B, C](
     builder: CompleteConditionalBuilder[A, B, C]
   ): Node[A, C] = builder.build
+
+  /**
+   * Starts a pipeline with a conditional branch on the input value.
+   * Without a trailing `Else`, unmatched inputs pass through unchanged.
+   */
+  def If[A](condition: A => Boolean): ValueIfStart[A] = new ValueIfStart(condition)
+
+  final class ValueIfStart[A](private val condition: A => Boolean) {
+    // TypeName captured here (where A is concrete), not on `If`.
+    def apply[C](branch: Node[A, C])(using tn: TypeName[A]): PartialConditionalBuilder[A, A, C] =
+      PartialConditionalBuilder(
+        Node.identity[A](using Name("input"), tn),
+        List((condition, branch))
+      )
+  }
+
+  /** Uses a partial builder as a Node: unmatched inputs pass through unchanged. */
+  implicit def partialConditionalBuilderToNode[A, B, C](
+    builder: PartialConditionalBuilder[A, B, C]
+  ): Node[A, C | B] =
+    Node.Cond[A, B, C | B](
+      builder.sourceNode,
+      builder.branches.map { case (cond, node) => (cond, node.asInstanceOf[Node[B, C | B]]) },
+      None
+    )
 
   /**
    * Type class for lifting branches (Node or Reader) to Reader.
@@ -2150,16 +2148,13 @@ package object etl4s {
           (c.asInstanceOf[R => B => Boolean](ctx), r.asInstanceOf[Reader[R, Node[B, Out]]].run(ctx))
         )
         val default = lift.lift(branch).asInstanceOf[Reader[R, Node[B, Out]]].run(ctx)
-        Node { a =>
-          val b = source.f(a)
-          evaluated.find(_._1(b)).map(_._2.f(b)).getOrElse(default.f(b))
-        }
+        Node.Cond[A, B, Out](source, evaluated, Some(default))
       }
     }
   }
 
   /**
-   * Exhaustive conditional builder for Reader-wrapped nodes with heterogeneous types.
+   * Exhaustive conditional builder for Reader-wrapped nodes with heterogeneous types
    */
   case class ReaderCompleteConditionalBuilder[T, A, B, C](
     sourceReader: Reader[T, Node[A, B]],
@@ -2189,7 +2184,7 @@ package object etl4s {
       )
     }
 
-    /** Add branch based purely on config/environment (ignores data). */
+    /** Add branch based purely on config/environment (ignores data) */
     def ElseIfCtx[C2, Branch](condition: T => Boolean)(branch: Branch)(using
       branchLift: BranchLift[B, C2, Branch]
     ): ReaderCompleteConditionalBuilder[T & branchLift.Config, A, B, C | C2] = {
@@ -2212,10 +2207,7 @@ package object etl4s {
       val source    = sourceReader.run(ctx)
       val evaluated = branches.map((c, r) => (c(ctx), r.run(ctx)))
       val default   = defaultBranch.run(ctx)
-      Node { a =>
-        val b = source.f(a)
-        evaluated.find(_._1(b)).map(_._2.f(b)).getOrElse(default.f(b))
-      }
+      Node.Cond[A, B, C](source, evaluated, Some(default))
     }
   }
 
@@ -2223,8 +2215,116 @@ package object etl4s {
     builder: ReaderCompleteConditionalBuilder[T, A, B, C]
   ): Reader[T, Node[A, C]] = builder.build
 
+  /** Uses a Reader partial builder as a Reader: unmatched inputs pass through unchanged */
+  implicit def readerPartialConditionalBuilderToReader[T, A, B, C](
+    builder: ReaderPartialConditionalBuilder[T, A, B, C]
+  ): Reader[T, Node[A, C | B]] = Reader { ctx =>
+    val source    = builder.sourceReader.run(ctx)
+    val evaluated =
+      builder.branches.map((c, r) => (c(ctx), r.run(ctx).asInstanceOf[Node[B, C | B]]))
+    Node.Cond[A, B, C | B](source, evaluated, None)
+  }
+
   /**
-   * Context-aware validation helper for Reader[T, Node[A, B]].
+   * Type class for batch containers that `each`, `eachPar`, and `eachSlice`
+   * iterate over. Instances preserve the concrete collection type `F`
+   */
+  trait Batchable[CA, Elem, Coll[_]] {
+    def toSeq(ca: CA): Seq[Elem]
+    def fromElems(xs: Seq[Elem]): CA
+    def fromSeq[B](xs: Seq[B]): Coll[B]
+  }
+
+  object Batchable {
+    given [A]: Batchable[List[A], A, List] with {
+      def toSeq(ca: List[A]): Seq[A]      = ca
+      def fromElems(xs: Seq[A]): List[A]  = xs.toList
+      def fromSeq[B](xs: Seq[B]): List[B] = xs.toList
+    }
+    given [A]: Batchable[Vector[A], A, Vector] with {
+      def toSeq(ca: Vector[A]): Seq[A]      = ca
+      def fromElems(xs: Seq[A]): Vector[A]  = xs.toVector
+      def fromSeq[B](xs: Seq[B]): Vector[B] = xs.toVector
+    }
+    given [A]: Batchable[Seq[A], A, Seq] with {
+      def toSeq(ca: Seq[A]): Seq[A]      = ca
+      def fromElems(xs: Seq[A]): Seq[A]  = xs
+      def fromSeq[B](xs: Seq[B]): Seq[B] = xs
+    }
+    given [A]: Batchable[Set[A], A, Set] with {
+      def toSeq(ca: Set[A]): Seq[A]      = ca.toSeq
+      def fromElems(xs: Seq[A]): Set[A]  = xs.toSet
+      def fromSeq[B](xs: Seq[B]): Set[B] = xs.toSet
+    }
+    given [A]: Batchable[Iterable[A], A, Iterable] with {
+      def toSeq(ca: Iterable[A]): Seq[A]      = ca.toSeq
+      def fromElems(xs: Seq[A]): Iterable[A]  = xs
+      def fromSeq[B](xs: Seq[B]): Iterable[B] = xs
+    }
+  }
+
+  /** Element-wise batch step; see [[each]]. */
+  final class Each[A, B](private[etl4s] val node: Node[A, B])
+
+  /** Concurrent element-wise batch step; see [[eachPar]]. */
+  final class EachPar[A, B](
+    private[etl4s] val parallelism: Int,
+    private[etl4s] val node: Node[A, B]
+  )
+
+  /**
+   * Applies `node` to every element of a batch, preserving the collection type
+   *
+   * {{{ extractBatch ~> each(clean ~> enrich) ~> load }}}
+   */
+  def each[A, B](node: Node[A, B]): Each[A, B] = new Each(node)
+
+  /**
+   * Like `each`, but runs up to `parallelism` elements concurrently.
+   * Output order matches input order.
+   *
+   * {{{ extractBatch ~> eachPar(8)(clean ~> enrich) ~> load }}}
+   */
+  def eachPar[A, B](parallelism: Int)(node: Node[A, B]): EachPar[A, B] =
+    new EachPar(parallelism, node)
+
+  /**
+   * Chunks the batch into windows of `size`, applying `node` to each window and
+   * yielding one output per window.
+   *
+   * {{{ extractBatch ~> eachSlice(1000)(loadBatch) }}}
+   */
+  def eachSlice[CA, E, B, C[_]](size: Int)(node: Node[CA, B])(using
+    ba: Batchable[CA, E, C]
+  ): Node[CA, C[B]] =
+    Node { ca =>
+      val out = ba.toSeq(ca).grouped(size).map(chunk => node.f(ba.fromElems(chunk)))
+      ba.fromSeq(out.toVector)
+    }
+
+  /** Attaches `each` / `eachPar` steps, inferring the collection type from the batch */
+  extension [X, CA](self: Node[X, CA]) {
+    def ~>[A, B, C[_]](step: Each[A, B])(using ba: Batchable[CA, A, C]): Node[X, C[B]] =
+      self ~> Node.Batch[CA, A, B, C[B]](
+        step.node,
+        1,
+        (ca: CA) => ba.toSeq(ca),
+        (xs: Seq[B]) => ba.fromSeq(xs)
+      )
+
+    def ~>[A, B, C[_]](step: EachPar[A, B])(using
+      ba: Batchable[CA, A, C]
+    ): Node[X, C[B]] =
+      self ~> Node.Batch[CA, A, B, C[B]](
+        step.node,
+        step.parallelism,
+        (ca: CA) => ba.toSeq(ca),
+        (xs: Seq[B]) => ba.fromSeq(xs)
+      )
+  }
+
+  /**
+   * Context-aware validation helper for Reader[T, Node[A, B]]
    */
   private object ReaderValidationHelper {
     def ensureImpl[T, A, B](
@@ -2243,7 +2343,6 @@ package object etl4s {
               if (errors.nonEmpty) {
                 val errorMsg =
                   s"$stage validation failed:\n${errors.map(e => s"  - $e").mkString("\n")}"
-                Trace.error(errorMsg)
                 throw new ValidationException(errorMsg)
               }
             }
@@ -2252,34 +2351,6 @@ package object etl4s {
             val result = node.f(a)
             if (output.nonEmpty) validate(output, result, "Output")
             if (change.nonEmpty) validate(change, (a, result), "Change")
-            result
-          }
-        }
-
-    def ensureWarnImpl[T, A, B](
-      fa: Reader[T, Node[A, B]],
-      input: Seq[ValidationCheck[T, A]],
-      output: Seq[ValidationCheck[T, B]],
-      change: Seq[ValidationCheck[T, (A, B)]]
-    ): Reader[T, Node[A, B]] =
-      if (input.isEmpty && output.isEmpty && change.isEmpty) fa
-      else
-        Reader { ctx =>
-          val node = fa.run(ctx)
-          Node { a =>
-            def warn[V](checks: Seq[ValidationCheck[T, V]], value: V, stage: String): Unit = {
-              val errors = checks.flatMap(_.toCurried(ctx)(value))
-              if (errors.nonEmpty) {
-                val errorMsg =
-                  s"$stage validation warning:\n${errors.map(e => s"  - $e").mkString("\n")}"
-                Trace.log(errorMsg)
-              }
-            }
-
-            if (input.nonEmpty) warn(input, a, "Input")
-            val result = node.f(a)
-            if (output.nonEmpty) warn(output, result, "Output")
-            if (change.nonEmpty) warn(change, (a, result), "Change")
             result
           }
         }
@@ -2323,7 +2394,7 @@ package object etl4s {
       )
     }
 
-    /** Conditional branching based purely on config/environment (ignores data).
+    /** Conditional branching based purely on config/environment (ignores data)
      * @example
      * {{{
      * sourceReader
@@ -2376,20 +2447,6 @@ package object etl4s {
       output: Seq[ValidationCheck[T, B]] = Nil,
       change: Seq[ValidationCheck[T, (A, B)]] = Nil
     ): Reader[T, Node[A, B]] = ReaderValidationHelper.ensureImpl(fa, input, output, change)
-
-    /**
-     * Adds context-aware validation checks that log warnings instead of throwing exceptions.
-     *
-     * @param input validation functions for input (curried: T => A => Option[String])
-     * @param output validation functions for output (curried: T => B => Option[String])
-     * @param change validation functions for the transformation
-     * @return a new Reader with all validations applied
-     */
-    def ensureWarn(
-      input: Seq[ValidationCheck[T, A]] = Nil,
-      output: Seq[ValidationCheck[T, B]] = Nil,
-      change: Seq[ValidationCheck[T, (A, B)]] = Nil
-    ): Reader[T, Node[A, B]] = ReaderValidationHelper.ensureWarnImpl(fa, input, output, change)
   }
 
   /**

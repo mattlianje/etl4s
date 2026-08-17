@@ -20,7 +20,6 @@ nav:
     - Error Handling: failures.md
     - Ensurers: validation.md
     - Tracing: trace.md
-    - Telemetry: opentelemetry.md
     - Lineage Diagrams: lineage.md
     - Testing: testing.md
   - Examples:

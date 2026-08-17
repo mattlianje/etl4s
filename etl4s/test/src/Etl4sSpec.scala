@@ -21,7 +21,7 @@ class BasicSpecs extends munit.FunSuite {
     val result = pipeline.unsafeRun("Hello world!")
 
     assertEquals(result, true)
-    assertEquals(pipeline.safeRun("Hello").get, true)
+    assertEquals(pipeline.unsafeRun("Hello"), true)
   }
 
   test("parallel execution with &") {
@@ -149,12 +149,12 @@ class BasicSpecs extends munit.FunSuite {
     val s2 = Extract(10) ~> Transform[Int, String](n => s"num:$n")
     val s3 = Extract(2.5) ~> Transform[Double, String](d => f"double:$d%.2f")
 
-    val D: Transform[(String, String), String] = Transform { case (a, b) =>
-      s"$a + $b"
+    val D: Transform[(String, String), String] = Transform[(String, String), String] {
+      case (a, b) => s"$a + $b"
     }
     val E: Transform[String, String]           = Transform(c => s"$c processed")
-    val F: Transform[(String, String), String] = Transform { case (d, e) =>
-      s"[$d | $e]"
+    val F: Transform[(String, String), String] = Transform[(String, String), String] {
+      case (d, e) => s"[$d | $e]"
     }
 
     val w1: Load[String, String] = Load(s => s)
@@ -247,21 +247,18 @@ class BasicSpecs extends munit.FunSuite {
     )
   }
 
-  test("safeRunTrace handles failures gracefully") {
+  test("unsafeRunTrace propagates failures") {
     val failingNode = Node[String, Int] { s =>
       if (s.isEmpty) throw new RuntimeException("Empty input!")
       s.length
     }
 
-    val successTrace = failingNode.safeRunTrace("hello")
-    assert(successTrace.result.isSuccess)
-    assertEquals(successTrace.result.get, 5)
+    val successTrace = failingNode.unsafeRunTrace("hello")
+    assertEquals(successTrace.result, 5)
     assert(successTrace.timeElapsedMillis >= 0)
 
-    val failureTrace = failingNode.safeRunTrace("")
-    assert(failureTrace.result.isFailure)
-    assert(failureTrace.result.failed.get.getMessage.contains("Empty input!"))
-    assert(failureTrace.timeElapsedMillis >= 0) // Still get timing even on failure
+    val ex = intercept[RuntimeException](failingNode.unsafeRunTrace(""))
+    assert(ex.getMessage.contains("Empty input!"))
   }
 
   test("metadata works") {
@@ -457,693 +454,9 @@ class ReaderSpecs extends munit.FunSuite {
     assertEquals(result, 21)
   }
 
-  test("basic logging with Trace.log") {
-    val node = Transform[String, Int] { input =>
-      Trace.log("Processing string")
-      val result = input.length
-      Trace.log(s"$input -> $result")
-      result
-    }
-
-    val insights = node.unsafeRunTrace("hello")
-    assertEquals(insights.result, 5)
-    assertEquals(insights.logs, List("Processing string", "hello -> 5"))
-  }
-
-  test("validation with Trace") {
-    val node = Transform[String, Int] { input =>
-      val result = input.length
-      if (result <= 0) Trace.error("Length must be positive")
-      if (input.isEmpty) Trace.error("Input cannot be empty")
-      result
-    }
-
-    val insights = node.unsafeRunTrace("test")
-    assertEquals(insights.result, 4)
-    assertEquals(insights.errors, List.empty)
-    assert(!insights.hasErrors)
-
-    val failInsights = node.unsafeRunTrace("")
-    assertEquals(failInsights.result, 0)
-    assertEquals(failInsights.errors.size, 2)
-    assert(failInsights.hasErrors)
-  }
-
-  test("nodes can access current execution state") {
-    val upstream = Transform[String, Int] { input =>
-      Trace.error("Upstream error")
-      input.length
-    }
-
-    val downstream = Transform[Int, Int] { value =>
-      if (Trace.hasErrors) {
-        Trace.log("Using fallback due to errors")
-        -999
-      } else {
-        value * 2
-      }
-    }
-
-    val pipeline = upstream ~> downstream
-    val insights = pipeline.unsafeRunTrace("test")
-
-    assertEquals(insights.result, -999)
-    assertEquals(insights.errors, List("Upstream error"))
-    assertEquals(insights.logs, List("Using fallback due to errors"))
-  }
-
-  test("any-type logging and validation") {
-    case class LogEvent(message: String, timestamp: Long)
-    case class ValidationError(field: String, code: Int)
-
-    val node = Transform[String, Int] { input =>
-      Trace.log(LogEvent("Started processing", System.currentTimeMillis()))
-      val result = input.length
-      if (result <= 0) Trace.error(ValidationError("length", 404))
-      result
-    }
-
-    val insights = node.unsafeRunTrace("test")
-    assertEquals(insights.result, 4)
-    assert(insights.logs.head.asInstanceOf[LogEvent].message == "Started processing")
-    assertEquals(insights.errors, List.empty)
-  }
-
-  test("unified access to current execution insights") {
-    val node = Transform[String, String] { input =>
-      Trace.log("Step 1")
-      val current = Trace.current
-      assertEquals(current.logs, List("Step 1"))
-      assert(current.timeElapsedMillis >= 0)
-
-      input.toUpperCase
-    }
-
-    val insights = node.unsafeRunTrace("hello")
-    assertEquals(insights.result, "HELLO")
-    assertEquals(insights.logs, List("Step 1"))
-    assert(insights.timeElapsedMillis >= 0)
-  }
-
   test("Reader metadata works") {
     val reader = Reader[String, String](ctx => s"$ctx-result").withMetadata("reader-info")
     assertEquals(reader.metadata, "reader-info")
-  }
-
-  test("unsafeRun collects trace internally") {
-    val node = Transform[String, String] { input =>
-      Trace.log("Processing in unsafeRun")
-      if (input.isEmpty) Trace.error("Empty input")
-      input.toUpperCase
-    }
-
-    // Regular run should work and trace should be available during execution
-    val result = node.unsafeRun("hello")
-    assertEquals(result, "HELLO")
-
-    // Verify trace was accessible during execution by testing a node that uses trace info
-    val reactivePipeline = Transform[String, String] { input =>
-      Trace.log("Starting processing")
-      if (input.isEmpty) Trace.error("Empty input")
-      input.toUpperCase
-    } ~> Transform[String, String] { input =>
-      // This node reacts to trace state
-      if (Trace.hasErrors) "ERROR_DETECTED" else input + "!"
-    }
-
-    assertEquals(reactivePipeline.unsafeRun("hello"), "HELLO!")
-    assertEquals(reactivePipeline.unsafeRun(""), "ERROR_DETECTED")
-  }
-
-  test("safeRun collects trace internally") {
-    val node = Transform[String, String] { input =>
-      Trace.log("Processing in safeRun")
-      if (input.isEmpty) Trace.error("Empty input")
-      input.toUpperCase
-    }
-
-    // Regular safe run should work and trace should be available during execution
-    val result = node.safeRun("hello")
-    assert(result.isSuccess)
-    assertEquals(result.get, "HELLO")
-
-    // Verify trace was accessible during execution with reactive pipeline
-    val reactivePipeline = Transform[String, String] { input =>
-      Trace.log("Starting processing")
-      if (input.isEmpty) Trace.error("Empty input")
-      input.toUpperCase
-    } ~> Transform[String, String] { input =>
-      // This node reacts to trace state
-      if (Trace.hasErrors) "ERROR_DETECTED" else input + "!"
-    }
-
-    val successResult = reactivePipeline.safeRun("hello")
-    assert(successResult.isSuccess)
-    assertEquals(successResult.get, "HELLO!")
-
-    val errorResult = reactivePipeline.safeRun("")
-    assert(errorResult.isSuccess)
-    assertEquals(errorResult.get, "ERROR_DETECTED")
-  }
-
-  test("nested traces are isolated") {
-    val innerNode = Transform[Int, Int] { x =>
-      Trace.log("inner-log")
-      x * 2
-    }
-
-    val outerNode = Transform[Int, Int] { x =>
-      Trace.log("outer-before")
-      val innerTrace = innerNode.unsafeRunTrace(x)
-      Trace.log("outer-after")
-      innerTrace.result + 1
-    }
-
-    val outerTrace = outerNode.unsafeRunTrace(5)
-
-    assertEquals(outerTrace.result, 11)
-    assertEquals(outerTrace.logs, List("outer-before", "outer-after"))
-  }
-
-}
-
-class TelSpecs extends munit.FunSuite {
-
-  test("Tel calls are no-ops without provider") {
-    val node = Transform[String, String] { input =>
-      Tel.withSpan("test-span") {
-        Trace.log("Processing")
-        Tel.addCounter("test.counter", 1)
-        Tel.setGauge("test.gauge", 42.0)
-        Tel.recordHistogram("test.histogram", 100.0)
-        input.toUpperCase
-      }
-    }
-
-    // Should work fine without any Tel provider
-    val result = node.unsafeRun("hello")
-    assertEquals(result, "HELLO")
-  }
-
-  test("Etl4sConsoleTelemetry prints telemetry") {
-    implicit val otel: Etl4sTelemetry = Etl4sConsoleTelemetry("[TEST]")
-
-    val node = Transform[String, String] { input =>
-      Tel.withSpan("string-processing") {
-        Tel.addCounter("strings.processed", 1)
-        Tel.setGauge("string.length", input.length.toDouble)
-        Tel.recordHistogram("processing.time", 50.0)
-        input.toUpperCase
-      }
-    }
-
-    val result = node.unsafeRun("hello")
-    assertEquals(result, "HELLO")
-  }
-
-  test("nested spans") {
-    implicit val otel: Etl4sTelemetry = Etl4sConsoleTelemetry()
-
-    val node = Transform[String, Int] { input =>
-      Tel.withSpan("outer") {
-        Tel.addCounter("outer.ops", 1)
-
-        val length = Tel.withSpan("inner") {
-          Tel.addCounter("inner.ops", 1)
-          input.length
-        }
-
-        Tel.recordHistogram("result.value", length.toDouble)
-        length
-      }
-    }
-
-    val result = node.unsafeRun("test")
-    assertEquals(result, 4)
-  }
-
-  test("Tel integrates with Trace system") {
-    implicit val otel: Etl4sTelemetry = Etl4sConsoleTelemetry("[INTEGRATION]")
-
-    val pipeline = Transform[String, String] { input =>
-      Tel.withSpan("validation") {
-        if (input.isEmpty) {
-          Trace.error("Empty input detected")
-          Tel.addCounter("validation.errors", 1)
-        } else {
-          Trace.log("Input validated successfully")
-          Tel.addCounter("validation.success", 1)
-        }
-        input
-      }
-    } ~> Transform[String, String] { input =>
-      Tel.withSpan("processing") {
-        if (Trace.hasErrors) {
-          Tel.addCounter("processing.skipped", 1)
-          "FALLBACK"
-        } else {
-          Tel.addCounter("processing.completed", 1)
-          Tel.recordHistogram("input.length", input.length.toDouble)
-          input.toUpperCase
-        }
-      }
-    }
-
-    assertEquals(pipeline.unsafeRun("hello"), "HELLO")
-    assertEquals(pipeline.unsafeRun(""), "FALLBACK")
-  }
-
-  test("Custom Etl4sTelemetry can be implemented") {
-    // In-memory provider for testing
-    class TestEtl4sTelemetry extends Etl4sTelemetry {
-      var spans: List[(String, Long)]        = List.empty
-      var counters: Map[String, Long]        = Map.empty
-      var gauges: Map[String, Double]        = Map.empty
-      var histograms: List[(String, Double)] = List.empty
-
-      def withSpan[T](name: String, attributes: (String, Any)*)(block: => T): T = {
-        val start    = System.currentTimeMillis()
-        val result   = block
-        val duration = System.currentTimeMillis() - start
-        spans = (name, duration) :: spans
-        result
-      }
-
-      def addCounter(name: String, value: Long): Unit = {
-        counters = counters.updated(name, counters.getOrElse(name, 0L) + value)
-      }
-
-      def setGauge(name: String, value: Double): Unit = {
-        gauges = gauges.updated(name, value)
-      }
-
-      def recordHistogram(name: String, value: Double): Unit = {
-        histograms = (name, value) :: histograms
-      }
-    }
-
-    val testProvider                  = new TestEtl4sTelemetry()
-    implicit val otel: Etl4sTelemetry = testProvider
-
-    val node = Transform[List[String], Int] { strings =>
-      Tel.withSpan("list-processing") {
-        Tel.addCounter("items.received", strings.size.toLong)
-        Tel.setGauge("batch.size", strings.size.toDouble)
-
-        val totalLength = strings.map(_.length).sum
-        Tel.recordHistogram("total.length", totalLength.toDouble)
-        totalLength
-      }
-    }
-
-    val result = node.unsafeRun(List("hello", "world"))
-    assertEquals(result, 10)
-
-    // Verify telemetry was collected
-    assertEquals(testProvider.spans.size, 1)
-    assertEquals(testProvider.spans.head._1, "list-processing")
-    assertEquals(testProvider.counters("items.received"), 2L)
-    assertEquals(testProvider.gauges("batch.size"), 2.0)
-    assertEquals(testProvider.histograms.head, ("total.length", 10.0))
-  }
-
-  test("span attributes are no-ops without provider") {
-    val node = Transform[String, String] { input =>
-      Tel.withSpan("processing", "input.length" -> input.length, "type" -> "uppercase") {
-        Tel.addEvent("started")
-        val result = input.toUpperCase
-        Tel.addEvent("completed")
-        result
-      }
-    }
-
-    val result = node.unsafeRun("hello world")
-    assertEquals(result, "HELLO WORLD")
-  }
-
-  test("span attributes work with console provider") {
-    implicit val otel: Etl4sTelemetry = Etl4sConsoleTelemetry()
-
-    val node = Transform[String, String] { input =>
-      Tel.withSpan("processing", "input.length" -> input.length, "type" -> "uppercase") {
-        Tel.addEvent("started")
-        val result = input.toUpperCase
-        Tel.addEvent("completed", "output.length" -> result.length)
-        result
-      }
-    }
-
-    val result = node.unsafeRun("hello world")
-    assertEquals(result, "HELLO WORLD")
-  }
-
-  test("counter accumulation") {
-    class TestEtl4sTelemetry extends Etl4sTelemetry {
-      var spans: List[(String, Long)]        = List.empty
-      var counters: Map[String, Long]        = Map.empty
-      var gauges: Map[String, Double]        = Map.empty
-      var histograms: List[(String, Double)] = List.empty
-
-      def withSpan[T](name: String, attributes: (String, Any)*)(block: => T): T = {
-        val start    = System.currentTimeMillis()
-        val result   = block
-        val duration = System.currentTimeMillis() - start
-        spans = (name, duration) :: spans
-        result
-      }
-
-      def addCounter(name: String, value: Long): Unit = {
-        counters = counters.updated(name, counters.getOrElse(name, 0L) + value)
-      }
-
-      def setGauge(name: String, value: Double): Unit = {
-        gauges = gauges.updated(name, value)
-      }
-
-      def recordHistogram(name: String, value: Double): Unit = {
-        histograms = (name, value) :: histograms
-      }
-    }
-
-    val testProvider                  = new TestEtl4sTelemetry()
-    implicit val otel: Etl4sTelemetry = testProvider
-
-    val node = Transform[List[String], Int] { strings =>
-      Tel.withSpan("processing") {
-        Tel.addCounter("items.processed", 5L)
-        Tel.addCounter("items.processed", 3L)
-        Tel.addCounter("items.processed", 2L)
-
-        Tel.addCounter("batches.completed", 1L)
-        Tel.addCounter("batches.completed", 1L)
-
-        strings.size
-      }
-    }
-
-    val result = node.unsafeRun(List("a", "b", "c"))
-    assertEquals(result, 3)
-
-    assertEquals(testProvider.counters("items.processed"), 10L)
-    assertEquals(testProvider.counters("batches.completed"), 2L)
-    assertEquals(testProvider.spans.size, 1)
-  }
-
-  test("lineage - attach to Node") {
-    val node = Node[String, Int](_.length)
-      .lineage("string-length", inputs = List("text_input"), outputs = List("length_output"))
-
-    assertEquals(node.unsafeRun("hello"), 5)
-    assert(node.getLineage.exists(_.name == "string-length"))
-  }
-
-  test("lineage - schedule and cluster") {
-    val node = Node[Int, Int](_ * 2)
-      .lineage(
-        "doubler",
-        inputs = List("numbers"),
-        outputs = List("doubled"),
-        schedule = "Every 5 min",
-        cluster = "math"
-      )
-
-    val lin = node.getLineage.get
-    assertEquals(lin.schedule, "Every 5 min")
-    assertEquals(lin.cluster, "math")
-  }
-
-  test("lineage - Reader") {
-    case class Config(mult: Int)
-    val reader = Reader[Config, Node[Int, Int]](c => Node(_ * c.mult))
-      .lineage("mult", inputs = List("nums"), outputs = List("scaled"), cluster = "cfg")
-
-    assertEquals(reader.getLineage.get.name, "mult")
-    assertEquals(reader.provide(Config(3)).unsafeRun(10), 30)
-  }
-
-  test("lineage - toJson") {
-    val p = Node[String, String](identity)
-      .lineage(
-        "pipe",
-        inputs = List("in"),
-        outputs = List("out"),
-        schedule = "Daily",
-        cluster = "test"
-      )
-
-    val json = Seq(p).toJson
-    assert(json.contains("\"name\":\"pipe\""))
-    assert(json.contains("\"schedule\":\"Daily\""))
-  }
-
-  test("lineage - auto-infer upstream") {
-    val p1 =
-      Node[String, String](identity).lineage("s1", inputs = List("raw"), outputs = List("proc"))
-    val p2 =
-      Node[String, String](identity).lineage("s2", inputs = List("proc"), outputs = List("final"))
-
-    val json = Seq(p1, p2).toJson
-    assert(json.contains("\"upstream_pipelines\":[\"s1\"]"))
-  }
-
-  test("lineage - toDot") {
-    val p = Node[String, String](identity)
-      .lineage(
-        "enrich",
-        inputs = List("raw"),
-        outputs = List("clean"),
-        schedule = "2h",
-        cluster = "users"
-      )
-
-    val dot = Seq(p).toDot
-    assert(dot.contains("digraph G"))
-    assert(dot.contains("enrich"))
-    assert(dot.contains("cluster_users"))
-  }
-
-  test("lineage - mixed with/without") {
-    val w =
-      Node[String, String](_.toUpperCase).lineage("up", inputs = List("t"), outputs = List("T"))
-    val wo = Node[String, Int](_.length)
-
-    val json = Seq(w, wo).toJson
-    assert(json.contains("up"))
-  }
-
-  test("lineage - empty") {
-    assertEquals(
-      Seq.empty[Node[String, String]].toJson,
-      """{"pipelines":[]}"""
-    )
-    assert(Seq.empty[Node[String, String]].toDot.contains("No lineage"))
-  }
-
-  test("lineage - preserves behavior") {
-    val n1 = Node[Int, Int](_ * 2).lineage("x2", inputs = List("in"), outputs = List("out"))
-    val n2 = Node[Int, Int](_ + 10).lineage("+10", inputs = List("in2"), outputs = List("out2"))
-    assertEquals((n1 ~> n2).unsafeRun(5), 20)
-  }
-
-  test("lineage - explicit upstreams") {
-    val p1 = Node[String, String](identity).lineage("u1", inputs = List("a"), outputs = List("b"))
-    val p2 = Node[String, String](identity).lineage("u2", inputs = List("c"), outputs = List("d"))
-    val p3 = Node[String, String](identity).lineage(
-      "agg",
-      inputs = List("x"),
-      outputs = List("y"),
-      upstreams = List(p1, p2)
-    )
-
-    assertEquals(p3.getLineage.get.upstreams.size, 2)
-    val json = Seq(p1, p2, p3).toJson
-    assert(json.contains("\"u1\"") && json.contains("\"u2\""))
-  }
-
-  test("lineage - upstream strings") {
-    val p = Node[String, String](identity)
-      .lineage(
-        "report",
-        inputs = List("agg"),
-        outputs = List("out"),
-        upstreams = List("analytics", "validation")
-      )
-
-    assertEquals(p.getLineage.get.upstreams, List("analytics", "validation"))
-    assert(Seq(p).toJson.contains("\"analytics\""))
-  }
-
-  test("lineage - upstream Reader") {
-    val up =
-      Node[String, String](identity).lineage("up", inputs = List("in"), outputs = List("out"))
-    val r = Reader[String, Node[String, String]](_ => Node(x => x))
-      .lineage("r", inputs = List("in"), outputs = List("out"), upstreams = List(up))
-
-    assertEquals(r.getLineage.get.upstreams.size, 1)
-  }
-
-  test("lineage - toMermaid") {
-    val p1 = Node[String, String](identity)
-      .lineage(
-        "enrich",
-        inputs = List("raw"),
-        outputs = List("clean"),
-        schedule = "2h",
-        cluster = "users"
-      )
-    val p2 = Node[String, String](identity)
-      .lineage("proc", inputs = List("orders"), outputs = List("done"), upstreams = List(p1))
-
-    val m = Seq(p1, p2).toMermaid
-    assert(m.contains("graph LR"))
-    assert(m.contains("enrich<br/>(2h)"))
-    assert(m.contains("subgraph users"))
-    assert(m.contains("-.->"))
-  }
-
-  test("lineage - single item render") {
-    val n = Node[String, String](identity).lineage("n", inputs = List("i"), outputs = List("o"))
-    val r = Reader[String, String](identity).lineage("r", inputs = List("i2"), outputs = List("o2"))
-
-    assert(n.toJson.contains("n"))
-    assert(n.toDot.contains("n"))
-    assert(r.toMermaid.contains("r"))
-  }
-
-  test("lineage - pipeviz description") {
-    val p = Node[String, String](identity)
-      .lineage(
-        "enricher",
-        inputs = List("raw"),
-        outputs = List("clean"),
-        description = "Enriches user data with events"
-      )
-
-    val lin = p.getLineage.get
-    assertEquals(lin.description, "Enriches user data with events")
-    val json = Seq(p).toJson
-    assert(json.contains("\"description\":\"Enriches user data with events\""))
-  }
-
-  test("lineage - pipeviz group") {
-    val p = Node[String, String](identity)
-      .lineage(
-        "transformer",
-        inputs = List("src"),
-        outputs = List("dest"),
-        group = "etl-jobs"
-      )
-
-    val lin = p.getLineage.get
-    assertEquals(lin.group, "etl-jobs")
-    val json = Seq(p).toJson
-    assert(json.contains("\"group\":\"etl-jobs\""))
-  }
-
-  test("lineage - pipeviz tags") {
-    val p = Node[String, String](identity)
-      .lineage(
-        "ml-pipeline",
-        inputs = List("features"),
-        outputs = List("predictions"),
-        tags = List("machine-learning", "production", "critical")
-      )
-
-    val lin = p.getLineage.get
-    assertEquals(lin.tags, List("machine-learning", "production", "critical"))
-    val json = Seq(p).toJson
-    assert(json.contains("\"tags\":[\"machine-learning\",\"production\",\"critical\"]"))
-  }
-
-  test("lineage - pipeviz links") {
-    val p = Node[String, String](identity)
-      .lineage(
-        "data-sync",
-        inputs = List("source"),
-        outputs = List("target"),
-        links = Map(
-          "airflow" -> "https://airflow.example.com/dag/123",
-          "docs"    -> "https://wiki.example.com"
-        )
-      )
-
-    val lin = p.getLineage.get
-    assertEquals(lin.links.size, 2)
-    val json = Seq(p).toJson
-    assert(json.contains("\"links\":{"))
-    assert(json.contains("\"airflow\":\"https://airflow.example.com/dag/123\""))
-  }
-
-  test("lineage - pipeviz clusters in output") {
-    val p1 = Node[String, String](identity)
-      .lineage("p1", inputs = List("a"), outputs = List("b"), cluster = "etl")
-    val p2 = Node[String, String](identity)
-      .lineage("p2", inputs = List("c"), outputs = List("d"), cluster = "analytics")
-
-    val json = Seq(p1, p2).toJson
-    assert(json.contains("\"clusters\":["))
-    assert(json.contains("\"name\":\"etl\""))
-    assert(json.contains("\"name\":\"analytics\""))
-  }
-
-  test("lineage - pipeviz full example") {
-    val p = Node[String, String](identity)
-      .lineage(
-        "user-enrichment",
-        description = "Enriches user data with events",
-        inputs = List("raw_users", "events"),
-        outputs = List("enriched_users"),
-        cluster = "user-processing",
-        group = "etl-jobs",
-        schedule = "Every 2 hours",
-        tags = List("user-data", "ml"),
-        links = Map("airflow" -> "https://airflow.example.com")
-      )
-
-    val json = Seq(p).toJson
-    assert(json.contains("\"name\":\"user-enrichment\""))
-    assert(json.contains("\"description\":\"Enriches user data with events\""))
-    assert(json.contains("\"input_sources\":[\"raw_users\",\"events\"]"))
-    assert(json.contains("\"output_sources\":[\"enriched_users\"]"))
-    assert(json.contains("\"cluster\":\"user-processing\""))
-    assert(json.contains("\"group\":\"etl-jobs\""))
-    assert(json.contains("\"schedule\":\"Every 2 hours\""))
-    assert(json.contains("\"tags\":[\"user-data\",\"ml\"]"))
-    assert(json.contains("\"links\":{\"airflow\":\"https://airflow.example.com\"}"))
-    assert(json.contains("\"datasources\":[{\"name\":\"raw_users\"}"))
-    assert(json.contains("\"clusters\":[{\"name\":\"user-processing\"}]"))
-  }
-
-  test("lineage - pipeviz Reader with new fields") {
-    case class Config(env: String)
-    val r = Reader[Config, Node[String, String]](c => Node(_.toUpperCase))
-      .lineage(
-        "config-reader",
-        inputs = List("input"),
-        outputs = List("output"),
-        description = "Reader with config",
-        tags = List("config", "reader"),
-        links = Map("docs" -> "https://docs.example.com")
-      )
-
-    val lin = r.getLineage.get
-    assertEquals(lin.description, "Reader with config")
-    assertEquals(lin.tags, List("config", "reader"))
-    assertEquals(lin.links, Map("docs" -> "https://docs.example.com"))
-  }
-
-  test("lineage - group-level upstream inference") {
-    val p1 = Node[String, String](identity)
-      .lineage("extract-a", inputs = List("raw"), outputs = List("staged"), group = "ingestion")
-    val p2 = Node[String, String](identity)
-      .lineage("extract-b", inputs = List("api"), outputs = List("staged"), group = "ingestion")
-    val p3 = Node[String, String](identity)
-      .lineage("transform", inputs = List("staged"), outputs = List("clean"), group = "etl")
-
-    val json = Seq(p1, p2, p3).toJson
-    assert(json.contains("\"extract-a\""))
-    assert(json.contains("\"extract-b\""))
-    assert(json.contains("\"ingestion\""))
   }
 
 }
@@ -1192,11 +505,11 @@ class ValidationSpecs extends munit.FunSuite {
     intercept[ValidationException](node.unsafeRun(List(1, 2, 3)))
   }
 
-  test("validation errors logged to Trace") {
+  test("validation failure throws a ValidationException") {
     val node = Node[Int, String](n => s"$n")
       .ensure(input = List(x => if (x > 0) None else Some("err")))
-    val trace = node.safeRunTrace(-5)
-    assert(trace.result.isFailure && trace.errors.nonEmpty)
+    val ex = intercept[ValidationException](node.unsafeRun(-5))
+    assert(ex.getMessage.contains("err"))
   }
 
   test("Reader ensure with context") {
@@ -1393,41 +706,6 @@ class ValidationSpecs extends munit.FunSuite {
     assertEquals(count.get(), 2)
   }
 
-  test("ensureWarn logs warnings instead of throwing") {
-    val isPositive = (x: Int) => if (x > 0) None else Some("Must be positive")
-    val node       = Node[Int, String](n => s"Value: $n").ensureWarn(input = isPositive :: Nil)
-    val trace      = node.safeRunTrace(-5)
-
-    assert(trace.result.isSuccess)
-    assert(trace.logs.exists(_.toString.contains("Input validation warning")))
-    assert(trace.logs.exists(_.toString.contains("Must be positive")))
-  }
-
-  test("ensureParWarn runs checks in parallel and logs warnings") {
-    import scala.concurrent.ExecutionContext.Implicits.global
-    val isPositive  = (x: Int) => if (x > 0) None else Some("Must be positive")
-    val lessThan100 = (x: Int) => if (x < 100) None else Some("Must be less than 100")
-    val node        =
-      Node[Int, String](n => s"Value: $n").ensureParWarn(input = isPositive :: lessThan100 :: Nil)
-    val trace = node.safeRunTrace(-5)
-
-    assert(trace.result.isSuccess)
-    assert(trace.logs.exists(_.toString.contains("Input validation warning")))
-    assert(trace.logs.exists(_.toString.contains("Must be positive")))
-  }
-
-  test("Reader ensureWarn logs warnings with context") {
-    case class Config(min: Int)
-    val checkMin = (cfg: Config) => (x: Int) => if (x >= cfg.min) None else Some("too small")
-    val node     = Reader[Config, Node[Int, String]] { _ => Node(n => s"Value: $n") }
-      .ensureWarn(input = checkMin :: Nil)
-    val trace = node.provide(Config(10)).safeRunTrace(5)
-
-    assert(trace.result.isSuccess)
-    assert(trace.logs.exists(_.toString.contains("Input validation warning")))
-    assert(trace.logs.exists(_.toString.contains("too small")))
-  }
-
   test("Reader ensure combines multiple validation types") {
     case class Config(min: Int, max: Int)
 
@@ -1485,164 +763,6 @@ class ValidationSpecs extends munit.FunSuite {
     intercept[ValidationException](node.provide(config).unsafeRun(-5))
   }
 
-}
-
-class TelTraceCaptureSpecs extends munit.FunSuite {
-
-  test("Tel captured in Trace without provider") {
-    val node = Transform[String, String] { s =>
-      Tel.withSpan("op") {
-        Tel.addCounter("c", 1)
-        Tel.setGauge("g", 42.0)
-        Tel.recordHistogram("h", 100.0)
-        s.toUpperCase
-      }
-    }
-    val trace = node.unsafeRunTrace("hello")
-
-    assertEquals(trace.result, "HELLO")
-    assertEquals(trace.spans.head.name, "op")
-    assertEquals(trace.counterTotals, Map("c" -> 1L))
-    assertEquals(trace.latestGauges, Map("g" -> 42.0))
-    assertEquals(trace.histogramValues, Map("h" -> List(100.0)))
-  }
-
-  test("nested span parent-child") {
-    val node = Transform[String, Int] { s =>
-      Tel.withSpan("outer") {
-        Tel.withSpan("inner") { s.length }
-      }
-    }
-    val trace  = node.unsafeRunTrace("test")
-    val byName = trace.spans.map(s => s.name -> s).toMap
-
-    assertEquals(byName("inner").parentSpanId, Some(byName("outer").spanId))
-    assertEquals(byName("outer").parentSpanId, None)
-    assertEquals(byName("inner").traceId, byName("outer").traceId)
-  }
-
-  test("counter accumulation") {
-    val node = Transform[Unit, Unit] { _ =>
-      Tel.addCounter("x", 5L)
-      Tel.addCounter("x", 3L)
-      Tel.addCounter("y", 1L)
-    }
-    val trace = node.unsafeRunTrace(())
-
-    assertEquals(trace.counterTotals("x"), 8L)
-    assertEquals(trace.counterTotals("y"), 1L)
-  }
-
-  test("gauge latest value") {
-    val node = Transform[Unit, Unit] { _ =>
-      Tel.setGauge("m", 100.0)
-      Tel.setGauge("m", 200.0)
-    }
-    val trace = node.unsafeRunTrace(())
-    assertEquals(trace.latestGauges("m"), 200.0)
-  }
-
-  test("histogram collects values in order") {
-    val node = Transform[Unit, Unit] { _ =>
-      List(10, 20, 30).foreach(n => Tel.recordHistogram("lat", n.toDouble))
-    }
-    val trace = node.unsafeRunTrace(())
-    assertEquals(trace.histogramValues("lat"), List(10.0, 20.0, 30.0))
-  }
-
-  test("toOtelJson structure") {
-    val node = Transform[Unit, Unit] { _ =>
-      Tel.withSpan("op") { Tel.addCounter("c", 1) }
-    }
-    val json = node.unsafeRunTrace(()).toOtelJson
-
-    assert(json.contains("resourceSpans"))
-    assert(json.contains("scopeSpans"))
-    assert(json.contains("resourceMetrics"))
-    assert(json.contains("\"name\":\"op\""))
-    assert(json.contains("\"name\":\"c\""))
-  }
-
-  test("capture with provider") {
-    implicit val otel: Etl4sTelemetry = Etl4sConsoleTelemetry("[T]")
-    val node                          = Transform[String, String] { s =>
-      Tel.withSpan("op") { Tel.addCounter("c", 5); s.toUpperCase }
-    }
-    val trace = node.unsafeRunTrace("hi")
-
-    assertEquals(trace.result, "HI")
-    assertEquals(trace.spans.size, 1)
-    assertEquals(trace.counterTotals("c"), 5L)
-  }
-
-  test("3-level nesting") {
-    val node = Transform[Int, Int] { n =>
-      Tel.withSpan("l1") { Tel.withSpan("l2") { Tel.withSpan("l3") { n * 2 } } }
-    }
-    val byName = node.unsafeRunTrace(5).spans.map(s => s.name -> s).toMap
-
-    assertEquals(byName("l1").parentSpanId, None)
-    assertEquals(byName("l2").parentSpanId, Some(byName("l1").spanId))
-    assertEquals(byName("l3").parentSpanId, Some(byName("l2").spanId))
-  }
-
-  test("span attributes") {
-    val node = Transform[String, String] { s =>
-      Tel.withSpan("op", "len" -> s.length)(s.toUpperCase)
-    }
-    val span = node.unsafeRunTrace("hello").spans.head
-    assertEquals(span.attributes("len"), 5)
-  }
-
-  test("span timing") {
-    val node = Transform[Unit, Unit] { _ =>
-      Tel.withSpan("slow") { Platform.sleep(10) }
-    }
-    val span = node.unsafeRunTrace(()).spans.head
-
-    assert(span.durationNanos >= 0L)
-  }
-
-  test("safeRunTrace captures") {
-    val node = Transform[String, String] { s =>
-      Tel.withSpan("op") { Tel.addCounter("c", 1); s.toUpperCase }
-    }
-    val trace = node.safeRunTrace("hi")
-
-    assert(trace.result.isSuccess)
-    assertEquals(trace.spans.size, 1)
-  }
-
-  test("capture on failure") {
-    val node = Transform[String, String] { s =>
-      Tel.withSpan("op") {
-        Tel.addCounter("before", 1)
-        if (s.isEmpty) throw new RuntimeException("!")
-        s
-      }
-    }
-    val trace = node.safeRunTrace("")
-
-    assert(trace.result.isFailure)
-    assertEquals(trace.counterTotals("before"), 1L)
-  }
-
-  test("Tel + Trace integration") {
-    val p = Transform[String, String] { s =>
-      Tel.withSpan("validate") {
-        if (s.isEmpty) { Trace.error("empty"); Tel.addCounter("err", 1) }
-        else Tel.addCounter("ok", 1)
-        s
-      }
-    } ~> Transform[String, String] { s =>
-      Tel.withSpan("process") {
-        if (Trace.hasErrors) "FALLBACK" else s.toUpperCase
-      }
-    }
-
-    assertEquals(p.unsafeRunTrace("hi").result, "HI")
-    assertEquals(p.unsafeRunTrace("").result, "FALLBACK")
-  }
 }
 
 class ConditionalBranchingSpecs extends munit.FunSuite {
@@ -2137,4 +1257,163 @@ class ConditionalBranchingSpecs extends munit.FunSuite {
     )
   }
 
+}
+
+class StandaloneConditionalSpecs extends munit.FunSuite {
+
+  test("standalone If starts a value pipeline with Else") {
+    val expedite = Node[String, String](s => s"EXPEDITED:$s")
+    val standard = Node[String, String](s => s"standard:$s")
+
+    val ship = If[String](_.startsWith("rush"))(expedite).Else(standard)
+
+    assertEquals(ship.unsafeRun("rush-order"), "EXPEDITED:rush-order")
+    assertEquals(ship.unsafeRun("slow-order"), "standard:slow-order")
+  }
+
+  test("standalone If composes with ~> at the head of a pipeline") {
+    val double   = Node[Int, Int](_ * 2)
+    val negate   = Node[Int, Int](-_)
+    val describe = Node[Int, String](n => s"= $n")
+
+    val pipeline = If[Int](_ > 0)(double).Else(negate) ~> describe
+
+    assertEquals(pipeline.unsafeRun(5), "= 10")
+    assertEquals(pipeline.unsafeRun(-3), "= 3")
+  }
+
+  test("standalone If without Else passes unmatched input through") {
+    val expedite = Node[Int, Int](_ + 100)
+
+    val maybe: Node[Int, Int] = If[Int](_ > 10)(expedite)
+
+    assertEquals(maybe.unsafeRun(20), 120)
+    assertEquals(maybe.unsafeRun(5), 5)
+  }
+
+  test("standalone If with ElseIf chain") {
+    val a = Node[Int, String](_ => "A")
+    val b = Node[Int, String](_ => "B")
+    val c = Node[Int, String](_ => "C")
+
+    val grade = If[Int](_ >= 90)(a).ElseIf(_ >= 80)(b).Else(c)
+
+    assertEquals(grade.unsafeRun(95), "A")
+    assertEquals(grade.unsafeRun(85), "B")
+    assertEquals(grade.unsafeRun(50), "C")
+  }
+}
+
+class StandaloneContextConditionalSpecs extends munit.FunSuite {
+
+  case class Cfg(isBackfill: Boolean, isDryRun: Boolean)
+
+  object Jobs extends Context[Cfg] {
+
+    val backfillFlow = Context.Load[Int, String] { _ => n => s"backfill:$n" }
+    val deltaFlow    = Context.Load[Int, String] { _ => n => s"delta:$n" }
+    val dryRunFlow   = Context.Load[Int, String] { _ => n => s"dry-run:$n" }
+
+    /** Branch on context, starting the pipeline. */
+    val ingest: Reader[Cfg, Node[Int, String]] =
+      Context.If(_.isBackfill)(backfillFlow).Else(deltaFlow)
+
+    /** Chain further context branches with ElseIfCtx. */
+    val ingestChained: Reader[Cfg, Node[Int, String]] =
+      Context
+        .If(_.isBackfill)(backfillFlow)
+        .ElseIfCtx(_.isDryRun)(dryRunFlow)
+        .Else(deltaFlow)
+
+    /** No Else: unmatched input passes through unchanged. */
+    val maybeBump =
+      Context.If(_.isBackfill)(Context.Transform[Int, Int] { _ => n => n + 1 })
+  }
+
+  test("Context.If starts a context pipeline on context") {
+    assertEquals(Jobs.ingest.provide(Cfg(isBackfill = true, false)).unsafeRun(7), "backfill:7")
+    assertEquals(Jobs.ingest.provide(Cfg(isBackfill = false, false)).unsafeRun(7), "delta:7")
+  }
+
+  test("Context.If chains further context branches with ElseIfCtx") {
+    assertEquals(
+      Jobs.ingestChained.provide(Cfg(isBackfill = true, false)).unsafeRun(7),
+      "backfill:7"
+    )
+    assertEquals(
+      Jobs.ingestChained.provide(Cfg(isBackfill = false, true)).unsafeRun(7),
+      "dry-run:7"
+    )
+    assertEquals(
+      Jobs.ingestChained.provide(Cfg(isBackfill = false, false)).unsafeRun(7),
+      "delta:7"
+    )
+  }
+
+  test("Context conditional without Else passes unmatched input through") {
+    assertEquals(Jobs.maybeBump.provide(Cfg(isBackfill = true, false)).unsafeRun(41), 42)
+    assertEquals(Jobs.maybeBump.provide(Cfg(isBackfill = false, false)).unsafeRun(41), 41)
+  }
+}
+
+class BatchCombinatorSpecs extends munit.FunSuite {
+  import scala.concurrent.ExecutionContext.Implicits.global
+
+  val clean: Node[Int, Int]     = Node(_ + 1)
+  val enrich: Node[Int, String] = Node(n => s"v$n")
+
+  test("each maps a node over a batch inside a pipeline") {
+    val extractBatch: Node[Unit, List[Int]] = Node(_ => List(1, 2, 3))
+    val load: Node[List[String], String]    = Node(_.mkString(","))
+    val pipeline                            = extractBatch ~> each(clean ~> enrich) ~> load
+    assertEquals(pipeline.unsafeRun(()), "v2,v3,v4")
+  }
+
+  test("each preserves the concrete collection type") {
+    val src: Node[Unit, Vector[Int]] = Node(_ => Vector(1, 2, 3))
+    val out: Vector[Int]             = (src ~> each(clean)).unsafeRun(())
+    assertEquals(out, Vector(2, 3, 4))
+  }
+
+  test("eachPar runs elements concurrently, preserving order") {
+    val src: Node[Unit, List[Int]] = Node(_ => (1 to 10).toList)
+    val out: List[Int]             = (src ~> eachPar(4)(clean)).unsafeRun(())
+    assertEquals(out, (2 to 11).toList)
+  }
+
+  test("eachSlice chunks the batch into windows") {
+    val src: Node[Unit, List[Int]]      = Node(_ => (1 to 10).toList)
+    val loadBatch: Node[List[Int], Int] = Node(_.sum)
+    val out: List[Int]                  = (src ~> eachSlice(3)(loadBatch)).unsafeRun(())
+    assertEquals(out, List(6, 15, 24, 10))
+  }
+}
+
+class VarianceSpecs extends munit.FunSuite {
+  // Node[-In, +Out]: contravariant input, covariant output.
+  class Animal
+  class Dog extends Animal { override def toString = "dog" }
+
+  class Request(val body: String)
+  class Response(val body: String)
+
+  test("~> composes across subtypes via declaration-site variance") {
+    // a produces a Dog; b accepts any Animal -> a Dog IS an Animal, so a ~> b type-checks.
+    val a: Node[Request, Dog]             = Node(_ => new Dog)
+    val b: Node[Animal, Response]         = Node(animal => new Response(animal.toString))
+    val pipeline: Node[Request, Response] = a ~> b
+    assertEquals(pipeline.unsafeRun(new Request("x")).body, "dog")
+  }
+
+  test("covariant output widens") {
+    val makeDog: Node[Unit, Dog]     = Node(_ => new Dog)
+    val asAnimal: Node[Unit, Animal] = makeDog // +Out allows widening
+    assert(asAnimal.unsafeRun(()).isInstanceOf[Animal])
+  }
+
+  test("contravariant input narrows") {
+    val onAnimal: Node[Animal, String] = Node(_.toString)
+    val onDog: Node[Dog, String]       = onAnimal // -In allows narrowing
+    assertEquals(onDog.unsafeRun(new Dog), "dog")
+  }
 }

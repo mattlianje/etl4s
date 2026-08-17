@@ -22,8 +22,9 @@ trait Etl4sPublishModule extends SonatypeCentralPublishModule {
   )
 }
 
-// Shared source paths - all platforms use the same Scala 2/3 sources plus platform-specific
+// Shared sources
 trait Etl4sSourceModule extends CrossScalaModule {
+
   def jvmVersion = "temurin:11"
   def etl4sRoot  = Task.Source(moduleDir / os.up)
   def platformDir: String // "jvm", "js", or "native"
@@ -32,10 +33,28 @@ trait Etl4sSourceModule extends CrossScalaModule {
     val base       = etl4sRoot().path
     val versionDir = if (crossScalaVersion.startsWith("3.")) "src-3" else "src-2"
     Seq(
-      PathRef(base / "src"),      // shared code
-      PathRef(base / versionDir), // version-specific
+      PathRef(base / "src"),
+      PathRef(base / versionDir),
       PathRef(base / s"src-$platformDir")
     )
+  }
+
+  def macroClasspath: T[Seq[PathRef]] = Task {
+    if (crossScalaVersion.startsWith("2."))
+      Seq(etl4s.macros(crossScalaVersion).compile().classes)
+    else Seq.empty[PathRef]
+  }
+
+  override def compileClasspath = Task { super.compileClasspath() ++ macroClasspath() }
+  override def localClasspath   = Task { super.localClasspath() ++ macroClasspath() }
+
+  def scala2ReflectCompileDeps: Seq[Dep] =
+    if (crossScalaVersion.startsWith("2."))
+      Seq(mvn"org.scala-lang:scala-reflect:$crossScalaVersion")
+    else Seq.empty[Dep]
+
+  override def compileMvnDeps: T[Seq[Dep]] = Task {
+    super.compileMvnDeps() ++ scala2ReflectCompileDeps
   }
 
   def testSources = Task {
@@ -51,35 +70,60 @@ trait Etl4sSourceModule extends CrossScalaModule {
 
 object etl4s extends Module {
 
-  // JVM
+  object macros     extends Cross[MacroModule](scalaVersions)
+  trait MacroModule extends CrossScalaModule {
+    def jvmVersion       = "temurin:11"
+    def etl4sRoot        = Task.Source(moduleDir / os.up)
+    def isScala2         = crossScalaVersion.startsWith("2.")
+    override def sources = Task {
+      if (isScala2) Seq(PathRef(etl4sRoot().path / "macros-2")) else Seq.empty[PathRef]
+    }
+    override def mvnDeps =
+      if (isScala2) Seq(mvn"org.scala-lang:scala-reflect:$crossScalaVersion")
+      else Seq.empty[Dep]
+  }
+
+  /** JVM **/
   object jvm      extends Cross[JvmModule](scalaVersions)
   trait JvmModule extends Etl4sSourceModule with Etl4sPublishModule {
     def platformDir = "jvm"
     object test extends ScalaTests with TestModule.Munit {
-      def mvnDeps          = Seq(mvn"org.scalameta::munit:1.1.1")
-      override def sources = JvmModule.this.testSources
+      def mvnDeps                 = Seq(mvn"org.scalameta::munit:1.1.1")
+      override def sources        = JvmModule.this.testSources
+      override def compileMvnDeps =
+        Task { super.compileMvnDeps() ++ JvmModule.this.scala2ReflectCompileDeps }
+      override def compileClasspath =
+        Task { super.compileClasspath() ++ JvmModule.this.macroClasspath() }
     }
   }
 
-  // Scala.js
+  /** Scala.js **/
   object js      extends Cross[JsModule](scalaVersions)
   trait JsModule extends Etl4sSourceModule with ScalaJSModule with Etl4sPublishModule {
     def platformDir    = "js"
     def scalaJSVersion = build.scalaJSVersion
     object test extends ScalaJSTests with TestModule.Munit {
-      def mvnDeps          = Seq(mvn"org.scalameta::munit::1.1.1")
-      override def sources = JsModule.this.testSources
+      def mvnDeps                 = Seq(mvn"org.scalameta::munit::1.1.1")
+      override def sources        = JsModule.this.testSources
+      override def compileMvnDeps =
+        Task { super.compileMvnDeps() ++ JsModule.this.scala2ReflectCompileDeps }
+      override def compileClasspath =
+        Task { super.compileClasspath() ++ JsModule.this.macroClasspath() }
     }
   }
 
-  // Scala Native
+  /** Scala Native **/
   object native      extends Cross[NativeModule](scalaVersions)
   trait NativeModule extends Etl4sSourceModule with ScalaNativeModule with Etl4sPublishModule {
     def platformDir        = "native"
     def scalaNativeVersion = build.scalaNativeVersion
     object test extends ScalaNativeTests with TestModule.Munit {
-      def mvnDeps          = Seq(mvn"org.scalameta::munit::1.1.1")
-      override def sources = NativeModule.this.testSources
+      def mvnDeps                 = Seq(mvn"org.scalameta::munit::1.1.1")
+      override def sources        = NativeModule.this.testSources
+      override def compileMvnDeps =
+        Task { super.compileMvnDeps() ++ NativeModule.this.scala2ReflectCompileDeps }
+      override def compileClasspath =
+        Task { super.compileClasspath() ++ NativeModule.this.macroClasspath() }
     }
   }
 }

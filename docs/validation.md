@@ -59,16 +59,19 @@ validate.unsafeRun(-5)
 
 Use `.ensurePar()` to run expensive checks concurrently.
 
-## Trace Integration
+## Handling Failures
 
-Validation failures are logged to Trace:
+Validation failures throw a `ValidationException`. Recover with `.onFailure()`
+or wrap the run in your own `Try`:
 
 ```scala
+import scala.util.Try
+
 val node = Node[Int, String](_.toString)
   .ensure(input = Seq(isPositive))
 
-val trace = node.safeRunTrace(-5)
-trace.errors.head  // "Input validation failed: Must be positive"
+Try(node.unsafeRun(-5))
+// Failure(ValidationException("Input validation failed:\n  - Must be positive"))
 ```
 
 ## Config-Aware Validation

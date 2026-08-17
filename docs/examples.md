@@ -93,23 +93,17 @@ val flaky = Node[String, Response](callExternalApi)
   .withRetry(maxAttempts = 3, initialDelayMs = 100, backoffMultiplier = 2.0)
 ```
 
-## Reactive pipelines with Trace
+## Reactive pipelines
 
-Branch on upstream errors:
+Carry the outcome in the data and branch on it:
 
 ```scala
-val upstream = Transform[String, Int] { input =>
-  if (input.isEmpty) Trace.error("Empty input")
-  input.length
-}
+val upstream = Transform[String, Int](_.length)
 
-val downstream = Transform[Int, String] { value =>
-  if (Trace.hasErrors) "FALLBACK"
-  else s"Length: $value"
-}
+val downstream = upstream
+  .If((n: Int) => n == 0)(Transform(_ => "FALLBACK"))
+  .Else(Transform(n => s"Length: $n"))
 
-val pipeline = upstream ~> downstream
-
-pipeline.unsafeRun("")      // "FALLBACK"
-pipeline.unsafeRun("hello") // "Length: 5"
+downstream.unsafeRun("")      // "FALLBACK"
+downstream.unsafeRun("hello") // "Length: 5"
 ```

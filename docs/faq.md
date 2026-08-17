@@ -28,35 +28,23 @@ Connects pipeline stages. It's an overloaded symbolic operator that works with p
 ## Usage
 
 **Q: What happens if a stage fails?**  
-Execution halts immediately. Use `.safeRun()` to get a `Try[Result]`, or handle errors with `.onFailure()`.
+The exception propagates out of `.unsafeRun()`. Recover inline with `.onFailure()`, or wrap the call in your own `Try`/`try`-`catch`.
 
 **Q: Can I mix sync and async code?**  
 Yes. All stages run as effects. You can have blocking and non-blocking operations in the same pipeline.
 
 ## Observability
 
-**Q: How do I know what happened during execution?**  
-Call `.unsafeRunTrace()` instead of `.unsafeRun()`. Returns `Trace` with logs, errors, and timing:
+**Q: How do I know how long a run took?**  
+Call `.unsafeRunTrace()` instead of `.unsafeRun()`. Returns a `Trace` with the result and timing:
 
 ```scala
 val trace = pipeline.unsafeRunTrace(data)
-trace.logs                // everything logged during execution
-trace.errors              // all errors encountered
+trace.result              // the result
 trace.timeElapsedMillis   // how long it took
 ```
 
-**Q: How does tracing work?**  
-Uses ThreadLocal to collect logs and errors during execution. Any stage can call `Trace.log()` or `Trace.error()`. Downstream stages see upstream issues automatically via `Trace.current` - no passing state through function parameters.
-
-**Q: How do I add metrics?**  
-Use `Tel.addCounter()`, `Tel.setGauge()`, `Tel.recordHistogram()` in your stages. Zero-cost by default. Provide `Etl4sTelemetry` implementation to light them up in prod:
-
-```scala
-val process = Transform[List[User], Int] { users =>
-  Tel.addCounter("users_processed", users.size)
-  users.filter(_.isValid).length
-}
-```
-
-**Q: Can I use this with Prometheus/DataDog/etc?**  
-Yes. Implement the `Etl4sTelemetry` trait for your backend. See the [Telemetry docs](opentelemetry.md).
+**Q: What about logging, metrics, and distributed tracing?**  
+`etl4s` stays out of your way here — bring your own tools. Call your logger,
+metrics client, or tracer directly inside node bodies or via `tap`. See the
+[Tracing docs](trace.md) for the pattern.

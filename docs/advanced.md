@@ -30,7 +30,7 @@ extension [A, B](node: Node[A, B]) {
   def timed(label: String): Node[A, B] = Node { input =>
     val start = System.currentTimeMillis()
     val result = node(input)
-    Trace.log(s"$label: ${System.currentTimeMillis() - start}ms")
+    println(s"$label: ${System.currentTimeMillis() - start}ms")
     result
   }
 }
@@ -45,7 +45,7 @@ Define your own:
 ```scala
 extension [A, B](node: Node[A, B]) {
   def !!(attempts: Int): Node[A, B] = node.withRetry(attempts)
-  def @@(label: String): Node[A, B] = node.tap(_ => Trace.log(label))
+  def @@(label: String): Node[A, B] = node.tap(_ => println(label))
 }
 
 val pipeline = extract ~> riskyTransform !! 3 ~> load @@ "done"

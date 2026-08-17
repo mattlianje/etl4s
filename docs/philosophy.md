@@ -60,7 +60,10 @@ that has intersected upstream, and unioned downstream the branch types.
 In OLAP, observability metrics are not mere infrastructure concerns. Things like "Records processed", "validation failures", "data quality scores"
 tend to be part of your logic-proper.
 
-**etl4s** lets you write metrics inline with `Tel` calls. They are all zero-cost no-ops until you provide an implementation.
+**etl4s** deliberately doesn't ship a metrics subsystem — it stays out of your
+way. Because nodes are plain functions, you write metrics inline with whatever
+client you already use (Prometheus, DataDog, OpenTelemetry), right where the
+business logic lives.
 
 
 ## What etl4s is NOT

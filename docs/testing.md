@@ -15,7 +15,7 @@ You will get:
 25
 ```
 
-Run pipelines with `unsafeRun` or `safeRun`:
+Run pipelines with `unsafeRun`:
 
 ```scala
 import etl4s._
@@ -31,18 +31,16 @@ Gives
 ```
 20
 ```
-However, if you use `safeRun` as below
+If you want to capture failures, wrap the run in your own `Try`:
 ```scala
-p.safeRun(2)
-```
-You will get a response wrapped in a `scala.util.Try`
-```
-Success(20)
+import scala.util.Try
+
+Try(p.unsafeRun(2))  // Success(20)
 ```
 
 ## Testing with Traces
 
-For testing with execution insights, see the [Pipeline Tracing](trace.md) section. You can test traced execution and cross-node communication:
+For testing with execution insights, see the [Tracing](trace.md) section. You can test the result and timing of a run:
 
 ```scala
 import etl4s._
@@ -52,6 +50,5 @@ val trace = pipeline.unsafeRunTrace("test")
 
 assert(trace.result == 4)
 assert(trace.timeElapsedMillis >= 0)
-assert(!trace.hasErrors)
 ```
 

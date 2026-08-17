@@ -1,104 +1,49 @@
 # Tracing
 
-When writing dataflows, you often want to:
+Sometimes you want the result of a run *plus* how long it took, without
+reaching for a stopwatch or an external metrics library.
 
-- Log what's happening at each step
-- Have downstream nodes react to upstream failures
-- Get timing and debug info after execution
-
-`Trace` is a shared, append-only log that flows through your pipeline. Nodes can write to it, read from it, and react to what happened upstream.
+`Trace[A]` is a tiny, pure return value: the result and the elapsed time.
+Nothing ambient, no shared state, no threading concerns.
 
 ```scala
 val A = Transform[String, Int] { s =>
-  Trace.log("Processing")
   s.length
 }
 
-val res: Int = A.unsafeRun("hello")  // 5
+val res: Int          = A.unsafeRun("hello")       // 5
 val trace: Trace[Int] = A.unsafeRunTrace("hello")
 ```
 
 ```
 Trace(
   result = 5,
-  logs = List("Processing"),
-  errors = List(),
   timeElapsedMillis = 2L
 )
 ```
 
-Each pipeline run initializes fresh [ThreadLocal](https://docs.oracle.com/javase/8/docs/api/java/lang/ThreadLocal.html) state, shared by all nodes in that execution, cleared on completion.
-
-## Nodes That React to Each Other
-
-Downstream nodes can see what happened upstream:
-
-```scala
-val A = Transform[String, Int] { s =>
-  if (s.isEmpty) Trace.error("empty")
-  s.length
-}
-
-val B = Transform[Int, String] { n =>
-  if (Trace.hasErrors) "FALLBACK" else s"len: $n"
-}
-
-val pipeline = A ~> B
-
-pipeline.unsafeRun("hello")  // "len: 5"
-pipeline.unsafeRun("")       // "FALLBACK"
-```
-
-No wiring required. `B` checks `Trace.hasErrors` and switches to fallback mode.
-
-## Live Pipeline State
-
-Check elapsed time, error counts, etc. mid-execution:
-
-```scala
-val p = Transform[String, String] { input =>
-  if (Trace.getElapsedTimeMillis > 1000) {
-    "TIMEOUT"
-  } else {
-    input.toUpperCase
-  }
-}
-```
-
-## Quick Reference
-
-### Write
-| Method | Description |
-|:-------|:------------|
-| `Trace.log(message)` | Log any value |
-| `Trace.error(err)` | Log an error |
-
-### Check
-| Method | Description |
-|:-------|:------------|
-| `Trace.hasErrors` | Any errors so far? |
-| `Trace.hasLogs` | Any logs so far? |
-
-### Read
-| Method | Description |
-|:-------|:------------|
-| `Trace.getCurrent` | Full current state |
-| `Trace.getLogs` | All logs |
-| `Trace.getErrors` | All errors |
-| `Trace.getElapsedTimeMillis` | Time since start |
-| `Trace.getLogCount` | Number of logs |
-| `Trace.getErrorCount` | Number of errors |
-| `Trace.getLastLog` | Most recent log |
-| `Trace.getLastError` | Most recent error |
-
 ## Trace Result
 
-After calling `.unsafeRunTrace()` or `.safeRunTrace()`:
+After calling `.unsafeRunTrace()`:
 
-| Property | Type | Description |
-|:---------|:-----|:------------|
-| `result` | `A` or `Try[A]` | Execution result |
-| `logs` | `List[Any]` | All logged values |
-| `errors` | `List[Any]` | All errors |
-| `timeElapsedMillis` | `Long` | Total execution time |
-| `hasErrors` | `Boolean` | Quick error check |
+| Property            | Type     | Description                    |
+|:--------------------|:---------|:-------------------------------|
+| `result`            | `A`      | Execution result               |
+| `timeElapsedMillis` | `Long`   | Total execution time in millis |
+| `seconds`           | `Double` | Elapsed time in seconds        |
+
+If the node throws, the exception propagates out of `unsafeRunTrace`. Wrap the
+call in your own `Try` if you want to capture failures.
+
+## Bring your own observability
+
+`etl4s` deliberately keeps `Trace` minimal. If you need structured logging,
+metrics, or distributed tracing, wire in your own tools with a plain `tap` or
+inside your node bodies — you keep full control over your observability stack:
+
+```scala
+val instrumented = Transform[String, Int] { s =>
+  logger.info(s"processing $s")
+  s.length
+} ~> tap(n => metrics.gauge("length", n))
+```
