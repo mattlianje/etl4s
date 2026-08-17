@@ -203,16 +203,20 @@ val pipeline =
 ```
 
 ## Batch collections
-Run a sub-pipeline over a collection with `each`, `eachPar` and `eachSlice`. Works on `List`, `Vector`, `Seq`, `Set`, and `Iterable` out of the box:
+Run a sub-pipeline over a collection with `each`, `eachPar` and `eachSlice`. Works on `List`, `Vector`, `Seq`, `Set`, and `Iterable` out of the box.
 
+Run the sub-pipeline on each order, one at a time:
 ```scala
-/* One at a time */
 fetchOrders ~> each(validateOrder ~> enrichOrder) ~> writeOrdersToDB
+```
 
-/* N at once */
+Same, but with up to 8 orders in flight at once (concurrency comes from the effect you compile to):
+```scala
 fetchOrders ~> eachPar(8)(validateOrder ~> enrichOrder) ~> writeOrdersToDB
+```
 
-/* Windows of N */
+Feed whole chunks of 500 orders to the sub-pipeline - great for bulk upserts / batched API calls:
+```scala
 fetchOrders ~> eachSlice(500)(bulkUpsertOrders) ~> writeReport
 ```
 
