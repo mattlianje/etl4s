@@ -171,7 +171,7 @@ val program: IO[Ack] =
      userPipeline.compile[IO].unsafeRun(input)
 ```
 
-## Parallelizing Tasks
+## Parallelizing tasks
 **etl4s** has an elegant shorthand for grouping and parallelizing operations that share the same input type:
 ```scala
 /* Simulate slow IO operations (e.g: DB calls, API requests) */
@@ -249,9 +249,9 @@ given [A]: Batchable[Page[A], A, Page] with {
 fetchPage ~> eachPar(8)(enrichOrder)
 ```
 
-## Handling Failures
+## Handling failures
 
-#### `withRetry`
+### `withRetry`
 Retry failed operations:
 ```scala
 import etl4s._
@@ -266,7 +266,7 @@ val callApi = Transform[Int, String] { x =>
 Extract(42) ~> callApi  /* Succeeds on 3rd attempt */
 ```
 
-#### `onFailure`
+### `onFailure`
 Catch exceptions and recover:
 ```scala
 import etl4s._
@@ -277,7 +277,7 @@ val fetchUser = Extract[Unit, String](_ => throw new RuntimeException("Boom!"))
 fetchUser.unsafeRun(())  /* Returns "Error: Boom!" */
 ```
 
-## Conditional Branching
+## Conditional branching
 
 Route data through different pipelines with `If`, `ElseIf`, and `Else`:
 
@@ -300,7 +300,7 @@ Plain `Node` branches are automatically lifted to `Reader` when mixed with confi
 
 Read more [here](https://mattlianje.github.io/etl4s/branching/).
 
-## Side Effects
+## Side effects
 Use `.tap()` for side effects without disrupting pipeline flow:
 
 ```scala
@@ -404,9 +404,9 @@ graph LR
 
 **etl4s** automatically infers dependencies by matching output -> input sources. Nodes don't need to be connected with `~>` for lineage tracking. Explicit dependencies via `upstreams` also supported.
 
-## Examples
+## Recipes
 
-#### Chain two pipelines
+### Chain two pipelines
 Simple UNIX-pipe style chaining of two pipelines:
 ```scala
 import etl4s._
@@ -417,7 +417,7 @@ val p2 = Pipeline((s: String) => s + "!")
 val p3 = p1 ~> p2
 ```
 
-#### Complex chaining
+### Complex chaining
 Connect the output of two pipelines to a third:
 ```scala
 import etl4s._
@@ -435,7 +435,7 @@ val combined =
   } yield ()
 ```
 
-## Real-world examples
+## Where it fits
 **etl4s** works great with anything:
 - Spark / Flink / Beam
 - ETL / Streaming
@@ -443,6 +443,39 @@ val combined =
 - Local scripts
 - Big Data workflows
 - Web-server dataflows
+
+## FAQ
+
+**Why reify pipelines as data?**<br>
+A pipeline you can inspect is one you can reason about, visualize ([lineage](#lineage)),
+retry, and recompose... without a bloated scheduler or framework getting its fingers into your soup.
+
+**Do I need anything outside the standard library?**<br>
+No, etl4s is zero dep.
+
+**When do effects actually run?**<br>
+Never while you stitch. `~>`, `&`, `&>`, `**` just allocate a description, nothing executes until
+you interpret it with `.unsafeRun(...)` or `.compile[F].unsafeRun(...)`.
+
+**What happens when a step fails?**<br>
+The failure propagates through the interpreter. Recover locally with `.onFailure` / `.withRetry`,
+or handle it in the effect you compiled to (`Try`, `Future`, `IO`, ...)
+
+**Can I run the same pipeline synchronously and asynchronously?**<br>
+Yes, that's the whole point of [effect polymorphism](#effect-polymorphism). One description, many
+interpreters: `compile[Id]`, `compile[Try]`, `compile[Future]`, or your own `Effect[F]`.
+
+**How does the [lineage](#lineage) diagram get its names and types?**<br>
+At *compile time* every `Node` captures both the name of its
+enclosing `val`/`def` **and** its input/output types via a tiny macro.
+
+**How does it work under the hood?**<br>
+`Node[-A, +B]` isn't a function, it's a small sealed AST whose constructors
+are exactly the arrow / profunctor combinators.
+
+In this sense, **etl4s** `Node` is a **free(ish)-arrow**: the arrow analogue of a free monad. *Free* because the combinators
+are reified as data and given meaning later by an interpreter... *-ish* because `FlatMap` / `Cond` add
+`ArrowChoice`-style branching a pure arrow can't express.
 
 ## Inspiration
 - Debasish Ghosh's [Functional and Reactive Domain Modeling](https://www.manning.com/books/functional-and-reactive-domain-modeling)
