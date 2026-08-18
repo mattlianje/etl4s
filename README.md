@@ -135,13 +135,17 @@ Read more [here](https://mattlianje.github.io/etl4s/config/)
 ## Effect polymorphism
 Since an **etl4s** pipeline is just a [free(ish)-arrow](https://arxiv.org/pdf/2506.12212): you choose how to run it by compiling it to an effect `F[_]` via `.compile[F]`. **etl4s** ships `Id`, `Try`, and `Future` out of the box.
 
-Sketch a pipeline once - the *same* description runs under any effect:
+Sketch a pipeline once
 ```scala
-val loadUser = fetchUser ~> enrichUser ~> saveUser
-
-loadUser.compile[Try].unsafeRun(userId)     // Try[Ack]
-loadUser.compile[Future].unsafeRun(userId)  // Future[Ack]
+val loadUser = fetchUser ~> enrichUser ~> (saveUser &> notify)
 ```
+
+And compile it to the built in `Future`
+```scala
+loadUser.compile[Future].unsafeRun(userId)
+```
+
+When you run the pipeline, `saveUser` and `notify` will each run in parallel on their own Future.
 
 ### Add your own effects
 Want to run that same pipeline on the [Cats Effect](https://typelevel.org/cats-effect/)
@@ -154,11 +158,12 @@ given etl4s.Effect[IO] with {
   def delay[A](thunk: => A): IO[A]                            = IO(thunk)
   def flatMap[A, B](fa: IO[A])(f: A => IO[B]): IO[B]          = fa.flatMap(f)
   def handleErrorWith[A](fa: => IO[A])(h: Throwable => IO[A]) = fa.handleErrorWith(h)
+
   /* Used for &>, **>, each(Par/Slice) */
   override def both[A, B](fa: IO[A], fb: IO[B]): IO[(A, B)]   = IO.both(fa, fb)
 }
 
-val program: IO[Ack] = loadUser.compile[IO].unsafeRun(userId)
+val program: IO[Ack] = myPipeline.compile[IO].unsafeRun(input)
 ```
 
 ## Parallelizing Tasks
