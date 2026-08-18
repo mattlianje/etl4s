@@ -106,7 +106,7 @@ etl4s uses a few simple operators to build pipelines:
 | `&` | Combine | Group operations with the **same** input | `t1 & t2` |
 | `&>` | Parallel | Like `&`, but runs the branches concurrently | `t1 &> t2` |
 | `**` | Product | Pair nodes with **different** inputs | `t1 ** t2` |
-| `**>` | Product (parallel) | Like `**`, but runs the branches concurrently | `t1 **> t2` |
+| `**>` | Product Par | Like `**`, but runs the branches concurrently | `t1 **> t2` |
 | `>>` | Sequence | Runs nodes in order with same input | `p1 >> p2` |
 
 ## Configuration
