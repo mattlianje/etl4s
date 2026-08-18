@@ -146,6 +146,7 @@ given etl4s.Effect[IO] with {
   def delay[A](thunk: => A): IO[A]                            = IO(thunk)
   def flatMap[A, B](fa: IO[A])(f: A => IO[B]): IO[B]          = fa.flatMap(f)
   def handleErrorWith[A](fa: => IO[A])(h: Throwable => IO[A]) = fa.handleErrorWith(h)
+  /* Used for &>, **>, each(Par/Slice) */
   override def both[A, B](fa: IO[A], fb: IO[B]): IO[(A, B)]   = IO.both(fa, fb)
 }
 
@@ -203,12 +204,12 @@ Run the sub-pipeline on each `Order`, **one at a time**
 fetchOrders ~> each(validateOrder ~> enrichOrder) ~> writeOrdersToDB
 ```
 
-**8 orders in flight at once**
+8 orders in flight at once
 ```scala
 fetchOrders ~> eachPar(8)(validateOrder ~> enrichOrder) ~> writeOrdersToDB
 ```
 
-**Whole chunks of 500 orders**
+Whole chunks of 500 orders
 ```scala
 fetchOrders ~> eachSlice(500)(bulkUpsertOrders) ~> writeReport
 ```
