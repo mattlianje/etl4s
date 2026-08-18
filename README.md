@@ -163,9 +163,10 @@ given etl4s.Effect[IO] with {
   /* Used for &>, **>, each(Par/Slice) */
   override def both[A, B](fa: IO[A], fb: IO[B]): IO[(A, B)]   = IO.both(fa, fb)
 }
+```
 
 Now you can run the same pipeline, but `saveUser` and `notify` each get a CE `IO`:
-```
+```scala
 val program: IO[Ack] = 
      userPipeline.compile[IO].unsafeRun(input)
 ```
