@@ -446,13 +446,6 @@ val combined =
 
 ## FAQ
 
-**Why reify pipelines as data?**<br>
-A pipeline you can inspect is one you can reason about, visualize ([lineage](#lineage)),
-retry, and recompose... without a bloated scheduler or framework getting its fingers into your soup.
-
-**Do I need anything outside the standard library?**<br>
-No, etl4s is zero dep.
-
 **When do effects actually run?**<br>
 Never while you stitch. `~>`, `&`, `&>`, `**` just allocate a description, nothing executes until
 you interpret it with `.unsafeRun(...)` or `.compile[F].unsafeRun(...)`.
@@ -466,16 +459,14 @@ Yes, that's the whole point of [effect polymorphism](#effect-polymorphism). One 
 interpreters: `compile[Id]`, `compile[Try]`, `compile[Future]`, or your own `Effect[F]`.
 
 **How does the [lineage](#lineage) diagram get its names and types?**<br>
-At *compile time* every `Node` captures both the name of its
-enclosing `val`/`def` **and** its input/output types via a tiny macro.
+At compile time every Node captures both the name of its
+enclosing val or def and its input/output types via a tiny macro.
 
 **How does it work under the hood?**<br>
-`Node[-A, +B]` isn't a function, it's a small sealed AST whose constructors
-are exactly the arrow / profunctor combinators.
+`Node[-A, +B]` is a small sealed AST whose constructors
+are exactly the arrow / profunctor combinators. In this sense `Node` is almost a free-arrow.
+Almost because you have escape hatch to `FlatMap` that an arrow cannot express
 
-In this sense, **etl4s** `Node` is a **free(ish)-arrow**: the arrow analogue of a free monad. *Free* because the combinators
-are reified as data and given meaning later by an interpreter... *-ish* because `FlatMap` / `Cond` add
-`ArrowChoice`-style branching a pure arrow can't express.
 
 ## Inspiration
 - Debasish Ghosh's [Functional and Reactive Domain Modeling](https://www.manning.com/books/functional-and-reactive-domain-modeling)
