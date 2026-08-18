@@ -137,12 +137,13 @@ Since an **etl4s** pipeline is just a [free(ish)-arrow](https://arxiv.org/pdf/25
 
 Sketch a pipeline once
 ```scala
-val loadUser = fetchUser ~> enrichUser ~> (saveUser &> notify)
+val userPipeline =
+     fetchUser ~> enrichUser ~> (saveUser &> notify)
 ```
 
-And compile it to the built in `Future`
+And compile it to the built in `Future`:
 ```scala
-loadUser.compile[Future].unsafeRun(userId)
+userPipeline.compile[Future].unsafeRun(userId)
 ```
 
 When you run the pipeline, `saveUser` and `notify` will each run in parallel on their own Future.
@@ -163,7 +164,10 @@ given etl4s.Effect[IO] with {
   override def both[A, B](fa: IO[A], fb: IO[B]): IO[(A, B)]   = IO.both(fa, fb)
 }
 
-val program: IO[Ack] = myPipeline.compile[IO].unsafeRun(input)
+Now you can run the same pipeline, but `saveUser` and `notify` each get a CE `IO`:
+```
+val program: IO[Ack] = 
+     userPipeline.compile[IO].unsafeRun(input)
 ```
 
 ## Parallelizing Tasks
