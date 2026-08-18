@@ -133,11 +133,19 @@ pipeline.provide(ApiConfig("secret")).unsafeRun(())  /* "secret: data" */
 Read more [here](https://mattlianje.github.io/etl4s/config/)
 
 ## Effect polymorphism
-Since an **etl4s** pipeline is just a [free(ish)-arrow](https://arxiv.org/pdf/2506.12212): you choose how to run it by compiling it to an effect `F[_]` via `.compile[F]`. **etl4s** ships `Id`, `Try`, and `Future` out of the box
+Since an **etl4s** pipeline is just a [free(ish)-arrow](https://arxiv.org/pdf/2506.12212): you choose how to run it by compiling it to an effect `F[_]` via `.compile[F]`. **etl4s** ships `Id`, `Try`, and `Future` out of the box.
+
+Sketch a pipeline once - the *same* description runs under any effect:
+```scala
+val loadUser = fetchUser ~> enrichUser ~> saveUser
+
+loadUser.compile[Try].unsafeRun(userId)     // Try[Ack]
+loadUser.compile[Future].unsafeRun(userId)  // Future[Ack]
+```
 
 ### Add your own effects
-For example, to run your etl4s pipeline on the [Cats Effect](https://typelevel.org/cats-effect/)
-fiber runtime just implement `etl4s.Effect`:
+Want to run that same pipeline on the [Cats Effect](https://typelevel.org/cats-effect/)
+fiber runtime? Just implement `etl4s.Effect`:
 ```scala
 import cats.effect.IO
 
@@ -150,7 +158,7 @@ given etl4s.Effect[IO] with {
   override def both[A, B](fa: IO[A], fb: IO[B]): IO[(A, B)]   = IO.both(fa, fb)
 }
 
-val program: IO[Int] = parseAmount.compile[IO].unsafeRun(())
+val program: IO[Ack] = loadUser.compile[IO].unsafeRun(userId)
 ```
 
 ## Parallelizing Tasks
@@ -189,7 +197,7 @@ val consoleLoad: Load[String, Unit] = Load(println(_))
 val dbLoad:      Load[String, Unit] = Load(x => println(s"DB Load: ${x}"))
 
 val merge = Transform[(Int, String, Boolean), String] {
-  case (userId, name, active) => s"$userId-$name-$active"
+  case (i, s, b) => s"$i-$s-$b"
 }
 
 val pipeline =
@@ -204,14 +212,14 @@ Run the sub-pipeline on each `Order`, **one at a time**
 fetchOrders ~> each(validateOrder ~> enrichOrder) ~> writeOrdersToDB
 ```
 
-8 orders in flight at once
+Run the sub-pipeline on each `Order`, **8 in flight at once**, or feed the sub-pipeline
+**whole chunks of 500 `Order`s** at a time:
 ```scala
-fetchOrders ~> eachPar(8)(validateOrder ~> enrichOrder) ~> writeOrdersToDB
-```
+val par8Pipeline = 
+     fetchOrders ~> eachPar(8)(validateOrder ~> enrichOrder) ~> writeOrdersToDB
 
-Whole chunks of 500 orders
-```scala
-fetchOrders ~> eachSlice(500)(bulkUpsertOrders) ~> writeReport
+val chunk500Pipeline =
+     fetchOrders ~> eachSlice(500)(bulkUpsertOrders) ~> writeReport
 ```
 
 ### Custom batchables
