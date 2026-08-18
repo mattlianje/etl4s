@@ -222,8 +222,9 @@ Run the sub-pipeline on each `Order`, **one at a time**
 fetchOrders ~> each(validateOrder ~> enrichOrder) ~> writeOrdersToDB
 ```
 
-Run the sub-pipeline on each `Order`, **8 in flight at once**, or feed the sub-pipeline
-**whole chunks of 500 `Order`s** at a time:
+Run the sub-pipeline on each `Order`, **8 in flight at once**...
+
+Or feed the sub-pipeline **whole chunks of 500 `Order`s** at a time:
 ```scala
 val par8Pipeline = 
      fetchOrders ~> eachPar(8)(validateOrder ~> enrichOrder) ~> writeOrdersToDB
