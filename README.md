@@ -133,14 +133,7 @@ pipeline.provide(ApiConfig("secret")).unsafeRun(())  /* "secret: data" */
 Read more [here](https://mattlianje.github.io/etl4s/config/)
 
 ## Effect polymorphism
-Since an **etl4s** pipeline is just a [free(ish)-arrow](https://arxiv.org/pdf/2506.12212): you choose how to run it by compiling it to an effect `F[_]` via `.compile[F]`. **etl4s** ships `Id`, `Try`, and `Future` out of the box:
-
-```scala
-val p = Extract("41") ~> stringToInt
-
-p.compile[Try].unsafeRun(()) // Success(41)
-p.compile[Future].unsafeRun(()) // Future(41)
-```
+Since an **etl4s** pipeline is just a [free(ish)-arrow](https://arxiv.org/pdf/2506.12212): you choose how to run it by compiling it to an effect `F[_]` via `.compile[F]`. **etl4s** ships `Id`, `Try`, and `Future` out of the box
 
 ### Add your own effects
 For example, to run your etl4s pipeline on the [Cats Effect](https://typelevel.org/cats-effect/)
