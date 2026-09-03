@@ -3,9 +3,12 @@ package etl4s
 import scala.quoted.*
 
 /**
- * The binding name of a [[Node]], captured at compile time from the enclosing `val`/`def`
+ * The binding name of a [[Node]], captured at compile time from the enclosing val/def
+ *
+ * @param value    Short binding name: `val parse = Node(...)` -> "parse"
+ * @param fullName Fully-qualified path of the binding
  */
-final case class Name(value: String)
+final case class Name(value: String, fullName: String = "")
 
 object Name {
   inline given derive: Name = ${ deriveImpl }
@@ -18,10 +21,16 @@ object Name {
         val n = clean(sym.name)
         n.nonEmpty && n != "macro" && !n.startsWith("$") && !n.startsWith("<")
       }
-    def find(sym: Symbol): String =
-      if sym.isNoSymbol then "???"
-      else if usable(sym) then clean(sym.name)
+    def find(sym: Symbol): Symbol =
+      if sym.isNoSymbol then sym
+      else if usable(sym) then sym
       else find(sym.owner)
-    '{ Name(${ Expr(find(Symbol.spliceOwner)) }) }
+    val sym   = find(Symbol.spliceOwner)
+    val short = if sym.isNoSymbol then "???" else clean(sym.name)
+    /* Strip module objects with a trailing $ in the fullName */
+    val fullName =
+      if sym.isNoSymbol then ""
+      else sym.fullName.replace("$.", ".").stripSuffix("$")
+    '{ Name(${ Expr(short) }, ${ Expr(fullName) }) }
   }
 }

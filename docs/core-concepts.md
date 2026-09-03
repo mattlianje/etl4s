@@ -1,3 +1,5 @@
+# Core Concepts
+
 **etl4s** has one core building block:
 ```scala
 Node[-In, +Out]
@@ -18,19 +20,30 @@ type Pipeline[-In, +Out]  = Node[In, Out]
 ```scala
 import etl4s._
 
-val A = Extract("users.csv")
-val B = Transform[String, Int](csv => csv.split("\n").length)
-val C = Load[Int, Unit](count => println(s"Processed $count users"))
+val readCsv    = Extract("alice\nbob\ncarol")
+val countUsers = Transform[String, Int](csv => csv.split("\n").length)
+val report     = Load[Int, Unit](count => println(s"Processed $count users"))
 
-val pipeline = A ~> B ~> C
+val pipeline = readCsv ~> countUsers ~> report
 
-pipeline.unsafeRun()// Processed 3 users
+pipeline.unsafeRun()
 ```
+Prints:
+```
+Processed 3 users
+```
+
+The idiomatic effectful run is `.compile[F].unsafeRun(...)` (e.g. `Try`,
+`Future`, or a cats-effect `IO`) - see [Effect polymorphism](effect-polymorphism.md).
 
 Create standalone nodes:
 ```scala
 val toUpper = Transform[String, String](_.toUpperCase)
-toUpper("hello")  // HELLO
+toUpper("hello")
+```
+You will get:
+```
+HELLO
 ```
 
 ## Running pipelines
@@ -50,15 +63,20 @@ import scala.util.Try
 
 val risky = Pipeline[String, Int](_.toInt)
 
-Try(risky.unsafeRun("42"))    // Success(42)
-Try(risky.unsafeRun("oops"))  // Failure(...)
+Try(risky.unsafeRun("42"))
+Try(risky.unsafeRun("oops"))
+```
+You will get:
+```
+Success(42)
+Failure(...)
 ```
 
 **Execution details:**
 ```scala
 val trace = pipeline.unsafeRunTrace(())
-// trace.result, trace.timeElapsedMillis
 ```
+`trace.result` holds the value and `trace.timeElapsedMillis` the elapsed time.
 
 !!! note
     **etl4s** also has a `Reader` type for dependency injection. Use `.requires` to turn any Node into a `Reader[Config, Node]`. The `~>` operator works between Nodes and Readers. See [Configuration](config.md) for details.

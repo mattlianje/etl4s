@@ -3,8 +3,16 @@
 etl4s structures your Flink job logic. Define extraction, transformation, and sinks as composable, type-safe stages.
 
 ```bash
-scala-cli repl --dep io.github.mattlianje::etl4s:1.9.1 --dep org.apache.flink::flink-streaming-scala:1.18.0
+scala-cli repl --dep xyz.matthieucourt::etl4s:1.9.1 --dep org.apache.flink::flink-streaming-scala:1.18.0
 ```
+
+!!! note "Pseudocode"
+    The Kafka/Flink symbols below (`KafkaSource`, `FlinkKafkaConsumer`,
+    `FlinkKafkaProducer`, `EventSchema`, `...`) are illustrative and not
+    declared here - substitute your own connector types. The etl4s wiring
+    (`Extract`/`Transform`/`Load`, `~>`, `&`, `.requires`, `.provide`) is real.
+    Flink's own `.timeWindow`/`Time` API is deprecated in recent versions; use
+    `.window(...)` in your project.
 
 ## Basic streaming pattern
 

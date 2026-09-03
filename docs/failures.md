@@ -1,7 +1,27 @@
+---
+api:
+  - sig: ".withRetry"
+  - sig: ".onFailure(handler)"
+  - sig: ".compile[Try]"
+  - sig: ".compile[Future]"
+---
+
+# Error Handling
+
 **etl4s** provides built-in failure handling:
 
 ## .withRetry
-Retry failed operations with exponential backoff using `.withRetry`:
+Retry failed operations with exponential backoff using `.withRetry`. The full
+signature has sensible defaults:
+
+```scala
+def withRetry(
+  maxAttempts: Int = 3,
+  initialDelayMs: Long = 100,
+  backoffFactor: Double = 2.0
+): Node[A, B]
+```
+
 ```scala
 import etl4s._
 
@@ -40,3 +60,27 @@ Output:
 ```
 Failed: Boom!
 ```
+
+## Failures under effects
+
+`.unsafeRun` throws when a node fails. To capture the failure as a value, run
+the pipeline through an effect with `.compile[F]`:
+
+- `.compile[Try].unsafeRun(...)` returns a `Failure(e)` instead of throwing.
+- `.compile[Future].unsafeRun(...)` returns a failed `Future`.
+
+```scala
+import etl4s._
+import scala.util.Try
+
+val risky = Extract[Unit, String](_ => throw new RuntimeException("Boom!"))
+
+risky.compile[Try].unsafeRun(())
+```
+You will get:
+```
+Failure(RuntimeException("Boom!"))
+```
+
+See [Effect polymorphism](effect-polymorphism.md) for the full list of effects
+and how to add your own.

@@ -620,45 +620,6 @@ class ValidationSpecs extends munit.FunSuite {
     intercept[ValidationException](node.provide(Config(100)).unsafeRun(User(150)))
   }
 
-  test("Function1 implicitly converts to Node") {
-    val length: String => Int   = _.length
-    val double: Int => Int      = _ * 2
-    val toString: Int => String = _.toString
-
-    val pipeline = length ~> double ~> toString
-    assertEquals(pipeline.unsafeRun("hello"), "10")
-  }
-
-  test("Function1 works in pipelines with validation") {
-    val length: String => Int = _.length
-    val double: Int => Int    = _ * 2
-
-    val pipeline =
-      length ~> Node(double).ensure(input = Seq(x => if (x > 0) None else Some("positive")))
-    assertEquals(pipeline.unsafeRun("hi"), 4)
-  }
-
-  test("Function1 works with & operator") {
-    val length: String => Int   = _.length
-    val upper: String => String = _.toUpperCase
-
-    val parallel = length & upper
-    assertEquals(parallel.unsafeRun("hello"), (5, "HELLO"))
-  }
-
-  test("Function1 works with >> operator") {
-    var sideEffect1 = ""
-    var sideEffect2 = ""
-
-    val effect1: String => Unit   = s => sideEffect1 = s"first:$s"
-    val effect2: String => String = s => { sideEffect2 = s"second:$s"; s.toUpperCase }
-
-    val pipeline = effect1 >> effect2
-    assertEquals(pipeline.unsafeRun("hi"), "HI")
-    assertEquals(sideEffect1, "first:hi")
-    assertEquals(sideEffect2, "second:hi")
-  }
-
   test("ensure combines multiple validation types") {
     val node = Node[Int, String](n => s"Value: $n")
       .ensure(

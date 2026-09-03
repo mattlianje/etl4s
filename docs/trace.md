@@ -7,14 +7,15 @@ reaching for a stopwatch or an external metrics library.
 Nothing ambient, no shared state, no threading concerns.
 
 ```scala
-val A = Transform[String, Int] { s =>
+val countChars = Transform[String, Int] { s =>
   s.length
 }
 
-val res: Int          = A.unsafeRun("hello")       // 5
-val trace: Trace[Int] = A.unsafeRunTrace("hello")
+val res: Int          = countChars.unsafeRun("hello")
+val trace: Trace[Int] = countChars.unsafeRunTrace("hello")
 ```
 
+You will get `res = 5`, and `trace`:
 ```
 Trace(
   result = 5,
@@ -39,7 +40,7 @@ call in your own `Try` if you want to capture failures.
 
 `etl4s` deliberately keeps `Trace` minimal. If you need structured logging,
 metrics, or distributed tracing, wire in your own tools with a plain `tap` or
-inside your node bodies — you keep full control over your observability stack:
+inside your node bodies. You keep full control over your observability stack:
 
 ```scala
 val instrumented = Transform[String, Int] { s =>

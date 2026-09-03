@@ -554,12 +554,6 @@ hide:
   opacity: 0.8;
 }
 
-.type-safety-demo .node-type {
-  font-size: 0.4rem;
-  opacity: 0.5;
-  white-space: nowrap;
-}
-
 .type-safety-demo .node-e { left: 10px; top: 18px; }
 .type-safety-demo .node-t { left: 95px; top: 18px; animation: node-t-fade 6s ease-out infinite; }
 .type-safety-demo .node-l { left: 180px; top: 18px; animation: node-l-move 6s ease-out infinite; }
@@ -572,8 +566,8 @@ hide:
   color: var(--md-primary-fg-color);
 }
 
-.type-safety-demo .conn-et { left: 72px; transform: translateX(-50%); animation: conn-et-fade 6s ease-out infinite; }
-.type-safety-demo .conn-tl { left: 158px; transform: translateX(-50%); animation: conn-tl-fade 6s ease-out infinite; }
+.type-safety-demo .conn-et { left: 58px; transform: translateX(-50%); animation: conn-et-fade 6s ease-out infinite; }
+.type-safety-demo .conn-tl { left: 143px; transform: translateX(-50%); animation: conn-tl-fade 6s ease-out infinite; }
 
 .type-safety-demo .flow-dot {
   position: absolute;
@@ -1080,7 +1074,7 @@ hide:
 <div class="intro-header">
   <img src="assets/etl4s-logo.png" alt="etl4s" />
   <h1>etl4s</h1>
-  <p style="opacity: 0.6; font-size: 0.85rem; margin: 0.5rem 0 1.5rem 0;">Powerful, whiteboard-style ETL.</p>
+  <p style="opacity: 0.6; font-size: 0.85rem; margin: 0.5rem 0 1.5rem 0;">Powerful, whiteboard-style ETL</p>
   <div class="intro-buttons">
     <a href="installation/" class="btn-primary">Get Started</a>
     <a href="https://scastie.scala-lang.org/mattlianje/1280QhQ5RWODgizeXOIsXA/5" target="_blank" class="btn-secondary">Try Online</a>
@@ -1109,8 +1103,12 @@ hide:
 
     /* Run */
     pipeline.unsafeRun()
-    // Result: 15!
-    // [DB] Result: 15!
+    ```
+
+    Prints:
+    ```
+    Result: 15!
+    [DB] Result: 15!
     ```
 
 === "Config"
@@ -1135,13 +1133,13 @@ hide:
     ```scala
     import etl4s._
 
-    val A = Node[String, String](identity)
-      .lineage(name = "A", inputs = List("s1", "s2"), outputs = List("s3"))
+    val ingest = Node[String, String](identity)
+      .lineage(name = "ingest", inputs = List("s1", "s2"), outputs = List("s3"))
 
-    val B = Node[String, String](identity)
-      .lineage(name = "B", inputs = List("s3"), outputs = List("s4", "s5"))
+    val enrich = Node[String, String](identity)
+      .lineage(name = "enrich", inputs = List("s3"), outputs = List("s4", "s5"))
 
-    Seq(A, B).toMermaid
+    Seq(ingest, enrich).toMermaid
     ```
 
     ```mermaid
@@ -1149,23 +1147,23 @@ hide:
         classDef pipeline fill:#e1f5fe,stroke:#01579b,stroke-width:2px,color:#000
         classDef dataSource fill:#f3e5f5,stroke:#4a148c,stroke-width:2px,color:#000
 
-        A["A"]
-        B["B"]
+        ingest["ingest"]
+        enrich["enrich"]
         s1(["s1"])
         s2(["s2"])
         s3(["s3"])
         s4(["s4"])
         s5(["s5"])
 
-        s1 --> A
-        s2 --> A
-        A --> s3
-        s3 --> B
-        B --> s4
-        B --> s5
+        s1 --> ingest
+        s2 --> ingest
+        ingest --> s3
+        s3 --> enrich
+        enrich --> s4
+        enrich --> s5
 
-        class A pipeline
-        class B pipeline
+        class ingest pipeline
+        class enrich pipeline
         class s1,s2,s3,s4,s5 dataSource
     ```
 
@@ -1179,9 +1177,9 @@ hide:
     }
 
     val trace = process.unsafeRunTrace(rows)
-    trace.result             // the filtered rows
-    trace.timeElapsedMillis  // how long it took
     ```
+
+    `trace.result` holds the filtered rows and `trace.timeElapsedMillis` how long it took.
 
 ---
 
@@ -1231,11 +1229,11 @@ hide:
 </div>
 <div class="feature-visual">
 <div class="type-safety-demo">
-  <div class="node node-e"><span class="node-dot"></span><span class="node-label">E</span><span class="node-type">[A, Int]</span></div>
+  <div class="node node-e"><span class="node-dot"></span><span class="node-label">E</span></div>
   <span class="conn conn-et">~></span>
-  <div class="node node-t"><span class="node-dot"></span><span class="node-label">T</span><span class="node-type">[Int, Str]</span></div>
+  <div class="node node-t"><span class="node-dot"></span><span class="node-label">T</span></div>
   <span class="conn conn-tl">~></span>
-  <div class="node node-l"><span class="node-dot"></span><span class="node-label">L</span><span class="node-type">[Str, B]</span></div>
+  <div class="node node-l"><span class="node-dot"></span><span class="node-label">L</span></div>
   <span class="flow-dot flow-dot-1"></span>
   <span class="flow-dot flow-dot-2"></span>
   <span class="flow-bad"></span>

@@ -1,3 +1,4 @@
+# Installation
 
 **etl4s** is on MavenCentral and cross-built for Scala, 2.12, 2.13, 3.x:
 ```scala

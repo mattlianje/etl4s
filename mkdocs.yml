@@ -1,5 +1,6 @@
 site_name: etl4s
 site_url: https://etl4s.dev
+site_description: Powerful, whiteboard-style ETL for Scala. One file, zero dependencies, effect-polymorphic pipelines as values.
 
 theme:
   name: null
@@ -9,11 +10,13 @@ nav:
   - Home: index.md
   - Getting Started:
     - Installation: installation.md
-    - Your First Pipeline: first-pipeline.md
+    - Tutorial: first-pipeline.md
   - Guide:
     - Core Concepts: core-concepts.md
     - Operators: operators.md
+    - Effect Polymorphism: effect-polymorphism.md
     - Parallel Execution: tasks.md
+    - Batch Collections: batch.md
     - Conditional Branching: branching.md
     - Side Effects: effect.md
     - Configuration: config.md

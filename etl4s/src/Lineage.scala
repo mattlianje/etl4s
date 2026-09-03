@@ -1,14 +1,3 @@
-/*
- * +==========================================================================+
- * |                                 etl4s                                    |
- * |                     Powerful, whiteboard-style ETL                       |
- * |                 Compatible with Scala 2.12, 2.13, and 3                  |
- * |                                                                          |
- * | Copyright 2025 Matthieu Court (matthieu.court@protonmail.com)            |
- * | Apache License 2.0                                                       |
- * +==========================================================================+
- */
-
 package etl4s
 
 /**
@@ -21,7 +10,7 @@ case class Lineage(
   name: String,
   inputs: List[String] = List.empty,
   outputs: List[String] = List.empty,
-  upstreams: List[Any] = List.empty, // Node, Reader, or String
+  upstreams: List[Any] = List.empty,
   schedule: String = "",
   cluster: String = "",
   description: String = "",

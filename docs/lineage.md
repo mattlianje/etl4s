@@ -1,3 +1,15 @@
+---
+api:
+  - sig: ".lineage(name, inputs, outputs, ...)"
+  - sig: ".toDot"
+  - sig: ".toMermaid"
+  - sig: ".toJson"
+  - sig: ".lineageName(name)"
+  - sig: ".lineageInputs(inputs*)"
+  - sig: ".lineageOutputs(outputs*)"
+  - sig: ".withLineage(lineage)"
+---
+
 # Lineage
 
 Attach lineage metadata with `.lineage` then use `.toDot`, `.toMermaid` or `.toJson` to
@@ -91,10 +103,12 @@ Orange dotted arrows show inferred dependencies.
 Seq(A, B).toJson
 ```
 
-JSON structure includes:
-- `pipelines`: Array of pipeline objects
-- `dataSources`: Array of data source names
-- `edges`: Connections with `isDependency` flag
+The JSON has three top-level keys (all lowercase):
+
+- `pipelines`: array of pipeline objects (with their `inputs`, `outputs`,
+  `upstream_pipelines`, `schedule`, `description`, `group`, `tags`, `links`, ...)
+- `datasources`: array of data source names
+- `clusters`: array of cluster objects
 
 ## Lineage Parameters
 
@@ -104,6 +118,32 @@ JSON structure includes:
 - **`upstreams`**: Explicit dependencies (Nodes, Readers, or Strings)
 - **`schedule`**: Human-readable schedule (e.g., "0 */2 * * *")
 - **`cluster`**: Group name for organizing related pipelines
+- **`description`**: Free-text description of the pipeline (default: "")
+- **`group`**: Logical grouping label (default: "")
+- **`tags`**: `List[String]` of arbitrary tags (default: empty)
+- **`links`**: `Map[String, String]` of label -> URL links (default: empty)
+
+`.lineage(...)` works the same on a `Reader[T, Node]` (config-aware node) as it
+does on a plain `Node`.
+
+### Low-level setters
+
+For attaching metadata incrementally there are also individual setters:
+`.lineageName(name)`, `.lineageInputs(inputs*)`, `.lineageOutputs(outputs*)`, and
+`.withLineage(lineage)` (attach a fully-built `Lineage`). These are available on
+both `Node` and `Reader`.
+
+### Lineage vs structural introspection
+
+`.toDot` / `.toMermaid` dispatch on what they're called on:
+
+- On a **`Seq`** of lineage-annotated nodes/readers they draw the *dataflow
+  graph* you declared with `.lineage` (as shown above).
+- On a **single** `Node` or `Reader` they draw its internal *stage structure*
+  (leaf names and in/out types) - the same view `node.stages` lists, and no
+  `.lineage` metadata is required.
+
+`.toJson` always emits the lineage metadata (single node or `Seq`).
 
 ## Explicit Upstreams
 

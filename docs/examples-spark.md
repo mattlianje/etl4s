@@ -3,7 +3,7 @@
 etl4s works alongside Spark. Use it to structure your Spark job logic - extraction, transformations, and loading stay composable and type-safe.
 
 ```bash
-scala-cli repl --dep io.github.mattlianje::etl4s:1.9.1 --dep org.apache.spark::spark-sql:3.5.0
+scala-cli repl --dep xyz.matthieucourt::etl4s:1.9.1 --dep org.apache.spark::spark-sql:3.5.0
 ```
 
 ## Basic pattern
@@ -15,6 +15,8 @@ import org.apache.spark.sql.{SparkSession, DataFrame}
 implicit val spark: SparkSession = SparkSession.builder()
   .appName("etl4s-spark")
   .getOrCreate()
+
+import spark.implicits._  // enables the `$"col"` column syntax
 
 val extractUsers = Extract[SparkSession, DataFrame] { spark =>
   spark.read.parquet("s3://data/users")

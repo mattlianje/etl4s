@@ -5,11 +5,7 @@ import scala.reflect.macros.blackbox
 /**
  * Compile-time capture of the enclosing `val`/`def` name for Scala 2 (the
  * `sourcecode.Name` trick), used to name a [[Node]] leaf: `val parse = Node(...)`
- * -> "parse". Walks the owner chain from the expansion site, skipping synthetic
- * / anonymous owners, and falls back to "???" when there is no usable binding.
- *
- * Lives in the macro module for the same reason as [[TypeNameMacro]]; builds a
- * tree referencing `_root_.etl4s.Name` by name, so no dependency on the library.
+ * -> "parse"
  */
 object NameMacro {
   def derive(c: blackbox.Context): c.Expr[Nothing] = {
@@ -23,12 +19,14 @@ object NameMacro {
         (t.isVal || t.isVar || t.isMethod) &&
         n.nonEmpty && n != "macro" && !n.startsWith("$") && !n.startsWith("<")
       }
-    def find(s: Symbol): String =
-      if (s == NoSymbol) "???"
-      else if (usable(s)) clean(s.name.decodedName.toString)
+    def find(s: Symbol): Symbol =
+      if (s == NoSymbol) NoSymbol
+      else if (usable(s)) s
       else find(s.owner)
 
-    val n = find(c.internal.enclosingOwner)
-    c.Expr[Nothing](q"_root_.etl4s.Name($n)")
+    val sym  = find(c.internal.enclosingOwner)
+    val n    = if (sym == NoSymbol) "???" else clean(sym.name.decodedName.toString)
+    val full = if (sym == NoSymbol) "" else sym.fullName
+    c.Expr[Nothing](q"_root_.etl4s.Name($n, $full)")
   }
 }

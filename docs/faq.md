@@ -31,7 +31,10 @@ Connects pipeline stages. It's an overloaded symbolic operator that works with p
 The exception propagates out of `.unsafeRun()`. Recover inline with `.onFailure()`, or wrap the call in your own `Try`/`try`-`catch`.
 
 **Q: Can I mix sync and async code?**  
-Yes. All stages run as effects. You can have blocking and non-blocking operations in the same pipeline.
+Yes. By default (`.unsafeRun`) stages are plain synchronous functions run on the `Id` interpreter, with no threads and no effect wrapping. They only run inside an effect `F` when you `.compile[F]` (e.g. `Future`), which is also what enables concurrency for `&>`. You can freely place blocking and non-blocking operations in the same pipeline.
+
+**Q: What is effect polymorphism / `.compile[F]`?**  
+etl4s pipelines are effect polymorphic. `.compile[F]` picks the interpreter that runs your pipeline: built-in choices are `Id` (synchronous, the `unsafeRun` default), `Try` (error-capturing), and `Future` (concurrent for `&>`, `*>`, `eachPar`, `.ensurePar`). You can add your own by providing a `given Effect[F]` (implementing `pure`, `delay`, `flatMap`, `handleErrorWith`, and overriding `both` for concurrency), letting you run on top of Cats Effect `IO`, ZIO, Kyo, etc. See the [Effect polymorphism](effect-polymorphism.md) docs.
 
 ## Observability
 
@@ -40,11 +43,12 @@ Call `.unsafeRunTrace()` instead of `.unsafeRun()`. Returns a `Trace` with the r
 
 ```scala
 val trace = pipeline.unsafeRunTrace(data)
-trace.result              // the result
-trace.timeElapsedMillis   // how long it took
+trace.result
+trace.timeElapsedMillis
 ```
+`trace.result` is the result; `trace.timeElapsedMillis` is how long it took.
 
 **Q: What about logging, metrics, and distributed tracing?**  
-`etl4s` stays out of your way here — bring your own tools. Call your logger,
+`etl4s` stays out of your way here. Bring your own tools. Call your logger,
 metrics client, or tracer directly inside node bodies or via `tap`. See the
 [Tracing docs](trace.md) for the pattern.

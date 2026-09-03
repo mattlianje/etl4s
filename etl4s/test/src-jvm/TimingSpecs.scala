@@ -2,7 +2,7 @@ package etl4s
 
 import scala.concurrent.ExecutionContext.Implicits.global
 
-/** Tests that require real timing/blocking - JVM only */
+/* Tests that require real timing/blocking - JVM only */
 class TimingSpecs extends munit.FunSuite {
 
   test("&> runs concurrently under as[Future]") {
@@ -34,13 +34,13 @@ class TimingSpecs extends munit.FunSuite {
     )
   }
 
-  test("**> runs branches concurrently under Future") {
+  test("*> runs branches concurrently under Future") {
     import scala.concurrent.{Future, Await}
     import scala.concurrent.duration._
 
     val slowL = Node[Int, Int] { n => Thread.sleep(150); n + 1 }
     val slowR = Node[Int, Int] { n => Thread.sleep(150); n * 2 }
-    val block = slowL **> slowR
+    val block = slowL *> slowR
 
     val start = System.currentTimeMillis()
     val res   = Await.result(block.compile[Future].unsafeRun((10, 10)), 2.seconds)

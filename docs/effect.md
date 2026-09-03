@@ -12,9 +12,12 @@ val pipeline = Extract("hello world")
   ~> Transform[String, Array[String]](_.split(" "))
 
 pipeline.unsafeRun(())
-// prints: Got: hello world
-// returns: Array("hello", "world")
 ```
+Prints:
+```
+Got: hello world
+```
+and returns `Array("hello", "world")`.
 
 Chain taps at different stages:
 
@@ -37,10 +40,13 @@ val process  = Node[String, Int](_.length)
 val pipeline = logStart >> logEnd >> process
 
 pipeline.unsafeRun("hello")
-// prints: Start: hello
-// prints: End: hello
-// returns: 5
 ```
+Prints:
+```
+Start: hello
+End: hello
+```
+and returns `5`.
 
 Common for setup/teardown:
 

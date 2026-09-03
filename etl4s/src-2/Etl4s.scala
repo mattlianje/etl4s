@@ -6,11 +6,13 @@
  */
 package object etl4s {
   import scala.language.{higherKinds, implicitConversions}
+  import scala.language.experimental.macros
   import scala.concurrent.{Future, ExecutionContext}
   import scala.concurrent.duration._
   import scala.util.{Try, Success, Failure}
   import scala.util.control.NonFatal
   import scala.annotation.unchecked.uncheckedVariance
+  import scala.collection.mutable
 
   /**
    * The core abstraction of etl4s: a composable wrapper around a function `A => B`.
@@ -49,6 +51,25 @@ package object etl4s {
      * Documents inputs, outputs, scheduling, and organization.
      */
     def getLineage: Option[Lineage] = None
+
+    /**
+     * The short binding name of a leaf node (the enclosing `val`/`def`), if any.
+     * Composite nodes (`~>`, `&`, ...) have no single name and return `None`.
+     */
+    def getName: Option[String] = this match {
+      case Node.Step(n, _, _, _, _) => Some(n)
+      case _                        => None
+    }
+
+    /**
+     * The fully-qualified path of a leaf node's binding, including the enclosing
+     * package/object/class chain (e.g. "myapp.jobs.UserPipeline.parse"), captured
+     * at compile time. `None` for composites or when no path was captured.
+     */
+    def getFullName: Option[String] = this match {
+      case Node.Step(_, _, _, _, fn) if fn.nonEmpty => Some(fn)
+      case _                                        => None
+    }
 
     /**
      * Applies the node's function to the input.
@@ -204,7 +225,7 @@ package object etl4s {
      * val extract = Node[String, Int](_.length)
      * val transform = Node[Int, String](i => s"Length: $i")
      * val pipeline = extract ~> transform
-     * pipeline("hello") // returns "Length: 5"
+     * pipeline("hello")
      * }}}
      */
     def ~>[C](next: Node[B, C]): Node[A, C] = {
@@ -337,7 +358,7 @@ package object etl4s {
      * Concurrency is realized by the effect runner: under `as[Future]`/`as[IO]`
      * the two branches run via [[Effect]]`#both`. The plain synchronous
      * `unsafeRun` (the `Id` interpreter) has no threads, so it runs them
-     * sequentially — same result, no `ExecutionContext` needed.
+     * sequentially: same result, no `ExecutionContext` needed.
      *
      * @tparam C the output type of the other node
      * @param that the other node to run concurrently
@@ -348,7 +369,7 @@ package object etl4s {
      * val fetchUser = Node[UserId, User](id => fetchFromDB(id))
      * val fetchPrefs = Node[UserId, Preferences](id => fetchPrefsFromCache(id))
      * val fetchBoth = fetchUser &> fetchPrefs  // concurrent under as[Future]
-     * val fetchAll = fetchUser &> fetchPrefs &> fetchSettings  // auto-flattened!
+     * val fetchAll = fetchUser &> fetchPrefs &> fetchSettings 
      * }}}
      */
     def &>[A1 <: A, C, O](that: Node[A1, C])(implicit
@@ -385,18 +406,18 @@ package object etl4s {
      * Product composition: pairs two pipelines that have different inputs into
      * one block whose requirement is a tuple of both inputs. 
      *
-     * Unlike `&`/`&>` (which broadcast a single shared input), `**` feeds `_._1` to the left and
-     * `_._2` to the right: `Node[A, B] ** Node[C, D] => Node[(A, C), (B, D)]`
+     * Unlike `&`/`&>` (which broadcast a single shared input), `*` feeds `_._1` to the left and
+     * `_._2` to the right: `Node[A, B] * Node[C, D] => Node[(A, C), (B, D)]`
      *
      * @example
      * {{{
      * val parseName = Node[String, Name](Name(_))
      * val parseAge  = Node[Int, Age](Age(_))
-     * val both      = parseName ** parseAge   // Node[(String, Int), (Name, Age)]
+     * val both      = parseName * parseAge // Node[(String, Int), (Name, Age)]
      * both.unsafeRun(("alice", 30))
      * }}}
      */
-    def **[C, D, O](that: Node[C, D])(implicit
+    def *[C, D, O](that: Node[C, D])(implicit
       ta: TupleAppend.Aux[B @uncheckedVariance, D, O]
     ): Node[(A, C), O] = {
       val combined = (this.getLineage, that.getLineage) match {
@@ -411,11 +432,11 @@ package object etl4s {
     }
 
     /**
-     * Concurrent product composition: like `**`, but marks the two independent
+     * Concurrent product composition: like `*`, but marks the two independent
      * branches to run concurrently under an effect runner (via [[Effect]]).
-     * The plain synchronous `unsafeRun` runs them sequentially...
+     * The plain synchronous `unsafeRun` runs them sequentially.
      */
-    def **>[C, D, O](that: Node[C, D])(implicit
+    def *>[C, D, O](that: Node[C, D])(implicit
       ta: TupleAppend.Aux[B @uncheckedVariance, D, O]
     ): Node[(A, C), O] = {
       val combined = (this.getLineage, that.getLineage) match {
@@ -458,13 +479,97 @@ package object etl4s {
      * {{{
      * val parseNumber = Node[String, Int](_.toInt)
      *   .onFailure(_ => 0)  // return 0 for invalid strings
-     * 
-     * parseNumber("123")  // returns 123
-     * parseNumber("abc")  // returns 0
      * }}}
      */
     def onFailure[BB >: B](handler: Throwable => BB): Node[A, BB] =
       Node.Recover(this, handler)
+
+    /**
+     * `l | r` : fan-in. Routes an `Either` input to the matching branch (`Left`
+     * to this node, `Right` to `right`), merging both to a common output.
+     *
+     * @example
+     * {{{
+     * val fromInt = Node[Int, String](i => s"int:$i")
+     * val fromStr = Node[String, String](s => s"str:$s")
+     * val merged  = fromInt | fromStr // Node[Either[Int, String], String]
+     * }}}
+     */
+    def |[A2, BB >: B](right: Node[A2, BB]): Node[Either[A, A2], BB] =
+      Node.Fanin(this, right)
+
+    /** Fan-in with a Reader-wrapped node. */
+    def |[T, A2, BB >: B](
+      right: Reader[T, Node[A2, BB]]
+    ): Reader[T, Node[Either[A, A2], BB]] = {
+      val combined = (this.getLineage, right.getLineage) match {
+        case (Some(l1), Some(l2)) => Some(l1.combine(l2))
+        case (Some(l), None)      => Some(l)
+        case (None, Some(l))      => Some(l)
+        case _                    => None
+      }
+      val result = right.map(this | _)
+      combined.fold(result)(lin => result.withLineage(lin))
+    }
+
+    /**
+     * `l + r` : choice. Routes an `Either` input through independent branches,
+     * preserving the `Either` on the way out (`Either[A, C] => Either[B, D]`).
+     *
+     * @example
+     * {{{
+     * val dbl = Node[Int, Int](_ * 2)
+     * val up  = Node[String, String](_.toUpperCase)
+     * val ch  = dbl + up    // Node[Either[Int, String], Either[Int, String]]
+     * }}}
+     */
+    def +[C, D](right: Node[C, D]): Node[Either[A, C], Either[B, D]] =
+      Node.Fanin(this.map((b: B) => Left[B, D](b)), right.map((d: D) => Right[B, D](d)))
+
+    /** Choice with a Reader-wrapped node. */
+    def +[T, C, D](
+      right: Reader[T, Node[C, D]]
+    ): Reader[T, Node[Either[A, C], Either[B, D]]] = {
+      val combined = (this.getLineage, right.getLineage) match {
+        case (Some(l1), Some(l2)) => Some(l1.combine(l2))
+        case (Some(l), None)      => Some(l)
+        case (None, Some(l))      => Some(l)
+        case _                    => None
+      }
+      val result = right.map(this + _)
+      combined.fold(result)(lin => result.withLineage(lin))
+    }
+
+    /**
+     * `l <|> r` : fall back to `right` on the same input if this node raises.
+     * Unlike [[onFailure]] (a `Throwable => B`), the alternative is a full node
+     * that re-runs on the original input.
+     *
+     * @example
+     * {{{
+     * val primary  = Node[String, Int](_.toInt)
+     * val fallback = Node[String, Int](_ => 0)
+     * val safe     = primary <|> fallback
+     * safe("7")    // 7
+     * safe("oops") // 0
+     * }}}
+     */
+    def <|>[A1 <: A, BB >: B](right: Node[A1, BB]): Node[A1, BB] =
+      Node.OrElse(this, right)
+
+    /** Error fallback with a Reader-wrapped node. */
+    def <|>[T, A1 <: A, BB >: B](
+      right: Reader[T, Node[A1, BB]]
+    ): Reader[T, Node[A1, BB]] = {
+      val combined = (this.getLineage, right.getLineage) match {
+        case (Some(l1), Some(l2)) => Some(l1.combine(l2))
+        case (Some(l), None)      => Some(l)
+        case (None, Some(l))      => Some(l)
+        case _                    => None
+      }
+      val result = right.map(this <|> _)
+      combined.fold(result)(lin => result.withLineage(lin))
+    }
 
     /**
      * Adds retry capability to any node.
@@ -532,18 +637,24 @@ package object etl4s {
     /**
      * The pipeline as a flat list of leaf stages (name + in/out type names),
      * in execution order.
+     *
+     * For diagrams use `.toMermaid` / `.toDot`, which render this node's internal
+     * stage structure. (On a `Seq` of nodes/readers those same names render the
+     * declared data-lineage graph instead - see [[LineageCollectionOps]].)
      */
     def stages: List[Node.StageInfo] = Node.stages(this)
+  }
 
-    /**
-     * A Mermaid `flowchart LR` of the whole graph
-     */
-    def mermaid: String = Node.mermaid(this)
-
-    /**
-     * A Graphviz `digraph` (DOT) of the whole graph
-     */
-    def dot: String = Node.dot(this)
+  /**
+   * Layout direction for the `toDot` / `toMermaid` structural diagrams.
+   * Maps to Graphviz `rankdir` and Mermaid `flowchart` orientation.
+   */
+  sealed abstract class Direction(val code: String)
+  object Direction {
+    case object LR extends Direction("LR") // left  -> right
+    case object RL extends Direction("RL") // right -> left
+    case object TB extends Direction("TB") // top   -> bottom
+    case object BT extends Direction("BT") // bottom -> top
   }
 
   /** Node companion object with factory methods */
@@ -555,7 +666,7 @@ package object etl4s {
     def apply[A, B](
       func: A => B
     )(implicit name: Name, inN: TypeName[A], outN: TypeName[B]): Node[A, B] =
-      Step(name.value, func, inN, outN)
+      Step(name.value, func, inN, outN, name.fullName)
 
     /**
      * Creates a lazy node that evaluates the value when run (not at construction time).
@@ -591,9 +702,10 @@ package object etl4s {
     def requires[T, A, B](
       f: T => A => B
     )(implicit name: Name, inN: TypeName[A], outN: TypeName[B]): Reader[T, Node[A, B]] = {
-      Reader { config =>
-        Step(name.value, f(config), inN, outN)
-      }
+      Reader(
+        config => Step(name.value, f(config), inN, outN, name.fullName),
+        sourceName = Some(name)
+      )
     }
 
     /** A leaf: an opaque `A => B` with its captured name and type names. */
@@ -601,7 +713,8 @@ package object etl4s {
       name: String,
       run: A => B,
       inN: TypeName[A],
-      outN: TypeName[B]
+      outN: TypeName[B],
+      fullName: String = ""
     ) extends Node[A, B]
 
     /** `a ~> b` : sequential composition. */
@@ -618,7 +731,7 @@ package object etl4s {
     ) extends Node[A, O]
 
     /**
-     * `a ** b` (sequential) / `a **> b` (concurrent) product composition:
+     * `a * b` (sequential) / `a *> b` (concurrent) product composition:
      */
     final case class Prod[A, C, B, D, O](
       left: Node[A, B],
@@ -677,9 +790,21 @@ package object etl4s {
      */
     final case class Cond[A, B, C](
       source: Node[A, B],
-      branches: List[(B => Boolean, Node[B, C])],
+      branches: List[(Predicate[B], Node[B, C])],
       default: Option[Node[B, C]]
     ) extends Node[A, C]
+
+    /**
+     * `l | r` : fan-in. Routes an `Either` input to the matching branch and
+     * merges both to a common output `O` (`Either[LA, RA] => O`).
+     */
+    final case class Fanin[LA, RA, O](
+      left: Node[LA, O],
+      right: Node[RA, O]
+    ) extends Node[Either[LA, RA], O]
+
+    /** `l <|> r` : run `left`; if it raises, run `right` on the same input */
+    final case class OrElse[A, B](left: Node[A, B], right: Node[A, B]) extends Node[A, B]
 
     /** Carries metadata / lineage without disturbing the structural fold */
     final case class Decorated[A, B](
@@ -699,9 +824,9 @@ package object etl4s {
         )
 
     private[etl4s] def interpret[A, B](node: Node[A, B]): A => B = node match {
-      case Step(_, run, _, _) => run
-      case AndThen(x, y)      => interpret(x).andThen(interpret(y))
-      case Par(l, r, _, app)  =>
+      case Step(_, run, _, _, _) => run
+      case AndThen(x, y)         => interpret(x).andThen(interpret(y))
+      case Par(l, r, _, app)     =>
         val lf = interpret(l)
         val rf = interpret(r)
         (a: A) => app(lf(a), rf(a))
@@ -732,8 +857,8 @@ package object etl4s {
       case Mapped(inner, g) => interpret(inner).andThen(g)
       case Tap(inner, g)    =>
         val cf = interpret(inner)
-        // TODO: Scala 2's GADT inference widens `b` to B while `g` keeps the pattern
-        // ... so the cast is ok
+        // Scala 2's GADT inference widens `b` to B while `g` keeps the pattern
+        // type, so the cast is required (and sound) here.
         val gg = g.asInstanceOf[B => Any]
         (a: A) => { val b = cf(a); gg(b); b }
       case Recover(inner, h) =>
@@ -756,12 +881,28 @@ package object etl4s {
       case FlatMap(s, k) =>
         val sf = interpret(s)
         (a: A) => interpret(k(sf(a)))(a)
+      case f: Fanin[la, ra, o] =>
+        val lf = interpret(f.left)
+        val rf = interpret(f.right)
+        (
+          (e: Either[la, ra]) =>
+            e match {
+              case Left(x)  => lf(x)
+              case Right(y) => rf(y)
+            }
+        ).asInstanceOf[A => B]
+      case OrElse(l, r) =>
+        val lf = interpret(l)
+        val rf = interpret(r)
+        (a: A) =>
+          try lf(a)
+          catch { case _: Throwable => rf(a) }
       case Cond(source, branches, default) =>
-        // Scala 2's GADT inference widens the source's output to Any while
-        // the branch fns keep it ... TODO
+        // Scala 2's GADT inference widens the source's output to Any while the
+        // branch fns keep their type...
         val sf  = interpret(source)
         val bfs = branches.map { case (p, n) =>
-          (p.asInstanceOf[Any => Boolean], interpret(n).asInstanceOf[Any => B])
+          (p.f.asInstanceOf[Any => Boolean], interpret(n).asInstanceOf[Any => B])
         }
         val dfO = default.map(n => interpret(n).asInstanceOf[Any => B])
         (a: A) => {
@@ -778,17 +919,17 @@ package object etl4s {
       case Decorated(inner, _, _) => interpret(inner)
     }
 
-    /* Run in an effect D
+    /* Run in an effect F
      * The same reified tree folded into `A => F[B]` for any `F` with a
      * [[Effect]] instance (`Id`/`Future`/`Try` shipped; anything else is one
-     * user `implicit`)...
+     * user `implicit`).
      */
     private[etl4s] def interpretF[F[_], A, B](
       node: Node[A, B]
     )(implicit E: Effect[F]): A => F[B] =
       node match {
-        case Step(_, run, _, _) => (a: A) => E.delay(run(a))
-        case AndThen(x, y)      =>
+        case Step(_, run, _, _, _) => (a: A) => E.delay(run(a))
+        case AndThen(x, y)         =>
           val xf = interpretF[F, Any, Any](x.asInstanceOf[Node[Any, Any]])
           val yf = interpretF[F, Any, Any](y.asInstanceOf[Node[Any, Any]])
           ((a: A) => E.flatMap(xf(a))(yf)).asInstanceOf[A => F[B]]
@@ -814,7 +955,7 @@ package object etl4s {
           val innerF = interpretF[F, a, bb](b.inner)
           val par    = math.max(1, b.parallelism)
 
-          /** Elements within a group run concurrently via `both`... groups
+          /** Elements within a group run concurrently via `both`; groups
             *  sequence via flatMap, which bounds parallelism to `par` for eager effects (e.g. Future)
             */
           def group(fbs: List[F[bb]]): F[List[bb]] = fbs match {
@@ -838,7 +979,7 @@ package object etl4s {
           val conc = v.concurrent
 
           /** Checks in a stage run concurrently via `both` when `conc`, else
-            * sequentially... a stage fails via `delay(throw ...)` (an F-failure)
+            * sequentially; a stage fails via `delay(throw ...)` (an F-failure)
             */
           def collect(fos: List[F[Option[String]]]): F[List[Option[String]]] =
             fos match {
@@ -902,11 +1043,25 @@ package object etl4s {
             E.flatMap(sf(a)) { b =>
               val fn = interpretF[F, A, B](k.asInstanceOf[Any => Node[A, B]](b)); fn(a)
             }
+        case f: Fanin[la, ra, o] =>
+          val lf = interpretF[F, la, o](f.left)
+          val rf = interpretF[F, ra, o](f.right)
+          (
+            (e: Either[la, ra]) =>
+              e match {
+                case Left(x)  => lf(x)
+                case Right(y) => rf(y)
+              }
+          ).asInstanceOf[A => F[B]]
+        case OrElse(l, r) =>
+          val lf = interpretF[F, A, B](l)
+          val rf = interpretF[F, A, B](r)
+          (a: A) => E.handleErrorWith(lf(a))(_ => rf(a))
         case Cond(source, branches, default) =>
           val sf  = interpretF[F, A, Any](source.asInstanceOf[Node[A, Any]])
           val bfs = branches
-            .asInstanceOf[List[(Any => Boolean, Node[Any, B])]]
-            .map { case (p, n) => (p, interpretF[F, Any, B](n)) }
+            .asInstanceOf[List[(Predicate[Any], Node[Any, B])]]
+            .map { case (p, n) => (p.f, interpretF[F, Any, B](n)) }
           val dfO = default.asInstanceOf[Option[Node[Any, B]]].map(n => interpretF[F, Any, B](n))
           (a: A) =>
             E.flatMap(sf(a)) { b =>
@@ -940,14 +1095,17 @@ package object etl4s {
       }
     }
 
-    /** One leaf stage of a pipeline: its name and in/out type names */
-    final case class StageInfo(name: String, in: String, out: String)
+    /**
+     * One leaf stage of a pipeline: its name, in/out type names, and the
+     * fully-qualified path of its binding (empty when uncaptured/synthetic).
+     */
+    final case class StageInfo(name: String, in: String, out: String, fullName: String = "")
 
     /**
-     * Simple interpreter just to inspect pipeline
+     * Flattens the tree to its leaf stages, in execution order.
      */
     def stages(node: Node[_, _]): List[StageInfo] = node match {
-      case Step(name, _, inN, outN)        => List(StageInfo(name, inN.show, outN.show))
+      case Step(name, _, inN, outN, fn)    => List(StageInfo(name, inN.show, outN.show, fn))
       case AndThen(x, y)                   => stages(x) ++ stages(y)
       case Par(l, r, _, _)                 => stages(l) ++ stages(r)
       case Prod(l, r, _, _)                => stages(l) ++ stages(r)
@@ -960,41 +1118,80 @@ package object etl4s {
       case Retry(inner, _, _, _)           => stages(inner)
       case Decorated(inner, _, _)          => stages(inner)
       case FlatMap(s, _)                   => stages(s) :+ StageInfo("<dynamic>", "?", "?")
+      case f: Fanin[_, _, _]               => stages(f.left) ++ stages(f.right)
+      case OrElse(l, r)                    => stages(l) ++ stages(r)
       case Cond(source, branches, default) =>
         stages(source) ++ branches.flatMap(bn => stages(bn._2)) ++ default.toList.flatMap(stages)
     }
 
     /**
-     * Interpreter to render mermaid diagrams
+     * Interpreter to render mermaid diagrams. By default, node boxes show only
+     * the stage name and each edge is labeled with the wire type at that point.
+     * Pass `typesOnNodes = true` to fold the types into the node label instead
+     * (node-label style: `name<br/>In => Out`), or `showTypes = false` to drop them
+     * entirely.
      */
-    def mermaid(node: Node[_, _]): String = {
-      val lines                   = scala.collection.mutable.ArrayBuffer.empty[String]
+    def mermaid(
+      node: Node[_, _],
+      showTypes: Boolean = true,
+      direction: Direction = Direction.LR,
+      typesOnNodes: Boolean = false
+    ): String = {
+      val lines                   = mutable.ArrayBuffer.empty[String]
       var counter                 = 0
       def fresh(): Int            = { val c = counter; counter += 1; c }
       def box(label: String): Int = { val id = fresh(); lines += s"""  n$id["$label"]"""; id }
-      def edge(a: Int, b: Int, dashed: Boolean = false): Unit =
-        lines += (if (dashed) s"  n$a -.-> n$b" else s"  n$a --> n$b")
+      /* marker nodes: split/join dot, the `?` diamond, and the boundary anchor */
+      def junction(): Int = { val id = fresh(); lines += s"""  n$id(( )):::junction"""; id }
+      def decision(): Int = { val id = fresh(); lines += s"""  n$id{"?"}:::decision"""; id }
+      def boundary(): Int = { val id = fresh(); lines += s"""  n$id(( )):::anchor"""; id }
+      /* `If` leaves an identity Step as its source — we route around it */
+      def isSyntheticIdentity(f: Node[_, _]): Boolean = f match {
+        case Step(name, _, inN, outN, fullName) =>
+          name == "input" && fullName.isEmpty && inN.show == outN.show
+        case _ => false
+      }
+      val labelEdges = showTypes && !typesOnNodes
+      def edge(a: Int, b: Int, label: String = "", dashed: Boolean = false): Unit = {
+        val arrow     = if (dashed) "-.->" else "-->"
+        val labelPart = if (label.isEmpty) "" else s"""|"$label"|"""
+        lines += s"  n$a $arrow$labelPart n$b"
+      }
 
-      def go(f: Node[_, _]): (List[Int], List[Int]) = f match {
-        case Step(name, _, inN, outN) =>
-          val id = box(s"$name<br/>${inN.show} &rArr; ${outN.show}")
-          (List(id), List(id))
+      def go(f: Node[_, _]): (List[(Int, String)], List[(Int, String)]) = f match {
+        case Step(name, _, inN, outN, _) =>
+          val label =
+            if (showTypes && typesOnNodes) s"$name<br/>${inN.show} &rArr; ${outN.show}"
+            else name
+          val id = box(label)
+          (List((id, inN.show)), List((id, outN.show)))
         case AndThen(x, y) =>
           val (xin, xout) = go(x)
           val (yin, yout) = go(y)
-          for (a <- xout; b <- yin) edge(a, b)
+          for ((a, t) <- xout; (b, _) <- yin) edge(a, b, if (labelEdges) t else "")
           (xin, yout)
         case Par(l, r, _, _) =>
           val (lin, lout) = go(l)
           val (rin, rout) = go(r)
-          (lin ++ rin, lout ++ rout)
+          val marker      = junction()
+          for ((b, t) <- lin) edge(marker, b, if (labelEdges) t else "")
+          for ((b, t) <- rin) edge(marker, b, if (labelEdges) t else "")
+          val inT = lin.headOption.map(_._2).getOrElse("?")
+          (List((marker, inT)), lout ++ rout)
         case Prod(l, r, _, _) =>
+          /* `*` splits into tuple slots — tag each edge `._1`/`._2` */
           val (lin, lout) = go(l)
           val (rin, rout) = go(r)
-          (lin ++ rin, lout ++ rout)
+          val marker      = junction()
+          for ((b, t) <- lin) edge(marker, b, if (labelEdges) s"._1: $t" else "")
+          for ((b, t) <- rin) edge(marker, b, if (labelEdges) s"._2: $t" else "")
+          val lT = lin.headOption.map(_._2).getOrElse("?")
+          val rT = rin.headOption.map(_._2).getOrElse("?")
+          (List((marker, s"($lT, $rT)")), lout ++ rout)
         case Batch(inner, _, _, _)       => go(inner)
         case Validate(inner, _, _, _, _) => go(inner)
         case Then(x, y)                  =>
+          /* x is a side-effect tap; y is the real continuation */
           val (xin, _)    = go(x)
           val (yin, yout) = go(y)
           (xin ++ yin, yout)
@@ -1006,50 +1203,137 @@ package object etl4s {
         case FlatMap(s, _)          =>
           val (sin, sout) = go(s)
           val dyn         = box("&lt;dynamic&gt;<br/>runtime-decided")
-          for (a <- sout) edge(a, dyn, dashed = true)
-          (sin, List(dyn))
+          for ((a, t) <- sout) edge(a, dyn, if (labelEdges) t else "", dashed = true)
+          (sin, List((dyn, "?")))
+        case f: Fanin[_, _, _] =>
+          /* Either-merge and orElse: only one branch fires, so dash the join */
+          val (lin, lout) = go(f.left)
+          val (rin, rout) = go(f.right)
+          val marker      = junction()
+          for ((a, t) <- lout) edge(a, marker, if (labelEdges) t else "", dashed = true)
+          for ((a, t) <- rout) edge(a, marker, if (labelEdges) t else "", dashed = true)
+          val outT = lout.headOption.map(_._2).getOrElse("?")
+          (lin ++ rin, List((marker, outT)))
+        case OrElse(l, r) =>
+          val (lin, lout) = go(l)
+          val (rin, rout) = go(r)
+          val marker      = junction()
+          for ((a, t) <- lout) edge(a, marker, if (labelEdges) t else "", dashed = true)
+          for ((a, t) <- rout) edge(a, marker, if (labelEdges) t else "", dashed = true)
+          val outT = lout.headOption.map(_._2).getOrElse("?")
+          (lin ++ rin, List((marker, outT)))
         case Cond(source, branches, default) =>
-          val (sin, sout) = go(source)
-          val branchIO    = (branches.map(_._2) ++ default.toList).map(go)
-          for (a <- sout; (bin, _) <- branchIO; b <- bin) edge(a, b, dashed = true)
+          /* source routes through the `?` diamond to one branch; no default passes through */
+          val branchIO          = (branches.map(_._2) ++ default.toList).map(go)
+          val marker            = decision()
+          val (sinExpose, srcT) =
+            if (isSyntheticIdentity(source)) {
+              val t = source match {
+                case Step(_, _, inN, _, _) => inN.show
+                case _                     => "?"
+              }
+              (List((marker, t)), t)
+            } else {
+              val (sin, sout) = go(source)
+              for ((a, t) <- sout) edge(a, marker, if (labelEdges) t else "")
+              (sin, sout.headOption.map(_._2).getOrElse("?"))
+            }
+          val branchLabels = branches.zipWithIndex.map { case ((p, _), i) =>
+            if (p.source.nonEmpty) p.source else s"#${i + 1}"
+          } ++ default.toList.map(_ => "else")
+          for (((bin, _), label) <- branchIO.zip(branchLabels); (b, _) <- bin)
+            edge(marker, b, if (labelEdges) label else "", dashed = true)
           val branchOuts  = branchIO.flatMap(_._2)
-          val passthrough = if (default.isEmpty) sout else Nil
-          (sin, branchOuts ++ passthrough)
+          val passthrough = if (default.isEmpty) List((marker, srcT)) else Nil
+          (sinExpose, branchOuts ++ passthrough)
       }
-      go(node)
-      ("flowchart LR" +: lines.toList).mkString("\n")
+      val (rootIn, rootOut) = go(node)
+      if (labelEdges) {
+        /* anchors carry the outer pipeline's in/out types */
+        for ((b, t) <- rootIn) { val src = boundary(); edge(src, b, t) }
+        for ((a, t) <- rootOut) { val sink = boundary(); edge(a, sink, t) }
+      }
+      lines += "  classDef junction fill:#000,stroke:#000"
+      lines += "  classDef decision fill:#fff,stroke:#000,stroke-width:1px,font-size:10px"
+      lines += "  classDef anchor fill:#000,stroke:#000"
+      (s"flowchart ${direction.code}" +: lines.toList).mkString("\n")
     }
 
     /**
-      * Interpreter to render Graphviz DOT diagrams
-      */
-    def dot(node: Node[_, _]): String = {
-      val lines                   = scala.collection.mutable.ArrayBuffer.empty[String]
+     * Interpreter to render Graphviz DOT diagrams. Same defaults as `mermaid`:
+     * node labels carry only the stage name; edges carry the wire type.
+     */
+    def dot(
+      node: Node[_, _],
+      showTypes: Boolean = true,
+      direction: Direction = Direction.LR,
+      typesOnNodes: Boolean = false
+    ): String = {
+      val lines                   = mutable.ArrayBuffer.empty[String]
       var counter                 = 0
       def fresh(): Int            = { val c = counter; counter += 1; c }
       def box(label: String): Int = {
         val id = fresh(); lines += s"""  n$id [label="$label"];"""; id
       }
-      def edge(a: Int, b: Int, dashed: Boolean = false): Unit =
-        lines += (if (dashed) s"  n$a -> n$b [style=dashed];" else s"  n$a -> n$b;")
+      def junction(): Int = {
+        val id = fresh()
+        lines += s"""  n$id [shape=point, width=0.12];"""
+        id
+      }
+      def decision(): Int = {
+        val id = fresh()
+        lines += s"""  n$id [shape=diamond, label="?", width=0.3, height=0.3, fixedsize=true, fontsize=10];"""
+        id
+      }
+      def boundary(): Int = {
+        val id = fresh()
+        lines += s"  n$id [shape=point, width=0.08];"
+        id
+      }
+      def isSyntheticIdentity(f: Node[_, _]): Boolean = f match {
+        case Step(name, _, inN, outN, fullName) =>
+          name == "input" && fullName.isEmpty && inN.show == outN.show
+        case _ => false
+      }
+      val labelEdges = showTypes && !typesOnNodes
+      def edge(a: Int, b: Int, label: String = "", dashed: Boolean = false): Unit = {
+        val attrs = List(
+          if (dashed) Some("style=dashed") else None,
+          if (label.nonEmpty) Some(s"""label="$label"""") else None
+        ).flatten
+        val suffix = if (attrs.isEmpty) "" else s" [${attrs.mkString(", ")}]"
+        lines += s"  n$a -> n$b$suffix;"
+      }
 
-      def go(f: Node[_, _]): (List[Int], List[Int]) = f match {
-        case Step(name, _, inN, outN) =>
-          val id = box(s"$name\\n${inN.show} => ${outN.show}")
-          (List(id), List(id))
+      def go(f: Node[_, _]): (List[(Int, String)], List[(Int, String)]) = f match {
+        case Step(name, _, inN, outN, _) =>
+          val label =
+            if (showTypes && typesOnNodes) s"$name\\n${inN.show} => ${outN.show}"
+            else name
+          val id = box(label)
+          (List((id, inN.show)), List((id, outN.show)))
         case AndThen(x, y) =>
           val (xin, xout) = go(x)
           val (yin, yout) = go(y)
-          for (a <- xout; b <- yin) edge(a, b)
+          for ((a, t) <- xout; (b, _) <- yin) edge(a, b, if (labelEdges) t else "")
           (xin, yout)
         case Par(l, r, _, _) =>
           val (lin, lout) = go(l)
           val (rin, rout) = go(r)
-          (lin ++ rin, lout ++ rout)
+          val marker      = junction()
+          for ((b, t) <- lin) edge(marker, b, if (labelEdges) t else "")
+          for ((b, t) <- rin) edge(marker, b, if (labelEdges) t else "")
+          val inT = lin.headOption.map(_._2).getOrElse("?")
+          (List((marker, inT)), lout ++ rout)
         case Prod(l, r, _, _) =>
           val (lin, lout) = go(l)
           val (rin, rout) = go(r)
-          (lin ++ rin, lout ++ rout)
+          val marker      = junction()
+          for ((b, t) <- lin) edge(marker, b, if (labelEdges) s"._1: $t" else "")
+          for ((b, t) <- rin) edge(marker, b, if (labelEdges) s"._2: $t" else "")
+          val lT = lin.headOption.map(_._2).getOrElse("?")
+          val rT = rin.headOption.map(_._2).getOrElse("?")
+          (List((marker, s"($lT, $rT)")), lout ++ rout)
         case Batch(inner, _, _, _)       => go(inner)
         case Validate(inner, _, _, _, _) => go(inner)
         case Then(x, y)                  =>
@@ -1064,18 +1348,250 @@ package object etl4s {
         case FlatMap(s, _)          =>
           val (sin, sout) = go(s)
           val dyn         = box("<dynamic>\\nruntime-decided")
-          for (a <- sout) edge(a, dyn, dashed = true)
-          (sin, List(dyn))
+          for ((a, t) <- sout) edge(a, dyn, if (labelEdges) t else "", dashed = true)
+          (sin, List((dyn, "?")))
+        case f: Fanin[_, _, _] =>
+          val (lin, lout) = go(f.left)
+          val (rin, rout) = go(f.right)
+          val marker      = junction()
+          for ((a, t) <- lout) edge(a, marker, if (labelEdges) t else "", dashed = true)
+          for ((a, t) <- rout) edge(a, marker, if (labelEdges) t else "", dashed = true)
+          val outT = lout.headOption.map(_._2).getOrElse("?")
+          (lin ++ rin, List((marker, outT)))
+        case OrElse(l, r) =>
+          val (lin, lout) = go(l)
+          val (rin, rout) = go(r)
+          val marker      = junction()
+          for ((a, t) <- lout) edge(a, marker, if (labelEdges) t else "", dashed = true)
+          for ((a, t) <- rout) edge(a, marker, if (labelEdges) t else "", dashed = true)
+          val outT = lout.headOption.map(_._2).getOrElse("?")
+          (lin ++ rin, List((marker, outT)))
         case Cond(source, branches, default) =>
-          val (sin, sout) = go(source)
-          val branchIO    = (branches.map(_._2) ++ default.toList).map(go)
-          for (a <- sout; (bin, _) <- branchIO; b <- bin) edge(a, b, dashed = true)
+          val branchIO          = (branches.map(_._2) ++ default.toList).map(go)
+          val marker            = decision()
+          val (sinExpose, srcT) =
+            if (isSyntheticIdentity(source)) {
+              val t = source match {
+                case Step(_, _, inN, _, _) => inN.show
+                case _                     => "?"
+              }
+              (List((marker, t)), t)
+            } else {
+              val (sin, sout) = go(source)
+              for ((a, t) <- sout) edge(a, marker, if (labelEdges) t else "")
+              (sin, sout.headOption.map(_._2).getOrElse("?"))
+            }
+          val branchLabels = branches.zipWithIndex.map { case ((p, _), i) =>
+            if (p.source.nonEmpty) p.source else s"#${i + 1}"
+          } ++ default.toList.map(_ => "else")
+          for (((bin, _), label) <- branchIO.zip(branchLabels); (b, _) <- bin)
+            edge(marker, b, if (labelEdges) label else "", dashed = true)
           val branchOuts  = branchIO.flatMap(_._2)
-          val passthrough = if (default.isEmpty) sout else Nil
-          (sin, branchOuts ++ passthrough)
+          val passthrough = if (default.isEmpty) List((marker, srcT)) else Nil
+          (sinExpose, branchOuts ++ passthrough)
       }
-      go(node)
-      ("digraph G {\n  rankdir=LR;" +: lines.toList).mkString("\n") + "\n}"
+      val (rootIn, rootOut) = go(node)
+      if (labelEdges) {
+        for ((b, t) <- rootIn) { val src = boundary(); edge(src, b, t) }
+        for ((a, t) <- rootOut) { val sink = boundary(); edge(a, sink, t) }
+      }
+      (s"digraph G {\n  rankdir=${direction.code};" +: lines.toList).mkString("\n") + "\n}"
+    }
+
+    /**
+     * Graphviz DOT with fan-outs (`&`/`*`), conditionals (`?`) and joins drawn
+     * as dashed `subgraph cluster_*` boxes instead of marker nodes. Edges clip
+     * to the cluster boundary via `compound=true` + `lhead`/`ltail`, so the
+     * grouping reads as one gesture. Branch predicates ride the node label
+     * (`price (else)`); wire types ride the edge.
+     */
+    def dotClustered(
+      node: Node[_, _],
+      showTypes: Boolean = true,
+      direction: Direction = Direction.LR
+    ): String = {
+      /* label overrides the inbound edge text; product marks one slot of a
+         `&`/`*` tuple; shared marks a broadcast input */
+      final case class Port(
+        id: Int,
+        tpe: String,
+        dashed: Boolean = false,
+        label: Option[String] = None,
+        product: Boolean = false,
+        shared: Boolean = false
+      )
+
+      val nodeLabel               = mutable.LinkedHashMap.empty[Int, String]
+      val nodeGroup               = mutable.Map.empty[Int, Int]
+      val groups                  = mutable.LinkedHashMap.empty[Int, String]
+      val edges                   = mutable.ArrayBuffer.empty[(Int, Int, String, Boolean)]
+      val boundaries              = mutable.ArrayBuffer.empty[Int]
+      var counter                 = 0
+      var groupSeq                = 0
+      def fresh(): Int            = { val c = counter; counter += 1; c }
+      def box(label: String): Int = { val id = fresh(); nodeLabel(id) = label; id }
+      def boundary(): Int         = { val id = fresh(); boundaries += id; id }
+      /* claim nodes [from, until) into a fresh dashed cluster; innermost wins */
+      def group(symbol: String, from: Int, until: Int): Int = {
+        val g = groupSeq
+        groupSeq += 1
+        groups(g) = symbol
+        (from until until).foreach(id => if (!nodeGroup.contains(id)) nodeGroup(id) = g)
+        g
+      }
+      val labelEdges                                                     = showTypes
+      def emitEdge(a: Int, b: Int, label: String, dashed: Boolean): Unit =
+        edges += ((a, b, if (labelEdges) label else "", dashed))
+
+      def isSyntheticIdentity(f: Node[_, _]): Boolean = f match {
+        case Step(name, _, inN, outN, fullName) =>
+          name == "input" && fullName.isEmpty && inN.show == outN.show
+        case _ => false
+      }
+
+      def go(f: Node[_, _]): (List[Port], List[Port]) = f match {
+        case Step(name, _, inN, outN, _) =>
+          val id = box(name)
+          (List(Port(id, inN.show)), List(Port(id, outN.show)))
+        case AndThen(x, y) =>
+          val (xin, xout) = go(x)
+          val (yin, yout) = go(y)
+          /* product slots converging on one consumer: tag `._1`/`._2` */
+          if (xout.size > 1 && xout.forall(_.product))
+            for ((a, i) <- xout.zipWithIndex; b <- yin)
+              emitEdge(a.id, b.id, s"._${i + 1}: ${a.tpe}", a.dashed || b.dashed)
+          /* alternatives (`|`/`orElse`/`?`) yield one value — funnel through a
+             merge point rather than draw an N×M mesh */
+          else if (xout.size > 1 && yin.size > 1 && xout.forall(p => p.dashed && !p.product)) {
+            val merge = boundary()
+            for (a <- xout) emitEdge(a.id, merge, a.tpe, dashed = true)
+            for (b <- yin) emitEdge(merge, b.id, b.label.getOrElse(xout.head.tpe), dashed = true)
+          } else
+            for (a <- xout; b <- yin)
+              emitEdge(a.id, b.id, b.label.getOrElse(a.tpe), a.dashed || b.dashed)
+          (xin, yout)
+        case Par(l, r, concurrent, _) =>
+          /* `&`/`&>`: one input broadcast to every branch; outputs are tuple slots */
+          val start       = counter
+          val (lin, lout) = go(l)
+          val (rin, rout) = go(r)
+          group(if (concurrent) "&>" else "&", start, counter)
+          ((lin ++ rin).map(_.copy(shared = true)), (lout ++ rout).map(_.copy(product = true)))
+        case Prod(l, r, concurrent, _) =>
+          /* `*`/`*>`: tag edges `._1`/`._2`; outputs are tuple slots */
+          val start       = counter
+          val (lin, lout) = go(l)
+          val (rin, rout) = go(r)
+          group(if (concurrent) "*>" else "*", start, counter)
+          (
+            lin.map(p => p.copy(label = Some(s"._1: ${p.tpe}"))) ++
+              rin.map(p => p.copy(label = Some(s"._2: ${p.tpe}"))),
+            (lout ++ rout).map(_.copy(product = true))
+          )
+        case Batch(inner, _, _, _)       => go(inner)
+        case Validate(inner, _, _, _, _) => go(inner)
+        case Then(x, y)                  =>
+          val (xin, _)    = go(x)
+          val (yin, yout) = go(y)
+          (xin ++ yin, yout)
+        case Mapped(inner, _)       => go(inner)
+        case Tap(inner, _)          => go(inner)
+        case Recover(inner, _)      => go(inner)
+        case Retry(inner, _, _, _)  => go(inner)
+        case Decorated(inner, _, _) => go(inner)
+        case FlatMap(s, _)          =>
+          val (sin, sout) = go(s)
+          val dyn         = box("<dynamic>\\nruntime-decided")
+          for (a <- sout) emitEdge(a.id, dyn, a.tpe, dashed = true)
+          (sin, List(Port(dyn, "?")))
+        case f: Fanin[_, _, _] =>
+          /* Either-merge: only one branch fires, so dash inputs and outputs */
+          val start       = counter
+          val (lin, lout) = go(f.left)
+          val (rin, rout) = go(f.right)
+          group("|", start, counter)
+          ((lin ++ rin).map(_.copy(dashed = true)), (lout ++ rout).map(_.copy(dashed = true)))
+        case OrElse(l, r) =>
+          /* `<|>` runs both on the same input; the fallback fires only on failure */
+          val start       = counter
+          val (lin, lout) = go(l)
+          val (rin, rout) = go(r)
+          group("orElse", start, counter)
+          (
+            lin.map(_.copy(shared = true)) ++ rin.map(_.copy(shared = true, dashed = true)),
+            (lout ++ rout).map(_.copy(dashed = true))
+          )
+        case Cond(source, branches, default) =>
+          /* branches sit in a `?` cluster fed by the source; labels ride the
+             entry node, default is `else`, and only one branch fires */
+          val start    = counter
+          val branchIO = (branches.map(_._2) ++ default.toList).map(go)
+          group("?", start, counter)
+          val branchLabels = branches.zipWithIndex.map { case ((p, _), i) =>
+            if (p.source.nonEmpty) p.source else s"#${i + 1}"
+          } ++ default.toList.map(_ => "else")
+          for (((bin, _), lbl) <- branchIO.zip(branchLabels); b <- bin)
+            nodeLabel.get(b.id).foreach(cur => nodeLabel(b.id) = s"$cur ($lbl)")
+          if (isSyntheticIdentity(source)) {
+            val t = source match {
+              case Step(_, _, inN, _, _) => inN.show
+              case _                     => "?"
+            }
+            (
+              branchIO.flatMap(_._1).map(_.copy(tpe = t, dashed = true)),
+              branchIO.flatMap(_._2).map(_.copy(dashed = true))
+            )
+          } else {
+            val (sin, sout) = go(source)
+            for (a <- sout; bi <- branchIO; b <- bi._1)
+              emitEdge(a.id, b.id, a.tpe, dashed = true)
+            val passthrough = if (default.isEmpty) sout else Nil
+            (sin, (branchIO.flatMap(_._2) ++ passthrough).map(_.copy(dashed = true)))
+          }
+      }
+
+      val (rootIn, rootOut) = go(node)
+      if (labelEdges) {
+        /* anchors carry the outer in/out types; broadcast blocks
+           (`&`/`&>`/orElse) share one anchor per distinct input */
+        val (sharedIn, distinctIn) = rootIn.partition(_.shared)
+        val sharedGroups           =
+          mutable.LinkedHashMap.empty[(Option[String], String), mutable.ArrayBuffer[Port]]
+        for (b <- sharedIn)
+          sharedGroups.getOrElseUpdate((b.label, b.tpe), mutable.ArrayBuffer.empty) += b
+        for ((_, grp) <- sharedGroups) {
+          val src = boundary()
+          for (b <- grp) emitEdge(src, b.id, b.label.getOrElse(b.tpe), b.dashed)
+        }
+        for (b <- distinctIn) {
+          val src = boundary(); emitEdge(src, b.id, b.label.getOrElse(b.tpe), b.dashed)
+        }
+        for (a <- rootOut) { val sink = boundary(); emitEdge(a.id, sink, a.tpe, a.dashed) }
+      }
+
+      val out = mutable.ArrayBuffer.empty[String]
+      out += "digraph G {"
+      out += s"  rankdir=${direction.code};"
+      for (id <- boundaries) out += s"  n$id [shape=point, width=0.08];"
+      for ((id, label) <- nodeLabel if !nodeGroup.contains(id))
+        out += s"""  n$id [label="$label"];"""
+      for ((g, symbol) <- groups) {
+        out += s"  subgraph cluster_$g {"
+        out += s"""    label="$symbol"; style=dashed; color=gray60;"""
+        for ((id, label) <- nodeLabel if nodeGroup.get(id).contains(g))
+          out += s"""    n$id [label="$label"];"""
+        out += "  }"
+      }
+      for ((a, b, label, dashed) <- edges) {
+        val attrs = List(
+          if (label.nonEmpty) Some(s"""label="$label"""") else None,
+          if (dashed) Some("style=dashed") else None
+        ).flatten
+        val suffix = if (attrs.isEmpty) "" else s" [${attrs.mkString(", ")}]"
+        out += s"  n$a -> n$b$suffix;"
+      }
+      out += "}"
+      out.mkString("\n")
     }
   }
 
@@ -1206,7 +1722,7 @@ package object etl4s {
 
   /**
    * Makes an existing node depend on some configuration type `T`, reusing its
-   * `A => B` shape...
+   * `A => B` shape.
    *
    * @example
    * {{{
@@ -1220,13 +1736,16 @@ package object etl4s {
     def requires[T](
       f: T => A => B
     )(implicit name: Name, inN: TypeName[A], outN: TypeName[B]): Reader[T, Node[A, B]] =
-      Reader(config => Node.Step(name.value, f(config), inN, outN))
+      Reader(
+        config => Node.Step(name.value, f(config), inN, outN, name.fullName),
+        sourceName = Some(name)
+      )
   }
 
   /**
    * Compiles the pure pipeline into the effect `F`, returning a [[Node.Runner]] whose
    * `unsafeRun` folds the graph into that `F`: `pipeline.compile[Future].unsafeRun(x)`
-   * yields `Future[B]`, `compile[Try].unsafeRun(x)` a `Try[B]` ... etc etc
+   * yields `Future[B]`, and `compile[Try].unsafeRun(x)` a `Try[B]`.
    */
   implicit class NodeRunFOps[A, B](val node: Node[A, B]) {
     def compile[F[_]](implicit E: Effect[F]): Node.Runner[A, B, F] =
@@ -1319,10 +1838,28 @@ package object etl4s {
    * @param run the function that computes A given environment R
    * @param metadata optional metadata that can be attached at compile time
    */
-  case class Reader[R, +A](run: R => A, metadata: Any = None, getLineage: Option[Lineage] = None) {
-    def map[B](f: A => B): Reader[R, B] = Reader(r => f(run(r)), metadata, getLineage)
+  case class Reader[R, +A](
+    run: R => A,
+    metadata: Any = None,
+    getLineage: Option[Lineage] = None,
+    sourceName: Option[Name] = None
+  ) {
+    def map[B](f: A => B): Reader[R, B] = Reader(r => f(run(r)), metadata, getLineage, sourceName)
     def flatMap[B](f: A => Reader[R, B]): Reader[R, B] =
-      Reader(r => f(run(r)).run(r), metadata, getLineage)
+      Reader(r => f(run(r)).run(r), metadata, getLineage, sourceName)
+
+    /**
+     * The short binding name captured for this Reader (e.g. from `Node.requires`
+     * / `Reader.Extract`), if any.
+     */
+    def getName: Option[String] = sourceName.map(_.value)
+
+    /**
+     * The fully-qualified path of this Reader's binding (enclosing
+     * package/object/class chain), captured at compile time, if any.
+     */
+    def getFullName: Option[String] =
+      sourceName.map(_.fullName).filter(_.nonEmpty)
     def provideContext(ctx: R): A = run(ctx)
     def provide(ctx: R): A        = run(ctx)
 
@@ -1385,9 +1922,9 @@ package object etl4s {
    * HasMetadata instances for Node and Reader.
    */
   object HasMetadata {
-    // Basically just type lambda syntax: ({type L[X] = SomeType})#L creates a type constructor
-    // from multi-parameter types to work with single-parameter typeclasses like HasMetadata[F[_]]
-    // ... to keep the cross builds between 2.12, 2.13 and 3.x simple for now
+    // Type-lambda syntax: `({ type L[X] = SomeType })#L` builds a type constructor
+    // from a multi-parameter type so it fits a single-parameter typeclass like
+    // `HasMetadata[F[_]]`, keeping the 2.12/2.13/3.x cross builds simple.
     implicit def nodeHasMetadata[A, B]: HasMetadata[({ type L[X] = Node[A, B] })#L] =
       new HasMetadata[({ type L[X] = Node[A, B] })#L] {
         def metadata[X](fa: Node[A, B]): Any                       = fa.metadata
@@ -1600,6 +2137,144 @@ package object etl4s {
     }
 
     /**
+      *  |: Reader(Node) | {Reader(Node) | Reader(Node) compat | Node}
+      * Fan-in: routes an `Either` input to whichever branch matches, merging to a common output.
+      */
+    def |[C](fb: Reader[T1, Node[C, B]]): Reader[T1, Node[Either[A, C], B]] = {
+      val combined = (fa.getLineage, fb.getLineage) match {
+        case (Some(l1), Some(l2)) => Some(l1.combine(l2))
+        case (Some(l), None)      => Some(l)
+        case (None, Some(l))      => Some(l)
+        case _                    => None
+      }
+      val result = for {
+        nodeA <- fa
+        nodeB <- fb
+      } yield nodeA | nodeB
+      combined.fold(result)(lin => result.withLineage(lin))
+    }
+
+    def |[T2, C, R](fb: Reader[T2, Node[C, B]])(implicit
+      compat: ReaderCompat[T1, T2, R]
+    ): Reader[R, Node[Either[A, C], B]] = {
+      val combined = (fa.getLineage, fb.getLineage) match {
+        case (Some(l1), Some(l2)) => Some(l1.combine(l2))
+        case (Some(l), None)      => Some(l)
+        case (None, Some(l))      => Some(l)
+        case _                    => None
+      }
+      val result = Reader[R, Node[Either[A, C], B]] { (env: R) =>
+        val nodeA = fa.run(compat.toT1(env))
+        val nodeB = fb.run(compat.toT2(env))
+        nodeA | nodeB
+      }
+      combined.fold(result)(lin => result.withLineage(lin))
+    }
+
+    def |[C](node: Node[C, B]): Reader[T1, Node[Either[A, C], B]] = {
+      val combined = (fa.getLineage, node.getLineage) match {
+        case (Some(l1), Some(l2)) => Some(l1.combine(l2))
+        case (Some(l), None)      => Some(l)
+        case (None, Some(l))      => Some(l)
+        case _                    => None
+      }
+      val result = fa.map(readerNode => readerNode | node)
+      combined.fold(result)(lin => result.withLineage(lin))
+    }
+
+    /**
+      *  +: Reader(Node) + {Reader(Node) | Reader(Node) compat | Node}
+      * Choice: routes an `Either` input through independent branches, keeping the `Either` on output.
+      */
+    def +[C, D](fb: Reader[T1, Node[C, D]]): Reader[T1, Node[Either[A, C], Either[B, D]]] = {
+      val combined = (fa.getLineage, fb.getLineage) match {
+        case (Some(l1), Some(l2)) => Some(l1.combine(l2))
+        case (Some(l), None)      => Some(l)
+        case (None, Some(l))      => Some(l)
+        case _                    => None
+      }
+      val result = for {
+        nodeA <- fa
+        nodeB <- fb
+      } yield nodeA + nodeB
+      combined.fold(result)(lin => result.withLineage(lin))
+    }
+
+    def +[T2, C, D, R](fb: Reader[T2, Node[C, D]])(implicit
+      compat: ReaderCompat[T1, T2, R]
+    ): Reader[R, Node[Either[A, C], Either[B, D]]] = {
+      val combined = (fa.getLineage, fb.getLineage) match {
+        case (Some(l1), Some(l2)) => Some(l1.combine(l2))
+        case (Some(l), None)      => Some(l)
+        case (None, Some(l))      => Some(l)
+        case _                    => None
+      }
+      val result = Reader[R, Node[Either[A, C], Either[B, D]]] { (env: R) =>
+        val nodeA = fa.run(compat.toT1(env))
+        val nodeB = fb.run(compat.toT2(env))
+        nodeA + nodeB
+      }
+      combined.fold(result)(lin => result.withLineage(lin))
+    }
+
+    def +[C, D](node: Node[C, D]): Reader[T1, Node[Either[A, C], Either[B, D]]] = {
+      val combined = (fa.getLineage, node.getLineage) match {
+        case (Some(l1), Some(l2)) => Some(l1.combine(l2))
+        case (Some(l), None)      => Some(l)
+        case (None, Some(l))      => Some(l)
+        case _                    => None
+      }
+      val result = fa.map(readerNode => readerNode + node)
+      combined.fold(result)(lin => result.withLineage(lin))
+    }
+
+    /**
+      *  <|>: Reader(Node) <|> {Reader(Node) | Reader(Node) compat | Node}
+      * Error fallback: runs the left node; on any throwable runs the right node on the original input.
+      */
+    def <|>(fb: Reader[T1, Node[A, B]]): Reader[T1, Node[A, B]] = {
+      val combined = (fa.getLineage, fb.getLineage) match {
+        case (Some(l1), Some(l2)) => Some(l1.combine(l2))
+        case (Some(l), None)      => Some(l)
+        case (None, Some(l))      => Some(l)
+        case _                    => None
+      }
+      val result = for {
+        nodeA <- fa
+        nodeB <- fb
+      } yield nodeA <|> nodeB
+      combined.fold(result)(lin => result.withLineage(lin))
+    }
+
+    def <|>[T2, R](fb: Reader[T2, Node[A, B]])(implicit
+      compat: ReaderCompat[T1, T2, R]
+    ): Reader[R, Node[A, B]] = {
+      val combined = (fa.getLineage, fb.getLineage) match {
+        case (Some(l1), Some(l2)) => Some(l1.combine(l2))
+        case (Some(l), None)      => Some(l)
+        case (None, Some(l))      => Some(l)
+        case _                    => None
+      }
+      val result = Reader[R, Node[A, B]] { (env: R) =>
+        val nodeA = fa.run(compat.toT1(env))
+        val nodeB = fb.run(compat.toT2(env))
+        nodeA <|> nodeB
+      }
+      combined.fold(result)(lin => result.withLineage(lin))
+    }
+
+    def <|>(node: Node[A, B]): Reader[T1, Node[A, B]] = {
+      val combined = (fa.getLineage, node.getLineage) match {
+        case (Some(l1), Some(l2)) => Some(l1.combine(l2))
+        case (Some(l), None)      => Some(l)
+        case (None, Some(l))      => Some(l)
+        case _                    => None
+      }
+      val result = fa.map(readerNode => readerNode <|> node)
+      combined.fold(result)(lin => result.withLineage(lin))
+    }
+
+    /**
      * Tap operation for Reader-wrapped nodes with access to context.
      *
      * Allows peeking at both the context and result of a context-dependent node.
@@ -1630,8 +2305,6 @@ package object etl4s {
      */
     private def skeleton: Node[A, B] = fa.run(null.asInstanceOf[T1])
     def stages: List[Node.StageInfo] = skeleton.stages
-    def mermaid: String              = skeleton.mermaid
-    def dot: String                  = skeleton.dot
 
   }
 
@@ -1653,22 +2326,6 @@ package object etl4s {
    * tap utility function availble for infix use
    */
   def tap[A](f: A => Any): Node[A, A] = Node[A, A](a => { f(a); a })
-
-  /**
-   * Implicit conversion from Function1 to Node.
-   * 
-   * This allows you to use plain functions directly as Nodes without wrapping.
-   * 
-   * @example
-   * {{{
-   * val length: String => Int = _.length
-   * val upper: String => String = _.toUpperCase
-   * 
-   * // Can use directly without Node(...)
-   * val pipeline = length ~> upper
-   * }}}
-   */
-  implicit def function1ToNode[A, B](f: A => B): Node[A, B] = Node(f)
 
   /**
    * Implicit conversions for validation checks
@@ -1983,7 +2640,7 @@ package object etl4s {
   trait Context[T] {
 
     /**
-     * Provides natural access to context-wrapped operations...
+     * Provides natural access to context-wrapped operations.
      * Use as: `Context.Extract[A, B] { ctx => in => out }`
      */
     object Context {
@@ -2014,7 +2671,7 @@ package object etl4s {
 
       def tap[A](f: T => A => Any)(implicit name: Name, tn: TypeName[A]): Reader[T, Node[A, A]] =
         Reader { ctx =>
-          etl4s.Node.Step[A, A](name.value, { a => f(ctx)(a); a }, tn, tn)
+          etl4s.Node.Step[A, A](name.value, { a => f(ctx)(a); a }, tn, tn, name.fullName)
         }
 
       /**
@@ -2027,7 +2684,7 @@ package object etl4s {
       ): ReaderPartialConditionalBuilder[T, A, A, C] =
         ReaderPartialConditionalBuilder(
           Reader.pure(etl4s.Node.identity[A](Name("input"), tn)),
-          List(((t: T) => (_: A) => condition(t), branchLift.lift(branch)))
+          List(((t: T) => Predicate((_: A) => condition(t)), branchLift.lift(branch)))
         )
     }
   }
@@ -2042,15 +2699,23 @@ package object etl4s {
   }
 
   object LineageRenderer {
-    private def singleItemRenderer[T]: LineageRenderer[T] = new LineageRenderer[T] {
-      def toJson(t: T): String    = new LineageCollectionOps(Seq(t)).toJson
-      def toDot(t: T): String     = new LineageCollectionOps(Seq(t)).toDot
-      def toMermaid(t: T): String = new LineageCollectionOps(Seq(t)).toMermaid
-    }
+    // A single node/reader renders its *structural* graph (stages + in/out
+    // types); `.toJson` still emits the lineage metadata. A `Seq` of them
+    // renders the declared *data-lineage* graph (see seqRenderer).
+    implicit def nodeRenderer[A, B]: LineageRenderer[Node[A, B]] =
+      new LineageRenderer[Node[A, B]] {
+        def toJson(t: Node[A, B]): String    = new LineageCollectionOps(Seq(t)).toJson
+        def toDot(t: Node[A, B]): String     = Node.dot(t)
+        def toMermaid(t: Node[A, B]): String = Node.mermaid(t)
+      }
 
-    implicit def nodeRenderer[A, B]: LineageRenderer[Node[A, B]] = singleItemRenderer[Node[A, B]]
-    implicit def readerRenderer[R, A]: LineageRenderer[Reader[R, A]] =
-      singleItemRenderer[Reader[R, A]]
+    implicit def readerRenderer[R, A, B]: LineageRenderer[Reader[R, Node[A, B]]] =
+      new LineageRenderer[Reader[R, Node[A, B]]] {
+        def toJson(t: Reader[R, Node[A, B]]): String    = new LineageCollectionOps(Seq(t)).toJson
+        def toDot(t: Reader[R, Node[A, B]]): String     = Node.dot(t.run(null.asInstanceOf[R]))
+        def toMermaid(t: Reader[R, Node[A, B]]): String =
+          Node.mermaid(t.run(null.asInstanceOf[R]))
+      }
 
     implicit def seqRenderer[T]: LineageRenderer[Seq[T]] = new LineageRenderer[Seq[T]] {
       def toJson(items: Seq[T]): String    = new LineageCollectionOps(items).toJson
@@ -2062,10 +2727,60 @@ package object etl4s {
   /**
    * Extension methods for lineage rendering using typeclass.
    */
+  /**
+   * Renders the *structural* graph of a single `Node` or `Reader`, with options.
+   */
+  trait StructuralRenderer[T] {
+    def node(t: T): Node[_, _]
+  }
+  object StructuralRenderer {
+    implicit def nodeStructural[A, B]: StructuralRenderer[Node[A, B]] =
+      new StructuralRenderer[Node[A, B]] {
+        def node(t: Node[A, B]): Node[_, _] = t
+      }
+    implicit def readerStructural[R, A, B]: StructuralRenderer[Reader[R, Node[A, B]]] =
+      new StructuralRenderer[Reader[R, Node[A, B]]] {
+        def node(t: Reader[R, Node[A, B]]): Node[_, _] = t.run(null.asInstanceOf[R])
+      }
+  }
+
+  /**
+   * Extension methods for lineage/structural rendering.
+   *
+   * The no-arg `toDot` / `toMermaid` render with defaults: types on the arrows,
+   * one wire type per edge (structural for a single `Node`/`Reader`, lineage
+   * for a `Seq`). The overloads on a single `Node`/`Reader` take options: pass
+   * `showTypes = false` to drop the signatures, `typesOnNodes = true` for the
+   * older `name<br/>In => Out` node-label style, or `direction`
+   * (`Direction.LR` / `RL` / `TB` / `BT`).
+   */
   implicit class LineageOps[T](val t: T)(implicit renderer: LineageRenderer[T]) {
     def toJson: String    = renderer.toJson(t)
     def toDot: String     = renderer.toDot(t)
     def toMermaid: String = renderer.toMermaid(t)
+
+    def toDot(
+      showTypes: Boolean = true,
+      direction: Direction = Direction.LR,
+      typesOnNodes: Boolean = false
+    )(implicit sr: StructuralRenderer[T]): String =
+      Node.dot(sr.node(t), showTypes, direction, typesOnNodes)
+
+    def toMermaid(
+      showTypes: Boolean = true,
+      direction: Direction = Direction.LR,
+      typesOnNodes: Boolean = false
+    )(implicit sr: StructuralRenderer[T]): String =
+      Node.mermaid(sr.node(t), showTypes, direction, typesOnNodes)
+
+    /** DOT with fan-outs / conditionals / joins drawn as dashed clusters. */
+    def toDotClustered(implicit sr: StructuralRenderer[T]): String =
+      Node.dotClustered(sr.node(t), true, Direction.LR)
+    def toDotClustered(
+      showTypes: Boolean = true,
+      direction: Direction = Direction.LR
+    )(implicit sr: StructuralRenderer[T]): String =
+      Node.dotClustered(sr.node(t), showTypes, direction)
   }
 
   /**
@@ -2223,40 +2938,47 @@ package object etl4s {
   }
 
   /**
-   * Non-exhaustive conditional builder for Nodes.
+   * Non-exhaustive conditional builder for Nodes. `ElseIf` is a macro
+   * delegation ([[ConditionalOpsMacros.partialElseIf]]) that captures the
+   * predicate's source text at the call site; see [[NodeConditionalOps]].
    */
   case class PartialConditionalBuilder[A, B, C](
     sourceNode: Node[A, B],
-    branches: List[(B => Boolean, Node[B, C])]
+    branches: List[(Predicate[B], Node[B, C])]
   ) {
     def ElseIf(condition: B => Boolean)(branch: Node[B, C]): PartialConditionalBuilder[A, B, C] =
-      PartialConditionalBuilder(sourceNode, branches :+ (condition, branch))
+      macro ConditionalOpsMacros.partialElseIf[A, B, C]
 
     def Else(branch: Node[B, C]): Node[A, C] =
       Node.Cond[A, B, C](sourceNode, branches, Some(branch))
   }
 
   /**
-   * Exhaustive conditional builder for Nodes.
+   * Exhaustive conditional builder for Nodes. `ElseIf` is a macro delegation
+   * ([[ConditionalOpsMacros.completeElseIf]]) for source-text capture.
    */
   case class CompleteConditionalBuilder[A, B, C](
     sourceNode: Node[A, B],
-    branches: List[(B => Boolean, Node[B, C])],
+    branches: List[(Predicate[B], Node[B, C])],
     defaultBranch: Node[B, C]
   ) {
     def ElseIf(condition: B => Boolean)(branch: Node[B, C]): CompleteConditionalBuilder[A, B, C] =
-      CompleteConditionalBuilder(sourceNode, branches :+ (condition, branch), defaultBranch)
+      macro ConditionalOpsMacros.completeElseIf[A, B, C]
 
     def build: Node[A, C] =
       Node.Cond[A, B, C](sourceNode, branches, Some(defaultBranch))
   }
 
   /**
-   * Conditional branching for Nodes.
+   * Conditional branching for Nodes. The DSL param stays `B => Boolean` so
+   * `_ < 0` elaborates naturally; the [[ConditionalOpsMacros.nodeIf]] macro
+   * rewrites the call to wrap the predicate in a source-carrying
+   * [[Predicate]] (Scala 2 won't drive underscore-lambda inference through an
+   * expected type of `Predicate[B]`, so we can't just take one directly).
    */
   implicit class NodeConditionalOps[A, B](val node: Node[A, B]) {
     def If[C](condition: B => Boolean)(branch: Node[B, C]): PartialConditionalBuilder[A, B, C] =
-      PartialConditionalBuilder(node, List((condition, branch)))
+      macro ConditionalOpsMacros.nodeIf[A, B, C]
   }
 
   implicit def conditionalBuilderToNode[A, B, C](
@@ -2267,12 +2989,12 @@ package object etl4s {
   /**
    * Starts a pipeline with a conditional branch on the input value.
    * Without a trailing `Else`, unmatched inputs pass through unchanged.
+   * Macro delegation ([[ConditionalOpsMacros.topIf]]) captures predicate
+   * source text at the call site.
    */
-  def If[A](condition: A => Boolean): ValueIfStart[A] = new ValueIfStart(condition)
+  def If[A](condition: A => Boolean): ValueIfStart[A] = macro ConditionalOpsMacros.topIf[A]
 
-  class ValueIfStart[A](condition: A => Boolean) {
-    // TypeName lives here (not on `If`) so `If[A](cond)(branch)` doesn't feed
-    // `branch` into a trailing implicit list
+  class ValueIfStart[A](condition: Predicate[A]) {
     def apply[C](branch: Node[A, C])(implicit tn: TypeName[A]): PartialConditionalBuilder[A, A, C] =
       PartialConditionalBuilder(
         Node.identity[A](Name("input"), tn),
@@ -2315,18 +3037,31 @@ package object etl4s {
   }
 
   /**
-   * Type class for lifting conditions (plain or curried) to Reader-aware form.
-   * Enables clean syntax: `.If(_.age > 18)` instead of `.If((_: Cfg) => _.age > 18)`
+   * Type class for lifting conditions (plain, source-carrying, or curried) to
+   * Reader-aware form. Enables clean syntax:
+   * `.If(_.age > 18)` instead of `.If((_: Cfg) => _.age > 18)`.
+   * Result is a `T => Predicate[B]` so branch source text (when carried by an
+   * explicit [[Predicate]]) can be surfaced in diagram labels. Plain
+   * `B => Boolean` inputs on the Reader side land with an empty source; the
+   * value-side (`Node.If`) captures source automatically via the macro.
    */
   trait ConditionLift[T, B, Cond] {
-    def lift(cond: Cond): T => B => Boolean
+    def lift(cond: Cond): T => Predicate[B]
   }
 
-  object ConditionLift extends ConditionLiftLowPriority {
-    // Curried form: pass through (higher priority)
+  object ConditionLift extends ConditionLiftMidPriority {
+    // Highest priority: explicit Predicate (source already captured)
+    implicit def predicateIdentity[T, B]: ConditionLift[T, B, Predicate[B]] =
+      new ConditionLift[T, B, Predicate[B]] {
+        def lift(cond: Predicate[B]): T => Predicate[B] = _ => cond
+      }
+  }
+
+  trait ConditionLiftMidPriority extends ConditionLiftLowPriority {
+    // Curried form: pass through (mid priority)
     implicit def curriedIdentity[T, B]: ConditionLift[T, B, T => B => Boolean] =
       new ConditionLift[T, B, T => B => Boolean] {
-        def lift(cond: T => B => Boolean): T => B => Boolean = cond
+        def lift(cond: T => B => Boolean): T => Predicate[B] = t => Predicate(cond(t))
       }
   }
 
@@ -2334,7 +3069,7 @@ package object etl4s {
     // Plain form: lift to ignore context (lower priority)
     implicit def plainToReader[T, B]: ConditionLift[T, B, B => Boolean] =
       new ConditionLift[T, B, B => Boolean] {
-        def lift(cond: B => Boolean): T => B => Boolean = _ => cond
+        def lift(cond: B => Boolean): T => Predicate[B] = _ => Predicate(cond)
       }
   }
 
@@ -2343,7 +3078,7 @@ package object etl4s {
    */
   case class ReaderPartialConditionalBuilder[T, A, B, C](
     sourceReader: Reader[T, Node[A, B]],
-    branches: List[(T => B => Boolean, Reader[T, Node[B, C]])]
+    branches: List[(T => Predicate[B], Reader[T, Node[B, C]])]
   ) {
     def ElseIf[Branch, Cond](condition: Cond)(branch: Branch)(implicit
       condLift: ConditionLift[T, B, Cond],
@@ -2360,7 +3095,7 @@ package object etl4s {
     ): ReaderPartialConditionalBuilder[T, A, B, C] =
       ReaderPartialConditionalBuilder(
         sourceReader,
-        branches :+ ((t: T) => (_: B) => condition(t), branchLift.lift(branch))
+        branches :+ ((t: T) => Predicate((_: B) => condition(t)), branchLift.lift(branch))
       )
 
     def Else[Branch](branch: Branch)(implicit
@@ -2380,7 +3115,7 @@ package object etl4s {
    */
   case class ReaderCompleteConditionalBuilder[T, A, B, C](
     sourceReader: Reader[T, Node[A, B]],
-    branches: List[(T => B => Boolean, Reader[T, Node[B, C]])],
+    branches: List[(T => Predicate[B], Reader[T, Node[B, C]])],
     defaultBranch: Reader[T, Node[B, C]]
   ) {
     def ElseIf[Branch, Cond](condition: Cond)(branch: Branch)(implicit
@@ -2399,7 +3134,7 @@ package object etl4s {
     ): ReaderCompleteConditionalBuilder[T, A, B, C] =
       ReaderCompleteConditionalBuilder(
         sourceReader,
-        branches :+ ((t: T) => (_: B) => condition(t), branchLift.lift(branch)),
+        branches :+ ((t: T) => Predicate((_: B) => condition(t)), branchLift.lift(branch)),
         defaultBranch
       )
 
@@ -2477,6 +3212,15 @@ package object etl4s {
     private[etl4s] val node: Node[A, B]
   )
 
+  /** Map-and-keep batch step; see [[collectEach]]. */
+  final class CollectEach[A, B](private[etl4s] val node: Node[A, Option[B]])
+
+  /** Concurrent map-and-keep batch step; see [[collectEachPar]]. */
+  final class CollectEachPar[A, B](
+    private[etl4s] val parallelism: Int,
+    private[etl4s] val node: Node[A, Option[B]]
+  )
+
   /**
    * Applies `node` to every element of a batch, preserving the collection type.
    *
@@ -2507,6 +3251,36 @@ package object etl4s {
       ba.fromSeq(out.toVector)
     }
 
+  /**
+   * Applies `node` to every element and keeps only the `Some` results, dropping
+   * `None` (a batch-flavoured `collect`), preserving the collection type.
+   *
+   * {{{ fetch ~> collectEach(parseOpt) ~> load }}}
+   */
+  def collectEach[A, B](node: Node[A, Option[B]]): CollectEach[A, B] = new CollectEach(node)
+
+  /** Like `collectEach`, but runs up to `parallelism` elements concurrently. */
+  def collectEachPar[A, B](parallelism: Int)(node: Node[A, Option[B]]): CollectEachPar[A, B] =
+    new CollectEachPar(parallelism, node)
+
+  /**
+   * Keeps only the elements for which the predicate node holds, preserving the
+   * collection type (a batch-flavoured `filter`).
+   *
+   * {{{ fetch ~> filterEach(isValid) ~> load }}}
+   */
+  def filterEach[A](pred: Node[A, Boolean])(implicit n: Name, tn: TypeName[A]): CollectEach[A, A] =
+    collectEach((Node.identity[A] & pred).map { case (a, keep) => if (keep) Some(a) else None })
+
+  /** Like `filterEach`, but runs up to `parallelism` predicates concurrently. */
+  def filterEachPar[A](parallelism: Int)(pred: Node[A, Boolean])(implicit
+    n: Name,
+    tn: TypeName[A]
+  ): CollectEachPar[A, A] =
+    collectEachPar(parallelism)(
+      (Node.identity[A] & pred).map { case (a, keep) => if (keep) Some(a) else None }
+    )
+
   /** Attaches `each` / `eachPar` steps, inferring the collection type from the batch. */
   implicit class BatchNodeOps[X, CA](private val self: Node[X, CA]) {
     def ~>[A, B, C[_]](step: Each[A, B])(implicit
@@ -2527,6 +3301,26 @@ package object etl4s {
         step.parallelism,
         (ca: CA) => ba.toSeq(ca),
         (xs: Seq[B]) => ba.fromSeq(xs)
+      )
+
+    def ~>[A, B, C[_]](step: CollectEach[A, B])(implicit
+      ba: Batchable[CA, A, C]
+    ): Node[X, C[B]] =
+      self ~> Node.Batch[CA, A, Option[B], C[B]](
+        step.node,
+        1,
+        (ca: CA) => ba.toSeq(ca),
+        (xs: Seq[Option[B]]) => ba.fromSeq(xs.flatten)
+      )
+
+    def ~>[A, B, C[_]](step: CollectEachPar[A, B])(implicit
+      ba: Batchable[CA, A, C]
+    ): Node[X, C[B]] =
+      self ~> Node.Batch[CA, A, Option[B], C[B]](
+        step.node,
+        step.parallelism,
+        (ca: CA) => ba.toSeq(ca),
+        (xs: Seq[Option[B]]) => ba.fromSeq(xs.flatten)
       )
   }
 
@@ -2550,7 +3344,7 @@ package object etl4s {
     ): ReaderPartialConditionalBuilder[T, A, B, C] =
       ReaderPartialConditionalBuilder(
         reader,
-        List(((t: T) => (_: B) => condition(t), branchLift.lift(branch)))
+        List(((t: T) => Predicate((_: B) => condition(t)), branchLift.lift(branch)))
       )
   }
 
@@ -2583,7 +3377,7 @@ package object etl4s {
      *   .ensure(
      *     input = Seq(
      *       (cfg: Config) => (x: Int) => if (x >= cfg.min) None else Some("too small"),
-     *       checkPositive  // plain function - automatically lifted!
+     *       checkPositive
      *     ),
      *     output = Seq(
      *       (s: String) => if (s.nonEmpty) None else Some("empty")  // also works!
@@ -2697,7 +3491,7 @@ package object etl4s {
     }
 
     private def buildLineageGraph(lineages: Seq[Lineage]): LineageGraph = {
-      /* Fail in duplicate names... TODO review this */
+      /* Reject duplicate pipeline names: the graph keys on them. */
       val duplicates = lineages.groupBy(_.name).filter(_._2.size > 1)
       if (duplicates.nonEmpty) {
         throw new IllegalArgumentException(

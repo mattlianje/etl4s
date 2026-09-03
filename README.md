@@ -103,11 +103,14 @@ etl4s uses a few simple operators to build pipelines:
 | Operator | Name | Description | Example |
 |----------|------|-------------|---------|
 | `~>` | Connect | Chains operations in sequence | `e1 ~> t1 ~> l1` |
-| `&` | Combine | Group operations with the **same** input | `t1 & t2` |
-| `&>` | Parallel | Like `&`, but branches concurrently | `t1 &> t2` |
-| `**` | Product | Pair nodes with **different** inputs | `t1 ** t2` |
-| `**>` | Product Parallel | Like `**`, but branches concurrently | `t1 **> t2` |
+| `&` / `&>` | Fan-out | Group operations with the **same** input (`&>` concurrent) | `t1 & t2` |
+| `*` / `*>` | Product | Pair nodes with **different** inputs (`*>` concurrent) | `t1 * t2` |
 | `>>` | Sequence | Runs nodes in order with same input | `p1 >> p2` |
+| <code>&#124;</code> | Fan-in | Route an `Either` input to the matching branch | <code>fromInt &#124; fromStr</code> |
+| `+` | Choice | Route an `Either` through independent branches | `t1 + t2` |
+| <code>&lt;&#124;&gt;</code> | Fallback | If left throws, run right on the same input | <code>primary &lt;&#124;&gt; fallback</code> |
+
+Like `~>`, these all compose between Nodes and Readers (see [Configuration](#configuration)).
 
 ## Configuration
 
@@ -160,7 +163,7 @@ given etl4s.Effect[IO] with {
   def flatMap[A, B](fa: IO[A])(f: A => IO[B]): IO[B]          = fa.flatMap(f)
   def handleErrorWith[A](fa: => IO[A])(h: Throwable => IO[A]) = fa.handleErrorWith(h)
 
-  /* Used for &>, **>, each(Par/Slice) */
+  /* Used for &>, *>, each(Par/Slice) */
   override def both[A, B](fa: IO[A], fb: IO[B]): IO[(A, B)]   = IO.both(fa, fb)
 }
 ```
@@ -231,6 +234,13 @@ val par8Pipeline =
 
 val chunk500Pipeline =
      fetchOrders ~> eachSlice(500)(bulkUpsertOrders) ~> writeReport
+```
+
+Map-and-drop with `collectEach` (inner step returns an `Option`), or keep by a
+predicate node with `filterEach` — each with a concurrent `...Par` variant:
+```scala
+fetchRows ~> collectEach(parseRow)     ~> writeOrdersToDB  // drops the None rows
+fetchOrders ~> filterEach(isBigOrder)  ~> writeOrdersToDB  // keeps the matches
 ```
 
 ### Custom batchables
@@ -447,7 +457,7 @@ val combined =
 ## FAQ
 
 **When do effects actually run?**<br>
-Never while you stitch. `~>`, `&`, `&>`, `**` just allocate a description, nothing executes until
+Never while you stitch. `~>`, `&`, `&>`, `*` just allocate a description, nothing executes until
 you interpret it with `.unsafeRun(...)` or `.compile[F].unsafeRun(...)`.
 
 **What happens when a step fails?**<br>
