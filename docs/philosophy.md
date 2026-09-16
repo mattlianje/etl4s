@@ -56,14 +56,15 @@ Different branches can have different types and requirements, but once stitched 
 that has intersected upstream, and unioned downstream the branch types.
 
 
-## Metrics as business logic
-In OLAP, observability metrics are not mere infrastructure concerns. Things like "Records processed", "validation failures", "data quality scores"
-tend to be part of your logic-proper.
+## "Never nest" 
+**etl4s** channels the programmer to a model where they avoid stacks of nested function calls.
 
-**etl4s** deliberately doesn't ship a metrics subsystem. It stays out of your
-way. Because nodes are plain functions, you write metrics inline with whatever
-client you already use (Prometheus, DataDog, OpenTelemetry), right where the
-business logic lives.
+To a degree - this is a matter of taste ... but when the entire structure of your program is a top-level composition of etl4s
+nodes you get some unprecedented advantages:
+
+1. You can inspect the _entire_ structure of your program before execution
+2. Thanks to etl4s' macros ... your entire program is aware of the JVM classpaths of each block that makes it up - giving you powerful
+"blast radius aware" programs when checked into version control.
 
 
 ## What etl4s is NOT

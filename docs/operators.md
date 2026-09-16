@@ -2,18 +2,17 @@
 
 | Operator | Name | What it does | Result type |
 |----------|------|--------------|-------------|
-| `~>` / `.andThen` | Chain | `a ~> b` - output of `a` feeds into `b` (`.andThen` is an alias) | `Node[A, C]` |
+| `~>` | Chain | `a ~> b` - output of `a` feeds into `b` | `Node[A, C]` |
 | `&` / `&>` | Fan-out | `a & b` - run both with the **same** input (`&>` runs them concurrently) | `Node[A, (B, C)]` |
 | `*` / `*>` | Product | `a * b` - run on **different** inputs (`*>` runs them concurrently) | `Node[(A, C), (B, D)]` |
 | `>>` | Sequence | `a >> b` - run in order, keep `b`'s result | `Node[A, C]` |
 | <code>&#124;</code> | Fan-in | <code>a &#124; b</code> - route an `Either` input to the matching branch | `Node[Either[A, C], B]` |
 | `+` | Choice | `a + b` - route an `Either` input through independent branches | `Node[Either[A, C], Either[B, D]]` |
 | <code>&lt;&#124;&gt;</code> | Fallback | <code>a &lt;&#124;&gt; b</code> - if `a` throws, run `b` on the same input | `Node[A, B]` |
-| `.If` / `.ElseIf` / `.Else` | Branch | conditional routing | varies |
 
 ## `~>` chain (and `.andThen`)
 
-Feeds the output of one node into the next. `.andThen` is an alias:
+Feeds the output of one node into the next
 
 ```scala
 import etl4s._
@@ -21,16 +20,15 @@ import etl4s._
 val extract   = Node[String, Int](_.length)
 val transform = Node[Int, String](n => s"length: $n")
 
-val pipeline = extract ~> transform
-pipeline.unsafeRun("hello")
+val p = 
+     extract ~> transform
 
-extract.andThen(transform).unsafeRun("hi")
+pipeline.unsafeRun("hello")
 ```
 
 You will get:
 ```
 "length: 5"
-"length: 2"
 ```
 
 ## `&` fan-out (shared input)
@@ -43,7 +41,9 @@ import etl4s._
 val getLength = Node[String, Int](_.length)
 val getUpper  = Node[String, String](_.toUpperCase)
 
-val both = getLength & getUpper
+val both = 
+     getLength & getUpper
+
 both.unsafeRun("hi")
 ```
 
@@ -64,7 +64,9 @@ import scala.concurrent.ExecutionContext.Implicits.global
 val fetchA = Node[Int, Int](_ + 1)
 val fetchB = Node[Int, Int](_ * 10)
 
-val both = fetchA &> fetchB
+val both =
+     fetchA &> fetchB
+
 both.compile[Future].unsafeRun(5)
 ```
 
@@ -84,7 +86,9 @@ import etl4s._
 val parseName = Node[String, String](_.trim)
 val parseAge  = Node[Int, Int](_ + 1)
 
-val both = parseName * parseAge
+val both = 
+     parseName * parseAge
+
 both.unsafeRun(("  alice  ", 29))
 ```
 `both` has type `Node[(String, Int), (String, Int)]`.
@@ -106,7 +110,9 @@ import scala.concurrent.ExecutionContext.Implicits.global
 val left  = Node[String, Int](_.length)
 val right = Node[Int, Int](_ * 2)
 
-val both = left *> right
+val both = 
+     left *> right
+
 both.compile[Future].unsafeRun(("hello", 21))
 ```
 
@@ -125,7 +131,9 @@ import etl4s._
 val log  = Node[Int, Unit](n => println(s"got $n"))
 val save = Node[Int, String](n => s"saved:$n")
 
-val store = log >> save
+val store = 
+     log >> save
+
 store.unsafeRun(7)
 ```
 
@@ -147,7 +155,9 @@ import etl4s._
 val fromInt = Node[Int, String](i => s"int:$i")
 val fromStr = Node[String, String](s => s"str:$s")
 
-val merged = fromInt | fromStr
+val merged = 
+     fromInt | fromStr
+
 merged.unsafeRun(Left(1))
 merged.unsafeRun(Right("hi"))
 ```
@@ -171,7 +181,9 @@ import etl4s._
 val dbl = Node[Int, Int](_ * 2)
 val up  = Node[String, String](_.toUpperCase)
 
-val ch = dbl + up
+val ch = 
+     dbl + up
+
 ch.unsafeRun(Left(21))
 ch.unsafeRun(Right("hi"))
 ```
@@ -195,7 +207,9 @@ import etl4s._
 val primary  = Node[String, Int](_.toInt)
 val fallback = Node[String, Int](_ => 0)
 
-val safe = primary <|> fallback
+val safe = 
+     primary <|> fallback
+
 safe.unsafeRun("7")
 safe.unsafeRun("oops")
 ```
@@ -213,7 +227,7 @@ error channel rather than a thrown exception:
 import etl4s._
 import scala.util.Try
 
-safe.compile[Try].unsafeRun("oops")   // Success(0)
+safe.compile[Try].unsafeRun("oops")  // Success(0)
 ```
 
 !!! note "Concurrency needs a concurrent effect"

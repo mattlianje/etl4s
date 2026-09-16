@@ -12,6 +12,10 @@ api:
 
 # Lineage
 
+You can call `.toDot` or `.toMermaid` on any etl4s `Node` or `Reader[?, Node[?, ?]]`
+
+This produces diagrams like below.
+
 Attach lineage metadata with `.lineage` then use `.toDot`, `.toMermaid` or `.toJson` to
 get the string representation of your lineage diagrams.
 

@@ -24,7 +24,7 @@ The same `pipeline` value can be interpreted many ways.
 
 ```scala
 pipeline.compile[Id].unsafeRun("41")  // 42
-pipeline.unsafeRun("41")              // 42
+pipeline.unsafeRun("41")  // 42
 ```
 
 `Try` catches thrown exceptions into `Success`/`Failure`:
@@ -57,7 +57,8 @@ import scala.concurrent.ExecutionContext.Implicits.global
 val e1 = Extract { Thread.sleep(100); 42 }
 val e2 = Extract { Thread.sleep(100); "Ada" }
 
-val both = e1 &> e2
+val both = 
+     e1 &> e2
 
 both.unsafeRun(())
 both.compile[Future].unsafeRun(())

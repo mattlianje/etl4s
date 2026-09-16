@@ -1,66 +1,57 @@
 # Advanced
 
-!!! note "Scala 3 syntax"
-    The `extension` blocks below use Scala 3 syntax. In Scala 2, define the same
-    operators with an `implicit class`.
 
-## Reusable Components
-
-Group parameterized transforms into domain modules:
+## Higher Order Nodes
 
 ```scala
 import etl4s._
 
-case class Customer(isActive: Boolean, spend: Double, region: String)
-
 object CustomerOps {
-
   def activeOnly =
-    Transform[List[Customer], List[Customer]](_.filter(_.isActive))
+    Node[List[Customer], List[Customer]](_.filter(_.isActive))
 
   def topSpenders(n: Int) =
-    Transform[List[Customer], List[Customer]](_.sortBy(-_.spend).take(n))
+    Node[List[Customer], List[Customer]](_.sortBy(-_.spend).take(n))
 
   def inRegion(region: String) =
-    Transform[List[Customer], List[Customer]](_.filter(_.region == region))
+    Node[List[Customer], List[Customer]](_.filter(_.region == region))
 }
 
 import CustomerOps._
-val pipeline = extract ~> activeOnly ~> inRegion("EU") ~> topSpenders(100) ~> load
+
+val pipeline =
+     extract ~> activeOnly ~> inRegion("EU") ~> topSpenders(100) ~> load
 ```
 
 ## Dynamic Composition
 
-A `Node` is just a value, so you can build pipelines at runtime instead of
-writing every `~>` by hand. Fold a list of same-typed steps into one pipeline
-with `reduce`:
+You can build pipelines at runtime instead of writing every `~>` by hand.
 
 ```scala
 import etl4s._
 
-// Each cleaning rule is a value; the set is decided elsewhere
 val rules: List[Node[Row, Row]] = List(
   trimStrings,
   dropEmpty,
   normalizeDates
 )
 
-val clean: Node[Row, Row] = rules.reduce(_ ~> _)
+val cleaningRules: Node[Row, Row] = rules.reduce(_ ~> _)
 
-val pipeline = extract ~> clean ~> load
+val pipeline =
+     extract ~> cleaningRules ~> load
 ```
 
-`reduce` throws on an empty list. When the list may be empty, fold from
-`Node.identity` (the no-op step) instead. The result is a valid pipeline even
-with zero steps:
+
+Since `reduce` throws on empty lists, you can fold from `Node.identity` (no-op Node)
+and the result is a valid pipeline just with zero steps
 
 ```scala
-val clean: Node[Row, Row] =
-  rules.foldLeft(Node.identity[Row])(_ ~> _)
+val cleaningRules: Node[Row, Row] = rules.foldLeft(Node.identity[Row])(_ ~> _)
 ```
 
-This makes it easy to assemble a pipeline from configuration: keep only the
-steps that are switched on, then fold:
+
+Assemble custom pipelines based on some configuration type
 
 ```scala
 case class Config(dedupe: Boolean, enrich: Boolean)
@@ -76,12 +67,8 @@ def buildPipeline(cfg: Config): Node[Row, Row] = {
 }
 ```
 
-The folded pipeline is a normal `Node`. It still runs with `unsafeRun` /
-`compile[F]` and stays inspectable via `.stages`, `.toMermaid`, and `.toDot`.
 
 ## Custom Operators
-
-Add domain-specific operators via extension methods (Scala 3):
 
 ```scala
 import etl4s._
@@ -95,12 +82,13 @@ extension [A, B](node: Node[A, B]) {
   }
 }
 
-val pipeline = extract ~> transform.timed("main") ~> load
+val pipeline =
+     extract ~> transform.timed("main") ~> load
 ```
 
 ## Symbolic Operators
 
-Define your own (Scala 3):
+Define your own symbolic operators like `!!` and `@@` below
 
 ```scala
 import etl4s._
@@ -110,5 +98,6 @@ extension [A, B](node: Node[A, B]) {
   def @@(label: String): Node[A, B] = node.tap(_ => println(label))
 }
 
-val pipeline = extract ~> riskyTransform !! 3 ~> load @@ "done"
+val pipeline =
+     extract ~> riskyTransform !! 3 ~> load @@ "done"
 ```

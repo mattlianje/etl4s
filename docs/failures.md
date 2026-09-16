@@ -34,8 +34,10 @@ val riskyTransformWithRetry = Transform[Int, String] {
       else s"Success after $attempts attempts"
 }.withRetry(maxAttempts = 3, initialDelayMs = 10)
 
-val pipeline = Extract(42) ~> riskyTransformWithRetry
-pipeline.unsafeRun(())
+val p = 
+     Extract(42) ~> riskyTransformWithRetry
+
+p.unsafeRun()
 ```
 Output:
 ```
@@ -47,14 +49,15 @@ Catch exceptions and provide fallback values using `.onFailure`:
 ```scala
 import etl4s._
 
-val riskyExtract =
-    Extract[Unit, String](_ => throw new RuntimeException("Boom!"))
+val riskyExtract = Node[Unit, String](_ => throw new RuntimeException("Boom!"))
+val safeExtract = riskyExtract
+                     .onFailure(e => s"Failed: ${e.getMessage}")
+val consoleLoad = Node[String, Unit](println(_))
 
-val safeExtract = riskyExtract.onFailure(e => s"Failed: ${e.getMessage}")
-val consoleLoad = Load[String, Unit](println(_))
+val p = 
+     safeExtract ~> consoleLoad
 
-val pipeline = safeExtract ~> consoleLoad
-pipeline.unsafeRun(())
+p.unsafeRun()
 ```
 Output:
 ```
@@ -75,7 +78,7 @@ import scala.util.Try
 
 val risky = Extract[Unit, String](_ => throw new RuntimeException("Boom!"))
 
-risky.compile[Try].unsafeRun(())
+risky.compile[Try].unsafeRun()
 ```
 You will get:
 ```

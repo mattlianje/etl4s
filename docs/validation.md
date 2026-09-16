@@ -108,9 +108,7 @@ See [Effect polymorphism](effect-polymorphism.md) for the full list of effects.
 
 Use `.ensurePar()` in place of `.ensure()` to mark the checks within each stage
 as eligible to run concurrently. This only actually runs them in parallel under a
-concurrent effect (e.g. `.compile[Future]` or a cats-effect `IO`) - under the
-default `.unsafeRun` (the sequential `Id` interpreter) the checks still run one
-after another, just as with `.ensure()`.
+concurrent effect (e.g. `.compile[Future]` etc).
 
 ```scala
 import etl4s._
@@ -125,7 +123,6 @@ val lessThan100 = (x: Int) => if (x < 100) None else Some("Must be < 100")
 val validate = Node[Int, Int](identity)
   .ensurePar(input = Seq(isPositive, lessThan100))
 
-// Runs the checks concurrently under a Future effect
 Await.result(validate.compile[Future].unsafeRun(42), 5.seconds)
 ```
 

@@ -14,15 +14,25 @@ Route data through different pipelines with `If`, `ElseIf`, and `Else`. You can 
 
 ## Branch on data
 
-`.If(pred)(branch)` checks the predicate against the input, and only the matching branch runs. Add more cases with `.ElseIf`, and a fallback with `.Else`:
+`.If(pred)(branch)` checks the predicate against the input, and only the matching branch runs. The compiler will ensure your conditional 
+is fully exhaustive with a closing `Else`
+
+Suppose we have:
+```scala
+val positive = Node[Int, String](_ => "positive")
+val negative = Node[Int, String](_ => "negative")
+val zero = Node[Int, String](_ => "zero")
+```
+
+We can do:
 
 ```scala
 import etl4s._
 
 val classify = Node[Int, Int](identity)
-  .If(_ > 0)     (Node[Int, String](_ => "positive"))
-  .ElseIf(_ < 0) (Node[Int, String](_ => "negative"))
-  .Else          (Node[Int, String](_ => "zero"))
+  .If(_ > 0)     (positive)
+  .ElseIf(_ < 0) (negative)
+  .Else          (zero)
 
 classify.unsafeRun(5)
 classify.unsafeRun(-3)
@@ -90,32 +100,10 @@ Each branch can be a full pipeline, not just a single node:
 ```scala
 import etl4s._
 
-case class User(tier: String, name: String)
-
-val extractUser  = Node[User, User](identity)
-val validateUser = Node[User, User](identity)
-val enrichUser   = Node[User, User](u => u.copy(name = u.name.toUpperCase))
-
-val toPremiumOffer  = Node[User, String](u => s"premium offer for ${u.name}")
-val toStandardOffer = Node[User, String](u => s"standard offer for ${u.name}")
-val toGuestNotice   = Node[User, String](u => s"guest notice for ${u.name}")
-
 val pipeline = extractUser
   .If(_.tier == "premium")      (validateUser ~> enrichUser ~> toPremiumOffer)
   .ElseIf(_.tier == "standard") (validateUser ~> toStandardOffer)
   .Else                         (toGuestNotice)
-
-pipeline.unsafeRun(User("premium", "ada"))
-pipeline.unsafeRun(User("standard", "bob"))
-pipeline.unsafeRun(User("none", "cleo"))
-```
-
-You will get:
-
-```
-"premium offer for ADA"
-"standard offer for bob"
-"guest notice for cleo"
 ```
 
 ## Combining with fan-out
@@ -125,35 +113,13 @@ Branches can include parallel operations using `&` (or `&>` under a concurrent e
 ```scala
 import etl4s._
 
-case class User(id: Int, wantsDetails: Boolean)
-
-val identityN   = Node[User, User](identity)
-val loadMetrics = Node[User, Int](_.id * 10)
-val loadHistory = Node[User, Int](_.id * 100)
-
-val toFullProfile   = Node[(User, Int, Int), String] { case (u, m, h) => s"full:${u.id}:$m:$h" }
-val toSimpleProfile = Node[User, String](u => s"simple:${u.id}")
-
 val router = identityN
   .If(_.wantsDetails) ((identityN & loadMetrics & loadHistory) ~> toFullProfile)
   .Else               (toSimpleProfile)
-
-router.unsafeRun(User(1, wantsDetails = true))
-router.unsafeRun(User(2, wantsDetails = false))
 ```
 
-You will get:
-
-```
-"full:1:10:100"
-"simple:2"
-```
 
 ## Config-aware branching
-
-When the branch decision needs configuration, branch over a `Reader[Config, Node[A, B]]` source. There is no three-parameter `Node[Config, A, B]` constructor. A config-aware source is always a `Reader`.
-
-There are two ways to get one: write a `Reader[Config, Node[A, B]]` directly, or make an existing node config-aware with `.requires[Config]`.
 
 Use a typed condition `(cfg: Config) => (data: A) => Boolean` when the decision depends on both config and data:
 
@@ -162,7 +128,6 @@ import etl4s._
 
 case class Config(threshold: Int)
 
-// A Reader source, written directly:
 val source      = Reader[Config, Node[Int, Int]] { _ => Node[Int, Int](identity) }
 val formatBelow = Reader[Config, Node[Int, String]] { _ => Node(n => s"below:$n") }
 val formatAbove = Reader[Config, Node[Int, String]] { _ => Node(n => s"above:$n") }
@@ -182,16 +147,6 @@ You will get:
 "above:15"
 ```
 
-Making an existing node config-aware with `.requires[Config]` gives the same `Reader` shape:
-
-```scala
-import etl4s._
-
-case class Config(threshold: Int)
-
-val source = Node[Int, Int](identity).requires[Config] { _ => n => n }
-// source: Reader[Config, Node[Int, Int]]
-```
 
 ## Context-only branching
 
@@ -204,85 +159,16 @@ case class Config(isBackfill: Boolean, isDryRun: Boolean)
 
 val source   = Reader[Config, Node[Int, Int]] { _ => Node[Int, Int](identity) }
 val backfill = Node[Int, String](n => s"backfill:$n")
-val dryRun    = Node[Int, String](n => s"dryrun:$n")
+val dryRun   = Node[Int, String](n => s"dryrun:$n")
 val normal   = Node[Int, String](n => s"normal:$n")
 
 val pipeline = source
   .IfCtx(_.isBackfill)(backfill)
   .ElseIfCtx(_.isDryRun)(dryRun)
   .Else(normal)
-
-pipeline.provide(Config(isBackfill = true,  isDryRun = false)).unsafeRun(42)
-pipeline.provide(Config(isBackfill = false, isDryRun = true )).unsafeRun(42)
-pipeline.provide(Config(isBackfill = false, isDryRun = false)).unsafeRun(42)
-```
-
-You will get:
-
-```
-"backfill:42"
-"dryrun:42"
-"normal:42"
 ```
 
 This is cleaner than the curried `(cfg: Config) => (_: Int) => cfg.isBackfill` form when the data value is irrelevant to the condition.
-
-## Automatic Reader lifting
-
-Branches can freely mix plain `Node` and `Reader[Config, Node]`. etl4s automatically lifts plain `Node` branches into `Reader`, so you never wrap them by hand, even when mixing with `IfCtx`/`ElseIfCtx`:
-
-```scala
-import etl4s._
-
-case class Config(threshold: Int)
-
-val source      = Reader[Config, Node[Int, Int]] { _ => Node[Int, Int](identity) }
-val belowThresh = Reader[Config, Node[Int, String]] { cfg =>
-  Node(n => s"below-${cfg.threshold}:$n")
-}
-val aboveThresh = Node[Int, String](n => s"above:$n")  // plain Node, auto-lifted
-val negative    = Node[Int, String](n => s"negative:$n")
-
-val pipeline = source
-  .If((_: Int) < 0)                                   (negative)
-  .ElseIf((cfg: Config) => (n: Int) => n < cfg.threshold)(belowThresh)
-  .Else                                               (aboveThresh)
-
-pipeline.provide(Config(10)).unsafeRun(-5)
-pipeline.provide(Config(10)).unsafeRun(5)
-pipeline.provide(Config(10)).unsafeRun(15)
-```
-
-You will get:
-
-```
-"negative:-5"
-"below-10:5"
-"above:15"
-```
-
-## Under an effect
-
-Branching folds correctly through `.compile[F]`, so it works under any effect (`Try`, `Future`, `Id`, ...):
-
-```scala
-import etl4s._
-import scala.util.Try
-
-val classify = Node[Int, Int](identity)
-  .If(_ > 0)     (Node[Int, String](_ => "positive"))
-  .Else          (Node[Int, String](_ => "non-positive"))
-
-classify.compile[Try].unsafeRun(5)
-classify.compile[Try].unsafeRun(-1)
-```
-
-You will get:
-
-```
-Success("positive")
-Success("non-positive")
-```
 
 ## Scala 2 vs Scala 3
 
@@ -309,5 +195,4 @@ mixing branches that need `DbConfig` and `CacheConfig` yields a pipeline that mu
       .If(_ > 0)     (Node(n => s"pos-$n"))
       .ElseIf(_ < 0) (Node(n => s"neg-$n"))
       .Else          (Node(_ => "zero"))
-    // All branches return String
     ```
