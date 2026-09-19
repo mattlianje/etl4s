@@ -7,7 +7,7 @@ Node[-In, +Out]
 A Node wraps a lazily-evaluated function `In => Out`. Chain them with `~>` to build pipelines.
 
 ## Node types
-To improve readability and express intent, **etl4s** defines three aliases: `Extract`, `Transform`, `Load` and `Pipeline`. All behave the same under the hood.
+To improve readability and express intent, **etl4s** defines three aliases: `Extract`, `Transform` and `Load`. All behave the same under the hood.
 
 ```scala
 type Extract[-In, +Out]   = Node[In, Out]

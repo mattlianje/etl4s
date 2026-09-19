@@ -301,4 +301,11 @@ class Scala3Specs extends munit.FunSuite {
     assertEquals(result, ("hello", 42, 3.14))
   }
 
+  test("each works on LazyList out of the box, preserving the type") {
+    val source = Node[Any, LazyList[Int]](_ => LazyList(1, 2, 3))
+    val out    = (source ~> each(Node[Int, Int](_ + 1))).unsafeRun(())
+    assertEquals(out, LazyList(2, 3, 4))
+    assert(out.isInstanceOf[LazyList[?]])
+  }
+
 }

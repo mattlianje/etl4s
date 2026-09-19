@@ -38,17 +38,7 @@ etl4s pipelines are effect polymorphic. `.compile[F]` picks the interpreter that
 
 ## Observability
 
-**Q: How do I know how long a run took?**  
-Call `.unsafeRunTrace()` instead of `.unsafeRun()`. Returns a `Trace` with the result and timing:
-
-```scala
-val trace = pipeline.unsafeRunTrace(data)
-trace.result
-trace.timeElapsedMillis
-```
-`trace.result` is the result; `trace.timeElapsedMillis` is how long it took.
-
-**Q: What about logging, metrics, and distributed tracing?**  
-`etl4s` stays out of your way here. Bring your own tools. Call your logger,
-metrics client, or tracer directly inside node bodies or via `tap`. See the
-[Tracing docs](trace.md) for the pattern.
+**Q: How do I time a run, or add logging, metrics, and distributed tracing?**  
+`etl4s` stays out of your way here. Bring your own tools. Time a run with a
+plain stopwatch around `.unsafeRun()`, and call your logger, metrics client, or
+tracer directly inside node bodies or via `tap`.

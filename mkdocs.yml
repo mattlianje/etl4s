@@ -22,13 +22,11 @@ nav:
     - Configuration: config.md
     - Error Handling: failures.md
     - Ensurers: validation.md
-    - Tracing: trace.md
-    - Lineage Diagrams: lineage.md
+    - Diagrams: lineage.md
     - Testing: testing.md
   - Examples:
     - Common Patterns: examples.md
     - etl4s + Spark: examples-spark.md
-    - etl4s + Flink: examples-flink.md
   - Advanced: advanced.md
   - Tradeoffs: tradeoffs.md
   - Philosophy: philosophy.md

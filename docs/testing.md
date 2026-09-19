@@ -24,7 +24,7 @@ import etl4s._
 val plus2:  Transform[Int, Int] = Transform(_ + 2)
 val times5: Transform[Int, Int] = Transform(_ * 5)
 
-val p: Pipeline[Int, Int] = plus2 ~> times5
+val p: Node[Int, Int] = plus2 ~> times5
 
 p.unsafeRun(2)
 ```
@@ -52,7 +52,7 @@ import scala.util.Success
 
 val plus2:  Transform[Int, Int] = Transform(_ + 2)
 val times5: Transform[Int, Int] = Transform(_ * 5)
-val p: Pipeline[Int, Int] = plus2 ~> times5
+val p: Node[Int, Int] = plus2 ~> times5
 
 p.compile[Try].unsafeRun(2)
 ```
@@ -80,19 +80,5 @@ scaled.provide(Cfg(10)).unsafeRun(5)
 You will get:
 ```
 50
-```
-
-## Testing with Traces
-
-For testing with execution insights, see the [Tracing](trace.md) section. You can test the result and timing of a run:
-
-```scala
-import etl4s._
-
-val pipeline = Transform[String, Int](_.length)
-val trace = pipeline.unsafeRunTrace("test")
-
-assert(trace.result == 4)
-assert(trace.timeElapsedMillis >= 0)
 ```
 

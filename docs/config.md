@@ -4,7 +4,7 @@ api:
   - sig: ".provide(env)"
   - sig: ".provideContext(env)"
   - sig: "Reader[T, Node]"
-  - sig: "Context[T]"
+  - sig: "Etl4sContext[T]"
 ---
 
 # Configuration
@@ -61,9 +61,12 @@ val pipeline = fetch ~> toUpper ~> save
 pipeline.provide(AppConfig("jdbc:pg", "secret-key")).unsafeRun(())
 ```
 
-`.requires[T]` turns a node into a `Reader[T, Node]`. The composition operators (`~>`, `&`,
-`&>`, `>>`) work directly on these config-aware nodes, and three simple rules govern how
-requirements flow.
+`.requires[T]` turns a node into a `Reader[T, Node]`.
+
+### How config propagation works
+
+The composition operators (`~>`, `&`, `&>`, `>>`) work directly on these config-aware nodes,
+and there are three rules that govern how requirements flow.
 
 **1. Plain nodes connect straight to config-aware ones.** A plain `Node` requires nothing,
 so mixing it in adds no requirement. The pipeline still asks only for what the Reader nodes
@@ -125,20 +128,20 @@ smaller set) wins, so there's nothing extra to provide.
 pipeline.provideContext(AppConfig("jdbc:pg", "secret-key")).unsafeRun(())
 ```
 
-## Context
+## Etl4sContext
 
-`Context[T]` organizes config-driven nodes into modules:
+`Etl4sContext[T]` organizes config-driven nodes into modules:
 
 ```scala
 case class DbConfig(url: String, timeout: Int)
 
-object DataPipeline extends Context[DbConfig] {
+object DataPipeline extends Etl4sContext[DbConfig] {
 
-  val fetch = Context.Extract[Unit, String] { cfg => _ =>
+  val fetch = Etl4sContext.Extract[Unit, String] { cfg => _ =>
     s"Connected to ${cfg.url} with timeout ${cfg.timeout}s"
   }
 
-  val save = Context.Load[String, Unit] { cfg => data =>
+  val save = Etl4sContext.Load[String, Unit] { cfg => data =>
     println(s"Saving to ${cfg.url}: $data")
   }
 

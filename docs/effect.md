@@ -7,9 +7,12 @@ Peek at values mid-pipeline without modifying them:
 ```scala
 import etl4s._
 
-val pipeline = Extract("hello world")
+val greeting = Node("hello world")
+val split    = Node[String, Array[String]](_.split(" "))
+
+val pipeline = greeting
   .tap(x => println(s"Got: $x"))
-  ~> Transform[String, Array[String]](_.split(" "))
+  ~> split
 
 pipeline.unsafeRun(())
 ```

@@ -172,10 +172,10 @@ class NodeIntrospectionSpec extends munit.FunSuite {
 
   test("config-driven pipeline is inspectable BEFORE providing config") {
     case class Cfg(taxRate: Double, currency: String)
-    object Billing extends Context[Cfg] {
-      val parse    = Context.Extract[String, Double] { _ => s => s.trim.toDouble }
-      val applyTax = Context.Transform[Double, Double] { cfg => amt => amt * (1 + cfg.taxRate) }
-      val format   = Context.Transform[Double, String] { cfg => t => s"$t ${cfg.currency}" }
+    object Billing extends Etl4sContext[Cfg] {
+      val parse    = Etl4sContext.Extract[String, Double] { _ => s => s.trim.toDouble }
+      val applyTax = Etl4sContext.Transform[Double, Double] { cfg => amt => amt * (1 + cfg.taxRate) }
+      val format   = Etl4sContext.Transform[Double, String] { cfg => t => s"$t ${cfg.currency}" }
     }
     import Billing._
 

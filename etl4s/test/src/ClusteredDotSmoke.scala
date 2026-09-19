@@ -162,7 +162,7 @@ class ClusteredDotSmoke extends munit.FunSuite {
 
     // shared anchor: primary edge solid (always runs), fallback edge dashed
     assert(d.contains(s"n$anchor -> n${idOf("primary")} [label="), d)
-    assert(!d.contains(s"n$anchor -> n${idOf("primary")} [label=\"String\", style=dashed"), d)
+    assert(!d.contains(s"""n$anchor -> n${idOf("primary")} [label="String", style=dashed"""), d)
     assert(
       s"""n$anchor -> n${idOf("fallback")} \\[[^\\]]*style=dashed""".r.findFirstIn(d).isDefined,
       d

@@ -96,18 +96,6 @@ package object etl4s {
       f(a)
 
     /**
-     * Runs the node and measures its execution time.
-     *
-     * @param a the input value
-     * @return Trace containing the result and elapsed time
-     */
-    def unsafeRunTrace(a: A): Trace[B] = {
-      val startTime = System.currentTimeMillis()
-      val result    = f(a)
-      Trace(result, System.currentTimeMillis() - startTime)
-    }
-
-    /**
      * Attaches custom metadata to this node.
      *
      * @param meta the metadata to attach (can be any type)
@@ -1617,20 +1605,8 @@ package object etl4s {
   type Extract[A, B]   = Node[A, B]
   type Transform[A, B] = Node[A, B]
   type Load[A, B]      = Node[A, B]
-  type Pipeline[A, B]  = Node[A, B]
 
   /** Factory objects for semantic clarity */
-  object Pipeline {
-    def apply[A, B](func: A => B)(using Name, TypeName[A], TypeName[B]): Pipeline[A, B] = Node(func)
-    def apply[B](value: => B)(using Name, TypeName[B]): Pipeline[Any, B] = Node(value)
-    def pure[A](using Name, TypeName[A]): Pipeline[A, A]                 = Node.identity[A]
-    def requires[T, A, B](f: T => A => B)(using
-      Name,
-      TypeName[A],
-      TypeName[B]
-    ): Reader[T, Node[A, B]] = Node.requires[T, A, B](f)
-  }
-
   object Extract {
     def apply[A, B](func: A => B)(using Name, TypeName[A], TypeName[B]): Extract[A, B] = Node(func)
     def apply[B](value: => B)(using Name, TypeName[B]): Extract[Any, B]                = Node(value)
@@ -2168,7 +2144,7 @@ package object etl4s {
      *
      * @example
      * {{{
-     * val contextExtract = Context.Extract[Config, String, Int] { config => input =>
+     * val contextExtract = Etl4sContext.Extract[Config, String, Int] { config => input =>
      *   process(input, config)
      * }
      *
@@ -2185,22 +2161,6 @@ package object etl4s {
 
     private def skeleton: Node[A, B] = fa.run(null.asInstanceOf[T1])
     def stages: List[Node.StageInfo] = skeleton.stages
-  }
-
-  /**
-   * Result container for traced pipeline execution.
-   *
-   * @tparam A the result type
-   * @param result the final result value
-   * @param timeElapsedMillis execution duration in milliseconds
-   */
-  case class Trace[+A](
-    result: A,
-    timeElapsedMillis: Long = 0L
-  ) {
-
-    /** Get timing in seconds */
-    def seconds: Double = timeElapsedMillis / 1000.0
   }
 
   /** Utility functions */
@@ -2306,8 +2266,8 @@ package object etl4s {
    * {{{
    * case class MyConfig(dbUrl: String, timeout: Int)
    * 
-   * object MyETL extends Context[MyConfig] {
-   *   val saveUser = Context.Load[User, Unit] { config => user =>
+   * object MyETL extends Etl4sContext[MyConfig] {
+   *   val saveUser = Etl4sContext.Load[User, Unit] { config => user =>
    *     saveToDatabase(config, user)
    *   }
    * 
@@ -2319,13 +2279,13 @@ package object etl4s {
    *
    * @tparam T the configuration/context type
    */
-  trait Context[T] {
+  trait Etl4sContext[T] {
 
     /**
      * Provides natural access to context-wrapped operations.
-     * Use as: `Context.Extract[A, B] { ctx => in => out }`
+     * Use as: `Etl4sContext.Extract[A, B] { ctx => in => out }`
      */
-    object Context {
+    object Etl4sContext {
       def Extract[A, B](
         f: T => A => B
       )(using Name, TypeName[A], TypeName[B]): Reader[T, Extract[A, B]] =
@@ -2338,11 +2298,6 @@ package object etl4s {
 
       def Load[A, B](f: T => A => B)(using Name, TypeName[A], TypeName[B]): Reader[T, Load[A, B]] =
         etl4s.Load.requires[T, A, B](f)
-
-      def Pipeline[A, B](
-        f: T => A => B
-      )(using Name, TypeName[A], TypeName[B]): Reader[T, Pipeline[A, B]] =
-        etl4s.Pipeline.requires[T, A, B](f)
 
       def Node[A, B](f: T => A => B)(using Name, TypeName[A], TypeName[B]): Reader[T, Node[A, B]] =
         etl4s.Node.requires[T, A, B](f)
@@ -2913,6 +2868,11 @@ package object etl4s {
       def toSeq(ca: Iterable[A]): Seq[A]      = ca.toSeq
       def fromElems(xs: Seq[A]): Iterable[A]  = xs
       def fromSeq[B](xs: Seq[B]): Iterable[B] = xs
+    }
+    given [A]: Batchable[LazyList[A], A, LazyList] with {
+      def toSeq(ca: LazyList[A]): Seq[A]      = ca
+      def fromElems(xs: Seq[A]): LazyList[A]  = xs.to(LazyList)
+      def fromSeq[B](xs: Seq[B]): LazyList[B] = xs.to(LazyList)
     }
   }
 

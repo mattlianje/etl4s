@@ -130,23 +130,6 @@ class TimingSpecs extends munit.FunSuite {
     assert(elapsed >= 160, s"sync ensurePar should run checks in order (~160ms), took ${elapsed}ms")
   }
 
-  test("unsafeRunTrace measures execution time accurately") {
-    val sleepDuration = 100
-    val sleepNode     = Node[Unit, Unit] { _ =>
-      Thread.sleep(sleepDuration)
-    }
-    val insights    = sleepNode.unsafeRunTrace(())
-    val elapsedTime = insights.timeElapsedMillis
-    assert(
-      elapsedTime >= sleepDuration,
-      s"Elapsed time ($elapsedTime ms) should be at least $sleepDuration ms"
-    )
-    assert(
-      elapsedTime < sleepDuration + 50,
-      s"Elapsed time ($elapsedTime ms) should not be much longer than $sleepDuration ms"
-    )
-  }
-
   test("withRetry delays between attempts") {
     var attempts  = List.empty[Long]
     val failTwice = Node[Unit, String] { _ =>

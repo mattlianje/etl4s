@@ -97,18 +97,6 @@ package object etl4s {
       f(a)
 
     /**
-     * Runs the node and measures its execution time.
-     *
-     * @param a the input value
-     * @return Trace containing the result and elapsed time
-     */
-    def unsafeRunTrace(a: A): Trace[B] = {
-      val startTime = System.currentTimeMillis()
-      val result    = f(a)
-      Trace(result, System.currentTimeMillis() - startTime)
-    }
-
-    /**
      * Attaches custom metadata to this node.
      *
      * @param meta the metadata to attach (can be any type)
@@ -1656,21 +1644,8 @@ package object etl4s {
   type Extract[A, B]   = Node[A, B]
   type Transform[A, B] = Node[A, B]
   type Load[A, B]      = Node[A, B]
-  type Pipeline[A, B]  = Node[A, B]
 
   /** Factory objects for semantic clarity */
-  object Pipeline {
-    def apply[A, B](
-      func: A => B
-    )(implicit n: Name, i: TypeName[A], o: TypeName[B]): Pipeline[A, B]           = Node(func)
-    def apply[B](value: => B)(implicit n: Name, o: TypeName[B]): Pipeline[Any, B] = Node(value)
-    def pure[A](implicit n: Name, t: TypeName[A]): Pipeline[A, A]                 = Node.identity[A]
-    def requires[T, A, B](
-      f: T => A => B
-    )(implicit n: Name, i: TypeName[A], o: TypeName[B]): Reader[T, Node[A, B]] =
-      Node.requires[T, A, B](f)
-  }
-
   object Extract {
     def apply[A, B](func: A => B)(implicit n: Name, i: TypeName[A], o: TypeName[B]): Extract[A, B] =
       Node(func)
@@ -2284,7 +2259,7 @@ package object etl4s {
      *
      * @example
      * {{{
-     * val contextExtract = Context.Extract[Config, String, Int] { config => input =>
+     * val contextExtract = Etl4sContext.Extract[Config, String, Int] { config => input =>
      *   process(input, config)
      * }
      * 
@@ -2306,20 +2281,6 @@ package object etl4s {
     private def skeleton: Node[A, B] = fa.run(null.asInstanceOf[T1])
     def stages: List[Node.StageInfo] = skeleton.stages
 
-  }
-
-  /**
-   * Result container for traced pipeline execution
-   *
-   * @tparam A the result type
-   * @param result the final result value
-   * @param timeElapsedMillis execution duration in milliseconds
-   */
-  case class Trace[+A](
-    result: A,
-    timeElapsedMillis: Long = 0L
-  ) {
-    def seconds: Double = timeElapsedMillis / 1000.0
   }
 
   /**
@@ -2622,8 +2583,8 @@ package object etl4s {
    * {{{
    * case class MyConfig(dbUrl: String, timeout: Int)
    * 
-   * object MyETL extends Context[MyConfig] {
-   *   val saveUser = Context.Load[User, Unit] { config => user =>
+   * object MyETL extends Etl4sContext[MyConfig] {
+   *   val saveUser = Etl4sContext.Load[User, Unit] { config => user =>
    *     // use config.dbUrl, config.timeout
    *     saveToDatabase(config, user)
    *   }
@@ -2637,13 +2598,13 @@ package object etl4s {
    *
    * @tparam T the configuration/context type
    */
-  trait Context[T] {
+  trait Etl4sContext[T] {
 
     /**
      * Provides natural access to context-wrapped operations.
-     * Use as: `Context.Extract[A, B] { ctx => in => out }`
+     * Use as: `Etl4sContext.Extract[A, B] { ctx => in => out }`
      */
-    object Context {
+    object Etl4sContext {
       def Extract[A, B](
         f: T => A => B
       )(implicit n: Name, i: TypeName[A], o: TypeName[B]): Reader[T, Extract[A, B]] =
@@ -2658,11 +2619,6 @@ package object etl4s {
         f: T => A => B
       )(implicit n: Name, i: TypeName[A], o: TypeName[B]): Reader[T, Load[A, B]] =
         etl4s.Load.requires[T, A, B](f)
-
-      def Pipeline[A, B](
-        f: T => A => B
-      )(implicit n: Name, i: TypeName[A], o: TypeName[B]): Reader[T, Pipeline[A, B]] =
-        etl4s.Pipeline.requires[T, A, B](f)
 
       def Node[A, B](
         f: T => A => B

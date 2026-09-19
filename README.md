@@ -68,7 +68,7 @@ Node[-In, +Out]
 ```
 A Node wraps a lazily-evaluated function `In => Out`. Chain them with `~>` to build pipelines.
 
-To improve readability and express intent, **etl4s** defines four aliases: `Extract`, `Transform`, `Load` and `Pipeline`. All behave the same under the hood.
+To improve readability and express intent, **etl4s** defines three aliases: `Extract`, `Transform` and `Load`. All behave the same under the hood.
 
 You run pipelines at the end of the World by calling `.unsafeRun(...)`
 
@@ -333,18 +333,6 @@ val pipeline = logStart >> (listFiles ~> countFiles) >> logEnd
 pipeline.unsafeRun()
 ```
 
-## Tracing
-Call `.unsafeRunTrace()` instead of `.unsafeRun()` to get back a plain `Trace[A]`
-holding the result and how long it took
-
-```scala
-val wordLength = Transform[String, Int](_.length)
-
-val trace = wordLength.unsafeRunTrace("hello")
-trace.result // 5
-trace.timeElapsedMillis // 2L
-```
-
 ## Lineage
 Track data lineage and visualize pipeline dependencies. Attach metadata to any Node or Reader then call `.toDot`, `.toJson` or `.toMermaid`
 on individual instances or on Sequences:
@@ -421,8 +409,8 @@ Simple UNIX-pipe style chaining of two pipelines:
 ```scala
 import etl4s._
 
-val p1 = Pipeline((i: Int) => i.toString)
-val p2 = Pipeline((s: String) => s + "!")
+val p1 = Transform((i: Int) => i.toString)
+val p2 = Transform((s: String) => s + "!")
 
 val p3 = p1 ~> p2
 ```
@@ -432,8 +420,8 @@ Connect the output of two pipelines to a third:
 ```scala
 import etl4s._
 
-val namePipeline = Pipeline("John Doe")
-val agePipeline  = Pipeline(30)
+val namePipeline = Extract("John Doe")
+val agePipeline  = Extract(30)
 val toUpper      = Transform[String, String](_.toUpperCase)
 val consoleLoad  = Load[String, Unit](println(_))
 

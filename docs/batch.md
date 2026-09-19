@@ -12,12 +12,21 @@ api:
 
 # Batch Collections
 
-When wiring your dataflow programs, you often want to run sub-pipelines over
-list-like sources.
+Sub-pipelines often need to run over every element of a list-like source. This is why etl4s
+has a family of `…Each` combinators. They work on `List`, `Vector`, `Seq`,
+`Set`, and `Iterable` out of the box (plus `LazyList` on Scala 3), and any
+[custom container](#custom-batchables) you teach it about.
 
-This is why etl4s has combinators to let you run pipelines over every element of a collection with `each`, `eachPar`,
-and `eachSlice`. They work on `List`, `Vector`, `Seq`, `Set`, and `Iterable`
-out of the box, and you can easily add support for custom datatypes you want to process in chunks.
+| Combinator | What it does |
+|------------|--------------|
+| `each(sub)` | run `sub` on every element |
+| `eachSlice(size)(sub)` | run `sub` on chunks of `size` elements |
+| `collectEach(sub)` | run `sub: A => Option[B]`, keep the `Some`s |
+| `filterEach(pred)` | keep the elements where `pred` holds |
+
+Each has a `…Par(n)` variant (`eachPar`, `collectEachPar`, `filterEachPar`) that runs up to
+`n` elements concurrently under a [concurrent effect](effect-polymorphism.md), sequentially
+under the default `Id` interpreter.
 
 ```scala
 import etl4s._
@@ -115,8 +124,6 @@ You will get:
 List(2, 4, 6)
 ```
 
-`filterEachPar(n)` runs up to `n` predicates concurrently under a concurrent effect.
-
 ## Failures
 
 Under an effect, an element failure short-circuits the batch:
@@ -129,7 +136,7 @@ val riskyFunction: Node[Int, Int] = Node(n => if (n == 2) sys.error("boom") else
 val riskyPipeline =
      extractNumbers ~> eachPar(2)(riskyFunction)
 
-boom.compile[Try].unsafeRun()
+riskyPipeline.compile[Try].unsafeRun()
 ```
 You will get:
 ```
@@ -163,7 +170,7 @@ A reified batch is still inspectable: the inner step shows up in `.stages`:
 
 ```scala
 val p =
-     fetch ~> eachPar(3)(clean)
+     extractNumbers ~> eachPar(3)(clean)
 
 p.stages.map(_.name)
 ```

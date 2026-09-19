@@ -163,7 +163,7 @@ class BasicSpecs extends munit.FunSuite {
 
     val R = Load[(String, Unit, Unit), String](_._1)
 
-    val pipeline: Pipeline[Any, String] =
+    val pipeline: Node[Any, String] =
       (
         (s1 & s2) ~> D &
           (s3 ~> E)
@@ -229,36 +229,6 @@ class BasicSpecs extends munit.FunSuite {
     val p2 = e1 ~> (plus1 ~> times5)
 
     assert(p1(()) == p2(()))
-  }
-
-  test("unsafeRunTrace measures execution time") {
-    // Create a node that does some work
-    val workNode = Node[Unit, Int] { _ =>
-      var sum = 0
-      for (i <- 1 to 1000) sum += i
-      sum
-    }
-    val insights    = workNode.unsafeRunTrace(())
-    val elapsedTime = insights.timeElapsedMillis
-    // Verify time tracking returns valid non-negative values
-    assert(
-      elapsedTime >= 0,
-      s"Elapsed time ($elapsedTime ms) should be non-negative"
-    )
-  }
-
-  test("unsafeRunTrace propagates failures") {
-    val failingNode = Node[String, Int] { s =>
-      if (s.isEmpty) throw new RuntimeException("Empty input!")
-      s.length
-    }
-
-    val successTrace = failingNode.unsafeRunTrace("hello")
-    assertEquals(successTrace.result, 5)
-    assert(successTrace.timeElapsedMillis >= 0)
-
-    val ex = intercept[RuntimeException](failingNode.unsafeRunTrace(""))
-    assert(ex.getMessage.contains("Empty input!"))
   }
 
   test("metadata works") {
@@ -365,7 +335,7 @@ class ReaderSpecs extends munit.FunSuite {
   test("etl4sContext and WithContext aliases") {
     case class AppConfig(serviceName: String, timeout: Int)
 
-    object TestContext extends Context[AppConfig] {
+    object TestContext extends Etl4sContext[AppConfig] {
 
       val extractWithContext: Reader[AppConfig, Extract[String, Int]] =
         Reader { ctx =>
@@ -381,7 +351,7 @@ class ReaderSpecs extends munit.FunSuite {
           }
         }
 
-      val testC = Context.Extract[Int, Int] { ctx => x =>
+      val testC = Etl4sContext.Extract[Int, Int] { ctx => x =>
         x * 2
       }
     }
@@ -421,12 +391,12 @@ class ReaderSpecs extends munit.FunSuite {
   test("Etl4sContext companion object methods") {
     case class AppConfig(serviceName: String, timeout: Int)
 
-    object TestContext extends Context[AppConfig] {
-      val getData = Context.Extract[String, Int] { config => input =>
+    object TestContext extends Etl4sContext[AppConfig] {
+      val getData = Etl4sContext.Extract[String, Int] { config => input =>
         s"${config.serviceName}: $input".length * config.timeout
       }
 
-      val processData = Context.Transform[Int, String] { config => value =>
+      val processData = Etl4sContext.Transform[Int, String] { config => value =>
         s"Processed by ${config.serviceName} with value $value"
       }
     }
@@ -440,11 +410,11 @@ class ReaderSpecs extends munit.FunSuite {
     assertEquals(result, "Processed by DataService with value 34")
   }
 
-  test("Context.Node alias") {
+  test("Etl4sContext.Node alias") {
     case class Config(multiplier: Int)
 
-    object TestContext extends Context[Config] {
-      val multiply = Context.Node[Int, Int] { cfg => x =>
+    object TestContext extends Etl4sContext[Config] {
+      val multiply = Etl4sContext.Node[Int, Int] { cfg => x =>
         x * cfg.multiplier
       }
     }
@@ -1269,34 +1239,34 @@ class StandaloneContextConditionalSpecs extends munit.FunSuite {
 
   case class Cfg(isBackfill: Boolean, isDryRun: Boolean)
 
-  object Jobs extends Context[Cfg] {
+  object Jobs extends Etl4sContext[Cfg] {
 
-    val backfillFlow = Context.Load[Int, String] { _ => n => s"backfill:$n" }
-    val deltaFlow    = Context.Load[Int, String] { _ => n => s"delta:$n" }
-    val dryRunFlow   = Context.Load[Int, String] { _ => n => s"dry-run:$n" }
+    val backfillFlow = Etl4sContext.Load[Int, String] { _ => n => s"backfill:$n" }
+    val deltaFlow    = Etl4sContext.Load[Int, String] { _ => n => s"delta:$n" }
+    val dryRunFlow   = Etl4sContext.Load[Int, String] { _ => n => s"dry-run:$n" }
 
     /** Branch on context, starting the pipeline. */
     val ingest: Reader[Cfg, Node[Int, String]] =
-      Context.If(_.isBackfill)(backfillFlow).Else(deltaFlow)
+      Etl4sContext.If(_.isBackfill)(backfillFlow).Else(deltaFlow)
 
     /** Chain further context branches with ElseIfCtx. */
     val ingestChained: Reader[Cfg, Node[Int, String]] =
-      Context
+      Etl4sContext
         .If(_.isBackfill)(backfillFlow)
         .ElseIfCtx(_.isDryRun)(dryRunFlow)
         .Else(deltaFlow)
 
     /** No Else: unmatched input passes through unchanged. */
     val maybeBump =
-      Context.If(_.isBackfill)(Context.Transform[Int, Int] { _ => n => n + 1 })
+      Etl4sContext.If(_.isBackfill)(Etl4sContext.Transform[Int, Int] { _ => n => n + 1 })
   }
 
-  test("Context.If starts a context pipeline on context") {
+  test("Etl4sContext.If starts a context pipeline on context") {
     assertEquals(Jobs.ingest.provide(Cfg(isBackfill = true, false)).unsafeRun(7), "backfill:7")
     assertEquals(Jobs.ingest.provide(Cfg(isBackfill = false, false)).unsafeRun(7), "delta:7")
   }
 
-  test("Context.If chains further context branches with ElseIfCtx") {
+  test("Etl4sContext.If chains further context branches with ElseIfCtx") {
     assertEquals(
       Jobs.ingestChained.provide(Cfg(isBackfill = true, false)).unsafeRun(7),
       "backfill:7"

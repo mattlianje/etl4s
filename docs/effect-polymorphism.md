@@ -7,13 +7,14 @@ by compiling it to an effect `F[_]` with `.compile[F]`.
 ```scala
 import etl4s._
 
-val parse = Transform[String, Int](_.trim.toInt)
-val inc   = Transform[Int, Int](_ + 1)
+val parse = Node[String, Int](_.trim.toInt)
+val inc   = Node[Int, Int](_ + 1)
 
-val pipeline = parse ~> inc
+val p = 
+     parse ~> inc
 ```
 
-The same `pipeline` value can be interpreted many ways.
+The same `p` value can be interpreted many ways.
 
 ## Built-in effects
 
@@ -23,8 +24,8 @@ The same `pipeline` value can be interpreted many ways.
 `.compile[Id].unsafeRun`, a plain synchronous run:
 
 ```scala
-pipeline.compile[Id].unsafeRun("41")  // 42
-pipeline.unsafeRun("41")  // 42
+p.compile[Id].unsafeRun("41")  // 42
+p.unsafeRun("41")  // 42
 ```
 
 `Try` catches thrown exceptions into `Success`/`Failure`:
@@ -32,7 +33,7 @@ pipeline.unsafeRun("41")  // 42
 ```scala
 import scala.util.{Try, Success, Failure}
 
-pipeline.compile[Try].unsafeRun("41")   // Success(42)
+p.compile[Try].unsafeRun("41")   // Success(42)
 parse.compile[Try].unsafeRun("oops")    // Failure(NumberFormatException)
 ```
 
@@ -54,8 +55,8 @@ import etl4s._
 import scala.concurrent.Future
 import scala.concurrent.ExecutionContext.Implicits.global
 
-val e1 = Extract { Thread.sleep(100); 42 }
-val e2 = Extract { Thread.sleep(100); "Ada" }
+val e1 = Node { Thread.sleep(100); 42 }
+val e2 = Node { Thread.sleep(100); "Ada" }
 
 val both = 
      e1 &> e2
@@ -92,7 +93,7 @@ given etl4s.Effect[IO] with {
 Now the same pipeline runs on `IO`, and `&>` branches on CE fibers:
 
 ```scala
-val program: IO[Int] = pipeline.compile[IO].unsafeRun("41")
+val program: IO[Int] = p.compile[IO].unsafeRun("41")
 ```
 
 The `Effect[F]` contract:

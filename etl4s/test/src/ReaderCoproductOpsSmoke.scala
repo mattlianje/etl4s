@@ -5,9 +5,9 @@ class ReaderCoproductOpsSpec extends munit.FunSuite {
   case class Cfg(factor: Int, label: String)
 
   test("Reader | fans in two context-aware branches") {
-    object Jobs extends Context[Cfg] {
-      val fromInt = Context.Extract[Int, String] { c => i => s"${c.label}:${i * c.factor}" }
-      val fromStr = Context.Transform[String, String] { c => s => s"${c.label}:$s" }
+    object Jobs extends Etl4sContext[Cfg] {
+      val fromInt = Etl4sContext.Extract[Int, String] { c => i => s"${c.label}:${i * c.factor}" }
+      val fromStr = Etl4sContext.Transform[String, String] { c => s => s"${c.label}:$s" }
     }
     import Jobs._
 
@@ -19,9 +19,9 @@ class ReaderCoproductOpsSpec extends munit.FunSuite {
   }
 
   test("Reader + routes an Either through independent context-aware branches") {
-    object Jobs extends Context[Cfg] {
-      val dbl = Context.Extract[Int, Int] { c => i => i * c.factor }
-      val up  = Context.Transform[String, String] { c => s => s"${c.label}-$s" }
+    object Jobs extends Etl4sContext[Cfg] {
+      val dbl = Etl4sContext.Extract[Int, Int] { c => i => i * c.factor }
+      val up  = Etl4sContext.Transform[String, String] { c => s => s"${c.label}-$s" }
     }
     import Jobs._
 
@@ -33,9 +33,9 @@ class ReaderCoproductOpsSpec extends munit.FunSuite {
   }
 
   test("Reader <|> falls back to the alternative when the primary throws") {
-    object Jobs extends Context[Cfg] {
-      val primary  = Context.Extract[String, Int] { _ => s => s.toInt }
-      val fallback = Context.Transform[String, Int] { c => _ => c.factor }
+    object Jobs extends Etl4sContext[Cfg] {
+      val primary  = Etl4sContext.Extract[String, Int] { _ => s => s.toInt }
+      val fallback = Etl4sContext.Transform[String, Int] { c => _ => c.factor }
     }
     import Jobs._
 
@@ -47,8 +47,8 @@ class ReaderCoproductOpsSpec extends munit.FunSuite {
   }
 
   test("Reader coproduct ops mix with a plain Node and stay inspectable") {
-    object Jobs extends Context[Cfg] {
-      val fromInt = Context.Extract[Int, String] { c => i => s"i${i * c.factor}" }
+    object Jobs extends Etl4sContext[Cfg] {
+      val fromInt = Etl4sContext.Extract[Int, String] { c => i => s"i${i * c.factor}" }
     }
     import Jobs._
 
@@ -63,10 +63,10 @@ class ReaderCoproductOpsSpec extends munit.FunSuite {
   }
 
   test("plain Node ⊕ Reader works in both directions, like ~>") {
-    object Jobs extends Context[Cfg] {
-      val ctxStr = Context.Transform[String, String] { c => s => s"${c.label}:$s" }
-      val ctxInt = Context.Extract[Int, Int] { c => i => i * c.factor }
-      val safety = Context.Transform[String, Int] { c => _ => c.factor }
+    object Jobs extends Etl4sContext[Cfg] {
+      val ctxStr = Etl4sContext.Transform[String, String] { c => s => s"${c.label}:$s" }
+      val ctxInt = Etl4sContext.Extract[Int, Int] { c => i => i * c.factor }
+      val safety = Etl4sContext.Transform[String, Int] { c => _ => c.factor }
     }
     import Jobs._
 

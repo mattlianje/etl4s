@@ -2,13 +2,15 @@
 
 | Operator | Name | What it does | Result type |
 |----------|------|--------------|-------------|
-| `~>` | Chain | `a ~> b` - output of `a` feeds into `b` | `Node[A, C]` |
-| `&` / `&>` | Fan-out | `a & b` - run both with the **same** input (`&>` runs them concurrently) | `Node[A, (B, C)]` |
+| `~>` | Chain | `a ~> b` - output of `a` feeds into `b` | `Node[A, D]` |
+| `&` / `&>` | Fan-out | `a & b` - run both with the **same** input (`&>` runs them concurrently) | `Node[A, (B, D)]` |
 | `*` / `*>` | Product | `a * b` - run on **different** inputs (`*>` runs them concurrently) | `Node[(A, C), (B, D)]` |
-| `>>` | Sequence | `a >> b` - run in order, keep `b`'s result | `Node[A, C]` |
+| `>>` | Sequence | `a >> b` - run in order, keep `b`'s result | `Node[A, D]` |
 | <code>&#124;</code> | Fan-in | <code>a &#124; b</code> - route an `Either` input to the matching branch | `Node[Either[A, C], B]` |
 | `+` | Choice | `a + b` - route an `Either` input through independent branches | `Node[Either[A, C], Either[B, D]]` |
 | <code>&lt;&#124;&gt;</code> | Fallback | <code>a &lt;&#124;&gt; b</code> - if `a` throws, run `b` on the same input | `Node[A, B]` |
+
+*Throughout, `a: Node[A, B]` and `b: Node[C, D]`.*
 
 ## `~>` chain (and `.andThen`)
 
@@ -234,8 +236,7 @@ safe.compile[Try].unsafeRun("oops")  // Success(0)
     `&>` and `*>` only run their branches concurrently when compiled to a concurrent
     effect such as `Future` (or IO), via `.compile[Future]`. The plain synchronous
     `unsafeRun` (the `Id` interpreter) has no threads, so it runs the branches
-    sequentially. The result is identical, only the execution differs. No
-    `ExecutionContext` is needed for plain `unsafeRun`.
+    sequentially.
 
 !!! note "Auto-flatten and `.zip`"
     Chaining fan-outs auto-flattens the tuple: `a & b & c` has type

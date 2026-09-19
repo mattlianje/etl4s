@@ -5,8 +5,8 @@
 ```scala
 import etl4s._
 
-val stringify = Pipeline((i: Int) => i.toString)
-val addBang    = Pipeline((s: String) => s + "!")
+val stringify = Transform((i: Int) => i.toString)
+val addBang    = Transform((s: String) => s + "!")
 
 val pipeline = stringify ~> addBang
 ```
