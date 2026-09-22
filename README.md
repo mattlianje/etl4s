@@ -71,15 +71,8 @@ To improve readability and express intent, **etl4s** defines four aliases: `Extr
 
 ```scala
 val step = Transform[String, Int](_.length)
-step("hello")  // 5
+step("hello")
 ```
-
-**Running pipelines:**
-- `pipeline(input)` - call like a function
-- `.unsafeRun(input)` - explicit run
-- `.safeRun(input)` - returns `Try[Out]`
-
-**DI:** Use `.requires` to turn any Node into a `Reader[Config, Node]`. The `~>` operator works between Nodes and Readers. See [Configuration](#configuration).
 
 ## Type safety
 **etl4s** won't let you chain together "blocks" that don't fit together:
@@ -157,8 +150,6 @@ val sequential: Extract[Unit, (Int, String, Boolean)] =
 
 Parallel run of e1, e2, e3 on their own JVM threads with Scala Futures **(~100ms total, same result, 3X faster)**
 ```scala
-import scala.concurrent.ExecutionContext.Implicits.global
-
 val parallel: Extract[Unit, (Int, String, Boolean)] =
      e1 &> e2 &> e3
 ```
@@ -212,16 +203,6 @@ val pipeline = extractUser
   .Else                         (toGuestNotice)
 ```
 
-Branch on config only with `IfCtx`/`ElseIfCtx`:
-```scala
-val pipeline = sourceReader
-  .IfCtx(_.isBackfill)(backfillBranch)
-  .ElseIfCtx(_.isDryRun)(dryRunBranch)
-  .Else(normalBranch)
-```
-
-Plain `Node` branches are automatically lifted to `Reader` when mixed with config-aware branches - no manual wrapping needed.
-
 Read more [here](https://mattlianje.github.io/etl4s/branching/).
 
 ## Side Effects
@@ -268,13 +249,15 @@ Feed that to Graphviz and you get:
 </p>
 
 ## Pipelines are values
-Pipelines being values unlocks some powerful niceties. Given:
+When your pipelines are plain inspectable values like here:
 
 ```scala
-val billing = parse ~> applyTax ~> format
+val pipeline = parse ~> applyTax ~> format
 ```
 
-Unit test pipeline shape...
+You get some superpowers for free. You can:
+
+Unit test pipeline shape
 ```scala
 test("etl graph is wired as designed") {
   assertEquals(billing.stages.map(_.name), List("parse", "applyTax", "format"))
@@ -282,7 +265,7 @@ test("etl graph is wired as designed") {
 }
 ```
 
-Govern dataflow architecture...
+Govern dataflow architecture
 ```scala
 def audit(p: Node[?, ?]): Unit = {
   val forbidden = p.stages.filter(_.fullName.startsWith("com.acme.legacy"))
@@ -290,7 +273,7 @@ def audit(p: Node[?, ?]): Unit = {
 }
 ```
 
-And generate docs that never drift...
+And generate docs that never drift
 ```scala
 os.write.over(os.pwd / "docs" / "billing.mmd", billing.toMermaid)
 ```
@@ -372,8 +355,8 @@ Simple UNIX-pipe style chaining of two pipelines:
 ```scala
 import etl4s._
 
-val p1 = Pipeline((i: Int) => i.toString)
-val p2 = Pipeline((s: String) => s + "!")
+val p1 = Node((i: Int) => i.toString)
+val p2 = Node((s: String) => s + "!")
 
 val p3 = p1 ~> p2
 ```
@@ -383,17 +366,13 @@ Connect the output of two pipelines to a third:
 ```scala
 import etl4s._
 
-val namePipeline = Pipeline("John Doe")
-val agePipeline  = Pipeline(30)
-val toUpper      = Transform[String, String](_.toUpperCase)
-val consoleLoad  = Load[String, Unit](println(_))
+val namePipeline = Node("John Doe")
+val agePipeline  = Node(30)
+val toUpper      = Node[String, String](_.toUpperCase)
+val consoleLoad  = Node[String, Unit](println(_))
 
 val combined =
-  for {
-    name <- namePipeline
-    age <- agePipeline
-    _ <- Extract(s"$name | $age") ~> toUpper ~> consoleLoad
-  } yield ()
+     (namePipeline & agePipeline) ~> toUpper ~> consoleLoad
 ```
 
 ## Real-world examples
