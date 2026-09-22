@@ -11,7 +11,7 @@ api:
 
 # Conditional branching
 
-Route data down different pipelines with `If`, `ElseIf`, and `Else`. Branch on the data flowing through, or on outside config. Each branch is a full pipeline, so a router reads like a whiteboard.
+Route data down different pipelines with `If`, `ElseIf`, and `Else`. Branch on the data flowing through, or on outside config.
 
 ## Branch on data
 
@@ -27,7 +27,7 @@ val classify = score
 Close with `.Else` and it is exhaustive. Drop the `.Else` and unmatched input flows straight through:
 
 ```scala
-val maybeBoost = enrich.If(_.score > 10)(applyBoost) // no Else: the rest passes through
+val maybeBoost = enrich.If(_.score > 10)(applyBoost)
 ```
 
 ## Start with a branch

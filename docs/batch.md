@@ -13,7 +13,9 @@ api:
 # Batch Collections
 
 Sub-pipelines often need to run over every element of a list-like source. This is why etl4s
-has a family of `…Each` combinators. They work on `List`, `Vector`, `Seq`,
+has a family of `Each` combinators.
+
+They work on `List`, `Vector`, `Seq`,
 `Set`, and `Iterable` out of the box (plus `LazyList` on Scala 3), and any
 [custom container](#custom-batchables) you teach it about.
 
@@ -24,9 +26,6 @@ has a family of `…Each` combinators. They work on `List`, `Vector`, `Seq`,
 | `collectEach(sub)` | run `sub: A => Option[B]`, keep the `Some`s |
 | `filterEach(pred)` | keep the elements where `pred` holds |
 
-Each has a `…Par(n)` variant (`eachPar`, `collectEachPar`, `filterEachPar`) that runs up to
-`n` elements concurrently under a [concurrent effect](effect-polymorphism.md), sequentially
-under the default `Id` interpreter.
 
 ## `each`: one element at a time
 
