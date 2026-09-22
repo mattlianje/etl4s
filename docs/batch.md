@@ -28,38 +28,23 @@ Each has a `…Par(n)` variant (`eachPar`, `collectEachPar`, `filterEachPar`) th
 `n` elements concurrently under a [concurrent effect](effect-polymorphism.md), sequentially
 under the default `Id` interpreter.
 
-```scala
-import etl4s._
-
-val clean  = Node[Int, Int](_ + 1)
-val enrich = Node[Int, String](n => s"v$n")
-val extractNumbers  = Node(_ => List(1, 2, 3))
-```
-
 ## `each`: one element at a time
 
-Apply the inner sub-pipeline to each element, sequentially.
+Applies the inner sub-pipeline to every element, in order, preserving the collection type.
+Each order is validated and enriched on its own, then the whole batch is written:
 
 ```scala
-val pipeline =
-     extractNumbers ~> each(clean ~> enrich)
-
-pipeline.unsafeRun()
+val ingest =
+     fetchOrders ~> each(validateOrder ~> enrichOrder) ~> writeOrdersToDB
 ```
-You will get:
-```
-List("v2", "v3", "v4")
-```
-
-The concrete collection type is preserved through the fold.
 
 ## `eachPar(n)`: up to `n` in flight
 
 Same as `each`, but processes up to `n` elements concurrently.
 
 ```scala
-val pipeline =
-     extractNumbers ~> eachPar(8)(clean ~> enrich)
+val ingest =
+     fetchOrders ~> eachPar(8)(validateOrder ~> enrichOrder) ~> writeOrdersToDB
 ```
 
 !!! note "Concurrency needs a concurrent effect"
@@ -70,51 +55,31 @@ val pipeline =
 
 ## `eachSlice(size)`: whole chunks at a time
 
-Feed the sub-pipeline chunks of `size` elements instead of single elements.
-Ideal for bulk upserts or batched API calls.
+Feeds the sub-pipeline chunks of `size` elements instead of single ones.
+Ideal for bulk upserts or batched API calls:
 
 ```scala
-val bulkUpsert =
-     Node[List[Int], Unit](chunk => println(s"upserting ${chunk.size} rows"))
-
-val pipeline = 
-     extractNumbers ~> eachSlice(500)(bulkUpsert)
+val bulk =
+     fetchOrders ~> eachSlice(500)(bulkUpsertOrders) ~> writeReport
 ```
 
 ## `collectEach` / `collectEachPar`: map and drop
 
-When the inner step returns an `Option`, `collectEach` keeps the `Some` values
-and drops the `None`s, a batch-flavoured `collect`.
+When the inner step returns an `Option`, `collectEach` keeps the `Some`s and drops the
+`None`s, a batch-flavoured `collect`. Rows that fail to parse simply fall away:
 
 ```scala
-val parse = Node[String, Option[Int]](s => scala.util.Try(s.toInt).toOption)
-val extractBadNumbers = Node(_ => List("1", "2", "oops", "4"))
-
-val pipeline = 
-     extractBadNumbers ~> collectEach(parse)
-
-pipeline.unsafeRun()
+val load =
+     fetchRows ~> collectEach(parseRow) ~> writeOrdersToDB
 ```
-You will get:
-```
-List(1, 2, 4)
-```
-
 
 ## `filterEach` / `filterEachPar`: keep by predicate
 
+Keeps the elements where the predicate node holds:
+
 ```scala
-val extractNumbers = Node(_ => List(1, 2, 3, 4, 5, 6))
-val isEven = Node[Int, Boolean](_ % 2 == 0)
-
-val pipeline =
-     extractNumbers ~> filterEach(isEven)
-
-pipeline.unsafeRun()
-```
-You will get:
-```
-List(2, 4, 6)
+val bigOnly =
+     fetchOrders ~> filterEach(isBigOrder) ~> writeReport
 ```
 
 ## Failures
@@ -122,23 +87,15 @@ List(2, 4, 6)
 Under an effect, an element failure short-circuits the batch:
 
 ```scala
-import scala.util.Try
+val ingest =
+     fetchOrders ~> eachPar(2)(riskyStep)
 
-val riskyFunction: Node[Int, Int] = Node(n => if (n == 2) sys.error("boom") else n)
-
-val riskyPipeline =
-     extractNumbers ~> eachPar(2)(riskyFunction)
-
-riskyPipeline.compile[Try].unsafeRun()
-```
-You will get:
-```
-Failure(...)
+ingest.compile[Try].unsafeRun()  // Failure(...) on the first element that throws
 ```
 
 ## Custom batchables
 
-Implement `etl4s.Batchable` to use your own container types:
+Implement `etl4s.Batchable` to run over your own container types:
 
 ```scala
 import etl4s._
@@ -151,20 +108,17 @@ given [A]: Batchable[Page[A], A, Page] with {
   def fromSeq[B](xs: Seq[B]) = Page(xs.toVector, None)
 }
 
-val fetchPage = Node(_ => Page(Vector(1, 2, 3), None))
-
-val p = 
-     fetchPage ~> eachPar(8)(enrich)
+val enrichPage =
+     fetchPage ~> eachPar(8)(enrichOrder)
 ```
 
 ## Introspection
 
-A reified batch is still inspectable: the inner step shows up in `.stages`:
+A reified batch is still inspectable, the inner step shows up in `.stages`:
 
 ```scala
 val p =
-     extractNumbers ~> eachPar(3)(clean)
+     fetchOrders ~> eachPar(3)(enrichOrder)
 
-p.stages.map(_.name)
+p.stages.map(_.name)  // includes "enrichOrder"
 ```
-...which includes `"clean"`.

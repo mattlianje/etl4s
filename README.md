@@ -14,7 +14,7 @@ Battle-tested at [Instacart](https://www.instacart.com/)
 
 ## Features
 - Declarative, typed pipeline endpoints
-- Zero-dependencies
+- Use **Etl4s.scala** like a header file
 - Type-safe, compile-time checked
 - [Config-driven](#configuration) by design
 - Easy, monadic composition of pipelines
@@ -60,7 +60,6 @@ pipeline.unsafeRun()
 - Chaotic, framework-coupled ETL codebases that grow without an imposed discipline drive dev teams and data orgs to their knees.
 - **etl4s** is a lightweight DSL to enforce discipline, type-safety, and reuse of pure functions - and see [functional ETL](https://maximebeauchemin.medium.com/functional-data-engineering-a-modern-paradigm-for-batch-data-processing-2327ec32c42a) for what it is... and could be.
 
-
 ## Core Concepts
 **etl4s** has one core building block:
 ```scala
@@ -68,14 +67,17 @@ Node[-In, +Out]
 ```
 A Node wraps a lazily-evaluated function `In => Out`. Chain them with `~>` to build pipelines.
 
-To improve readability and express intent, **etl4s** defines three aliases: `Extract`, `Transform` and `Load`. All behave the same under the hood.
-
-You run pipelines at the end of the World by calling `.unsafeRun(...)`
+To improve readability and express intent, **etl4s** defines four aliases: `Extract`, `Transform`, `Load` and `Pipeline`. All behave the same under the hood.
 
 ```scala
-val countChars = Transform[String, Int](_.length)
-countChars.unsafeRun("hello")  // 5
+val step = Transform[String, Int](_.length)
+step("hello")  // 5
 ```
+
+**Running pipelines:**
+- `pipeline(input)` - call like a function
+- `.unsafeRun(input)` - explicit run
+- `.safeRun(input)` - returns `Try[Out]`
 
 **DI:** Use `.requires` to turn any Node into a `Reader[Config, Node]`. The `~>` operator works between Nodes and Readers. See [Configuration](#configuration).
 
@@ -100,17 +102,15 @@ The above will not compile with:
 
 etl4s uses a few simple operators to build pipelines:
 
-| Operator | Name | Description | Example |
-|----------|------|-------------|---------|
-| `~>` | Connect | Chains operations in sequence | `parseCart ~> applyTax ~> total` |
-| `&` / `&>` | Fan-out | Group operations with the **same** input (`&>` concurrent) | `profileCard & recentOrders` |
-| `*` / `*>` | Product | Pair nodes with **different** inputs (`*>` concurrent) | `trimName * bumpAge` |
-| `>>` | Sequence | Runs nodes in order with same input | `clearStaging >> warmCache` |
-| <code>&#124;</code> | Fan-in | Route an `Either` input to the matching branch | <code>byLegacyId &#124; byUuid</code> |
-| `+` | Choice | Route an `Either` through independent branches | `handleRefund + handleCharge` |
-| <code>&lt;&#124;&gt;</code> | Fallback | If left throws, run right on the same input | <code>fetchLive &lt;&#124;&gt; fetchCached</code> |
-
-Like `~>`, these all compose between Nodes and Readers (see [Configuration](#configuration)).
+| Operator | Name | What it does |
+|----------|------|--------------|
+| `~>` | Chain | `a ~> b` - output of `a` feeds into `b` |
+| `&` / `&>` | Fan-out | `a & b` - run both with the same input (`&>` runs them concurrently) |
+| `*` / `*>` | Product | `a * b` - run on different inputs (`*>` runs them concurrently) |
+| `>>` | Sequence | `a >> b` - run in order, keep `b`'s result |
+| <code>&#124;</code> | Fan-in | <code>a &#124; b</code> - route an `Either` input to the matching branch |
+| `+` | Choice | `a + b` - route an `Either` input through independent branches |
+| <code>&lt;&#124;&gt;</code> | Fallback | <code>a &lt;&#124;&gt; b</code> - if `a` throws, run `b` on the same input |
 
 ## Configuration
 
@@ -121,66 +121,31 @@ import etl4s._
 
 case class ApiConfig(apiKey: String)
 
-val fetchRaw   = Extract("data")
-val callApi    = Transform[String, String].requires[ApiConfig] { cfg => data =>
-  s"${cfg.apiKey}: $data"
+val fetchUser = Extract("alice")
+val callApi   = Transform[String, String].requires[ApiConfig] { cfg => user =>
+  s"${cfg.apiKey}: $user"
 }
 
-val pipeline = fetchRaw ~> callApi
+val pipeline = fetchUser ~> callApi
 
-pipeline.provide(ApiConfig("secret")).unsafeRun(())  /* "secret: data" */
+pipeline.provide(ApiConfig("secret")).unsafeRun(())  /* "secret: alice" */
+
+/** NOTE (Scala 2.x)
+  * Use: `Node.requires[ApiConfig, In, Out](cfg => in => out)` syntax
+  */
 ```
 
 **etl4s** automatically infers the smallest shared config for your pipeline. Just `.provide` once.
 
 Read more [here](https://mattlianje.github.io/etl4s/config/)
 
-## Effect polymorphism
-Since an **etl4s** pipeline is just a [free(ish)-arrow](https://arxiv.org/pdf/2506.12212): you choose how to run it by compiling it to an effect `F[_]` via `.compile[F]`. **etl4s** ships `Id`, `Try`, and `Future` out of the box.
-
-Sketch a pipeline once
-```scala
-val userPipeline =
-     fetchUser ~> enrichUser ~> (saveUser &> notify)
-```
-
-And compile it to the built in `Future`:
-```scala
-userPipeline.compile[Future].unsafeRun(userId)
-```
-
-When you run the pipeline, `saveUser` and `notify` will each run in parallel on their own Future.
-
-### Add your own effects
-Want to run that same pipeline on the [Cats Effect](https://typelevel.org/cats-effect/)
-fiber runtime? Just implement `etl4s.Effect`:
-```scala
-import cats.effect.IO
-
-given etl4s.Effect[IO] with {
-  def pure[A](a: A): IO[A]                                    = IO.pure(a)
-  def delay[A](thunk: => A): IO[A]                            = IO(thunk)
-  def flatMap[A, B](fa: IO[A])(f: A => IO[B]): IO[B]          = fa.flatMap(f)
-  def handleErrorWith[A](fa: => IO[A])(h: Throwable => IO[A]) = fa.handleErrorWith(h)
-
-  /* Used for &>, *>, each(Par/Slice) */
-  override def both[A, B](fa: IO[A], fb: IO[B]): IO[(A, B)]   = IO.both(fa, fb)
-}
-```
-
-Now you can run the same pipeline, but `saveUser` and `notify` each get a CE `IO`:
-```scala
-val program: IO[Ack] = 
-     userPipeline.compile[IO].unsafeRun(input)
-```
-
-## Parallelizing tasks
+## Parallelizing Tasks
 **etl4s** has an elegant shorthand for grouping and parallelizing operations that share the same input type:
 ```scala
 /* Simulate slow IO operations (e.g: DB calls, API requests) */
 
 val e1 = Extract { Thread.sleep(100); 42 }
-val e2 = Extract { Thread.sleep(100); "Ada" }
+val e2 = Extract { Thread.sleep(100); "hello" }
 val e3 = Extract { Thread.sleep(100); true }
 ```
 
@@ -190,13 +155,12 @@ val sequential: Extract[Unit, (Int, String, Boolean)] =
      e1 & e2 & e3
 ```
 
-Run the three concurrently **(~100ms total, same result, 3X faster)**. Concurrency comes from the
-effect you compile to
+Parallel run of e1, e2, e3 on their own JVM threads with Scala Futures **(~100ms total, same result, 3X faster)**
 ```scala
+import scala.concurrent.ExecutionContext.Implicits.global
+
 val parallel: Extract[Unit, (Int, String, Boolean)] =
      e1 &> e2 &> e3
-
-parallel.compile[Future].unsafeRun(())
 ```
 
 Mix sequential and parallel execution (first two parallel (~100ms), then third (~100ms)):
@@ -209,85 +173,35 @@ Full example of a parallel pipeline:
 val consoleLoad: Load[String, Unit] = Load(println(_))
 val dbLoad:      Load[String, Unit] = Load(x => println(s"DB Load: ${x}"))
 
-val merge = Transform[(Int, String, Boolean), String] {
-  case (i, s, b) => s"$i-$s-$b"
-}
+val merge = Transform[(Int, String, Boolean), String] { case (i, s, b) =>
+    s"$i-$s-$b"
+  }
 
 val pipeline =
   (e1 &> e2 &> e3) ~> merge ~> (consoleLoad &> dbLoad)
 ```
 
-## Batch collections
-Run a sub-pipeline over a collection with `each`, `eachPar` and `eachSlice`. Works on `List`, `Vector`, `Seq`, `Set`, and `Iterable` out of the box.
+## Handling Failures
 
-Run the sub-pipeline on each `Order`, **one at a time**
-```scala
-fetchOrders ~> each(validateOrder ~> enrichOrder) ~> writeOrdersToDB
-```
-
-Run the sub-pipeline on each `Order`, **8 in flight at once**...
-
-Or feed the sub-pipeline **whole chunks of 500 `Order`s** at a time:
-```scala
-val par8Pipeline = 
-     fetchOrders ~> eachPar(8)(validateOrder ~> enrichOrder) ~> writeOrdersToDB
-
-val chunk500Pipeline =
-     fetchOrders ~> eachSlice(500)(bulkUpsertOrders) ~> writeReport
-```
-
-Map-and-drop with `collectEach` (inner step returns an `Option`), or keep by a
-predicate node with `filterEach` — each with a concurrent `...Par` variant:
-```scala
-fetchRows ~> collectEach(parseRow)     ~> writeOrdersToDB  // drops the None rows
-fetchOrders ~> filterEach(isBigOrder)  ~> writeOrdersToDB  // keeps the matches
-```
-
-### Custom batchables
-Implement `etl4s.Batchable` to use your own container types:
-```scala
-import etl4s._
-
-case class Page[A](items: Vector[A], nextCursor: Option[String])
-
-given [A]: Batchable[Page[A], A, Page] with {
-  def toSeq(page: Page[A])   = page.items
-  def fromElems(xs: Seq[A])  = Page(xs.toVector, None)
-  def fromSeq[B](xs: Seq[B]) = Page(xs.toVector, None)
-}
-
-fetchPage ~> eachPar(8)(enrichOrder)
-```
-
-## Handling failures
-
-### `withRetry`
+#### `withRetry`
 Retry failed operations:
 ```scala
-import etl4s._
+val callFlakyApi = Extract("response")
+  .withRetry(maxAttempts = 3, initialDelayMs = 100)
 
-var attempts = 0
-val callApi = Transform[Int, String] { x =>
-  attempts += 1
-  if (attempts < 3) throw new RuntimeException("fail")
-  else "ok"
-}.withRetry(maxAttempts = 3, initialDelayMs = 10)
-
-Extract(42) ~> callApi  /* Succeeds on 3rd attempt */
+callFlakyApi ~> parseResponse ~> saveResult
 ```
 
-### `onFailure`
+#### `onFailure`
 Catch exceptions and recover:
 ```scala
-import etl4s._
-
 val fetchUser = Extract[Unit, String](_ => throw new RuntimeException("Boom!"))
   .onFailure(e => s"Error: ${e.getMessage}")
 
-fetchUser.unsafeRun(())  /* Returns "Error: Boom!" */
+fetchUser.unsafeRun(())  /* "Error: Boom!" */
 ```
 
-## Conditional branching
+## Conditional Branching
 
 Route data through different pipelines with `If`, `ElseIf`, and `Else`:
 
@@ -310,14 +224,12 @@ Plain `Node` branches are automatically lifted to `Reader` when mixed with confi
 
 Read more [here](https://mattlianje.github.io/etl4s/branching/).
 
-## Side effects
+## Side Effects
 Use `.tap()` for side effects without disrupting pipeline flow:
 
 ```scala
-import etl4s._
-
-val listFiles: Extract[Any, List[String]] = Extract(_ => List("a.txt", "b.txt"))
-                                              .tap(files => println(s"Processing: $files"))
+val listFiles  = Extract(List("a.txt", "b.txt"))
+                   .tap(files => println(s"Processing: $files"))
 
 val countFiles = Transform[List[String], Int](_.size)
 
@@ -333,32 +245,83 @@ val pipeline = logStart >> (listFiles ~> countFiles) >> logEnd
 pipeline.unsafeRun()
 ```
 
+## Inspect the structure
+A pipeline is a value you can look at before running it. Every `Node` captures its shape,
+its in/out types, and its enclosing `val` name at compile time.
+
+```scala
+val saveToDb = Node[Int, Unit](n => println(s"saved $n"))
+
+val p =
+     extract5 ~> (double & triple) ~> combine ~> saveToDb
+```
+
+`.toDot` renders a Graphviz graph, and `.toMermaid` a Mermaid one.
+
+```scala
+p.toDot
+```
+Feed that to Graphviz and you get:
+
+<p align="center">
+  <img src="pix/pipeline-example.svg" width="500">
+</p>
+
+## Pipelines are values
+Pipelines being values unlocks some powerful niceties. Given:
+
+```scala
+val billing = parse ~> applyTax ~> format
+```
+
+Unit test pipeline shape...
+```scala
+test("etl graph is wired as designed") {
+  assertEquals(billing.stages.map(_.name), List("parse", "applyTax", "format"))
+  assertEquals(billing.stages.map(s => s.in -> s.out).last, "Double" -> "String")
+}
+```
+
+Govern dataflow architecture...
+```scala
+def audit(p: Node[?, ?]): Unit = {
+  val forbidden = p.stages.filter(_.fullName.startsWith("com.acme.legacy"))
+  require(forbidden.isEmpty, s"pipeline pulls in banned stages: ${forbidden.map(_.name)}")
+}
+```
+
+And generate docs that never drift...
+```scala
+os.write.over(os.pwd / "docs" / "billing.mmd", billing.toMermaid)
+```
+
 ## Lineage
+
 Track data lineage and visualize pipeline dependencies. Attach metadata to any Node or Reader then call `.toDot`, `.toJson` or `.toMermaid`
 on individual instances or on Sequences:
 
 ```scala
-val cleanOrders = Node[String, String](identity)
+val A = Node[String, String](identity)
   .lineage(
-    name = "clean_orders",
-    inputs = List("raw_orders", "customers"),
-    outputs = List("orders_clean"),
+    name = "A",
+    inputs = List("s1", "s2"),
+    outputs = List("s3"), 
     schedule = "0 */2 * * *"
   )
 
-val dailyRevenue = Node[String, String](identity)
+val B = Node[String, String](identity)
   .lineage(
-    name = "daily_revenue",
-    inputs = List("orders_clean"),
-    outputs = List("revenue_by_day", "revenue_by_region")
+    name = "B",
+    inputs = List("s3"),
+    outputs = List("s4", "s5")
   )
 ```
 
 Export lineage as JSON, DOT (Graphviz), or Mermaid diagrams:
 
 ```scala
-Seq(cleanOrders, dailyRevenue).toJson
-Seq(cleanOrders, dailyRevenue).toDot
+Seq(A, B).toJson
+Seq(A, B).toDot
 ```
 
 <p align="center">
@@ -366,7 +329,7 @@ Seq(cleanOrders, dailyRevenue).toDot
 </p>
 
 ```scala
-Seq(cleanOrders, dailyRevenue).toMermaid
+Seq(A, B).toMermaid
 ```
 ```mermaid
 graph LR
@@ -374,54 +337,54 @@ graph LR
     classDef dataSource fill:#f3e5f5,stroke:#4a148c,stroke-width:2px,color:#000
     classDef cluster fill:#e8f5e8,stroke:#2e7d32,stroke-width:2px,color:#000
 
-    clean_orders["clean_orders<br/>(0 */2 * * *)"]
-    daily_revenue["daily_revenue"]
-    raw_orders(["raw_orders"])
-    customers(["customers"])
-    orders_clean(["orders_clean"])
-    revenue_by_day(["revenue_by_day"])
-    revenue_by_region(["revenue_by_region"])
+    A["A<br/>(0 */2 * * *)"]
+    B["B"]
+    s1(["s1"])
+    s2(["s2"])
+    s3(["s3"])
+    s4(["s4"])
+    s5(["s5"])
 
-    raw_orders --> clean_orders
-    customers --> clean_orders
-    clean_orders --> orders_clean
-    orders_clean --> daily_revenue
-    daily_revenue --> revenue_by_day
-    daily_revenue --> revenue_by_region
-    clean_orders -.-> daily_revenue
+    s1 --> A
+    s2 --> A
+    A --> s3
+    s3 --> B
+    B --> s4
+    B --> s5
+    A -.-> B
     linkStyle 6 stroke:#ff6b35,stroke-width:2px
 
-    class clean_orders pipeline
-    class daily_revenue pipeline
-    class raw_orders dataSource
-    class customers dataSource
-    class orders_clean dataSource
-    class revenue_by_day dataSource
-    class revenue_by_region dataSource
+    class A pipeline
+    class B pipeline
+    class s1 dataSource
+    class s2 dataSource
+    class s3 dataSource
+    class s4 dataSource
+    class s5 dataSource
 ```
 
 **etl4s** automatically infers dependencies by matching output -> input sources. Nodes don't need to be connected with `~>` for lineage tracking. Explicit dependencies via `upstreams` also supported.
 
-## Recipes
+## Examples
 
-### Chain two pipelines
+#### Chain two pipelines
 Simple UNIX-pipe style chaining of two pipelines:
 ```scala
 import etl4s._
 
-val format    = Transform((n: Int) => n.toString)
-val emphasize = Transform((s: String) => s + "!")
+val p1 = Pipeline((i: Int) => i.toString)
+val p2 = Pipeline((s: String) => s + "!")
 
-val announce = format ~> emphasize
+val p3 = p1 ~> p2
 ```
 
-### Complex chaining
+#### Complex chaining
 Connect the output of two pipelines to a third:
 ```scala
 import etl4s._
 
-val namePipeline = Extract("John Doe")
-val agePipeline  = Extract(30)
+val namePipeline = Pipeline("John Doe")
+val agePipeline  = Pipeline(30)
 val toUpper      = Transform[String, String](_.toUpperCase)
 val consoleLoad  = Load[String, Unit](println(_))
 
@@ -433,7 +396,7 @@ val combined =
   } yield ()
 ```
 
-## Where it fits
+## Real-world examples
 **etl4s** works great with anything:
 - Spark / Flink / Beam
 - ETL / Streaming
@@ -442,33 +405,7 @@ val combined =
 - Big Data workflows
 - Web-server dataflows
 
-## FAQ
-
-**When do effects actually run?**<br>
-Never while you stitch. `~>`, `&`, `&>`, `*` just allocate a description, nothing executes until
-you interpret it with `.unsafeRun(...)` or `.compile[F].unsafeRun(...)`.
-
-**What happens when a step fails?**<br>
-The failure propagates through the interpreter. Recover locally with `.onFailure` / `.withRetry`,
-or handle it in the effect you compiled to (`Try`, `Future`, `IO`, ...)
-
-**Can I run the same pipeline synchronously and asynchronously?**<br>
-Yes, that's the whole point of [effect polymorphism](#effect-polymorphism). One description, many
-interpreters: `compile[Id]`, `compile[Try]`, `compile[Future]`, or your own `Effect[F]`.
-
-**How does the [lineage](#lineage) diagram get its names and types?**<br>
-At compile time every Node captures both the name of its
-enclosing val or def and its input/output types via a tiny macro.
-
-**How does it work under the hood?**<br>
-`Node[-A, +B]` is a small sealed AST whose constructors
-are exactly the arrow / profunctor combinators. In this sense `Node` is almost a free-arrow.
-Almost because you have escape hatch to `FlatMap` that an arrow cannot express
-
-
 ## Inspiration
 - Debasish Ghosh's [Functional and Reactive Domain Modeling](https://www.manning.com/books/functional-and-reactive-domain-modeling)
 - [Akka Streams DSL](https://doc.akka.io/libraries/akka-core/current/stream/stream-graphs.html#constructing-graphs)
 - Various Rich Hickey talks
-
-

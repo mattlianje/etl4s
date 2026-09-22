@@ -110,20 +110,6 @@ val p =
      extract5 ~> (double & triple) ~> combine ~> saveToDb
 ```
 
-`.stages` gives you the steps in execution order, each with its val-name and in/out types:
-
-```scala
-p.stages.foreach(s => println(s"${s.name}: ${s.in} => ${s.out}"))
-
-/*
-extract5: Any => Int
-double: Int => Int
-triple: Int => Int
-combine: Tuple2[Int, Int] => Int
-saveToDb: Int => Unit
-*/
-```
-
 `.toDot` renders a Graphviz graph, and `.toMermaid` a Mermaid one.
 
 ```scala
@@ -216,5 +202,18 @@ p.toDot(showTypes = false)
 p.toMermaid(direction = Direction.TB)
 ```
 
+`.stages` gives you the steps in execution order, each with its val-name and in/out types:
+
+```scala
+p.stages.foreach(s => println(s"${s.name}: ${s.in} => ${s.out}"))
+
+/*
+extract5: Any => Int
+double: Int => Int
+triple: Int => Int
+combine: Tuple2[Int, Int] => Int
+saveToDb: Int => Unit
+*/
+```
 That sums it up - you've seen stitching, config-driven nodes, and how to inspect a pipeline
 ... etl4s does have more operators and features ... but you've 90% of what there is to see.
