@@ -1,90 +1,91 @@
-<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="423pt" height="98pt" viewBox="0.00 0.00 423.00 98.00">
+<svg width="620pt" height="98pt"
+ viewBox="0.00 0.00 620.00 98.00" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink">
 <g id="graph0" class="graph" transform="scale(1 1) rotate(0) translate(4 94)">
 <title>G</title>
-<!-- A -->
+<!-- clean_orders -->
 <g id="node1" class="node">
-<title>A</title>
-<path fill="#e3f2fd" stroke="#1976d2" d="M132.5,-63C132.5,-63 102,-63 102,-63 96,-63 90,-57 90,-51 90,-51 90,-39 90,-39 90,-33 96,-27 102,-27 102,-27 132.5,-27 132.5,-27 138.5,-27 144.5,-33 144.5,-39 144.5,-39 144.5,-51 144.5,-51 144.5,-57 138.5,-63 132.5,-63"/>
-<text xml:space="preserve" text-anchor="start" x="112.92" y="-45.7" font-family="Arial Bold" font-size="12.00">A</text>
-<text xml:space="preserve" text-anchor="start" x="98" y="-36.4" font-family="Arial Bold" font-style="italic" font-size="9.00" fill="#d63384">0 */2 * * *</text>
+<title>clean_orders</title>
+<path fill="#e3f2fd" stroke="#1976d2" d="M191.97,-63C191.97,-63 124.97,-63 124.97,-63 118.97,-63 112.97,-57 112.97,-51 112.97,-51 112.97,-39 112.97,-39 112.97,-33 118.97,-27 124.97,-27 124.97,-27 191.97,-27 191.97,-27 197.97,-27 203.97,-33 203.97,-39 203.97,-39 203.97,-51 203.97,-51 203.97,-57 197.97,-63 191.97,-63"/>
+<text xml:space="preserve" text-anchor="start" x="120.97" y="-45.1" font-family="Arial Bold" font-size="12.00">clean_orders</text>
+<text xml:space="preserve" text-anchor="start" x="140.1" y="-35.95" font-family="Arial Bold" font-style="italic" font-size="9.00" fill="#d63384">0 */2 * * *</text>
 </g>
-<!-- B -->
+<!-- daily_revenue -->
 <g id="node2" class="node">
-<title>B</title>
-<path fill="#e3f2fd" stroke="#1976d2" d="M312.5,-63C312.5,-63 282.5,-63 282.5,-63 276.5,-63 270.5,-57 270.5,-51 270.5,-51 270.5,-39 270.5,-39 270.5,-33 276.5,-27 282.5,-27 282.5,-27 312.5,-27 312.5,-27 318.5,-27 324.5,-33 324.5,-39 324.5,-39 324.5,-51 324.5,-51 324.5,-57 318.5,-63 312.5,-63"/>
-<text xml:space="preserve" text-anchor="start" x="293.5" y="-41.4" font-family="Arial Bold" font-size="12.00">B</text>
+<title>daily_revenue</title>
+<path fill="#e3f2fd" stroke="#1976d2" d="M446.21,-63C446.21,-63 373.96,-63 373.96,-63 367.96,-63 361.96,-57 361.96,-51 361.96,-51 361.96,-39 361.96,-39 361.96,-33 367.96,-27 373.96,-27 373.96,-27 446.21,-27 446.21,-27 452.21,-27 458.21,-33 458.21,-39 458.21,-39 458.21,-51 458.21,-51 458.21,-57 452.21,-63 446.21,-63"/>
+<text xml:space="preserve" text-anchor="start" x="369.96" y="-40.88" font-family="Arial Bold" font-size="12.00">daily_revenue</text>
 </g>
-<!-- A&#45;&gt;B -->
+<!-- clean_orders&#45;&gt;daily_revenue -->
 <g id="edge7" class="edge">
-<title>A-&gt;B</title>
-<path fill="none" stroke="#ff6b35" d="M144.89,-47.09C155.9,-47.85 168.81,-48.62 180.5,-49 204.49,-49.77 210.51,-49.77 234.5,-49 243.04,-48.72 252.23,-48.24 260.85,-47.69"/>
-<polygon fill="#ff6b35" stroke="#ff6b35" points="260.97,-50.49 268.76,-47.17 260.59,-44.91 260.97,-50.49"/>
+<title>clean_orders&#45;&gt;daily_revenue</title>
+<path fill="none" stroke="#ff6b35" d="M204.17,-47.62C215.82,-48.19 228.36,-48.71 239.97,-49 278.18,-49.95 287.76,-49.92 325.96,-49 334.45,-48.8 343.42,-48.47 352.2,-48.1"/>
+<polygon fill="#ff6b35" stroke="#ff6b35" points="352.25,-50.9 360.11,-47.75 352,-45.31 352.25,-50.9"/>
 </g>
-<!-- s3 -->
+<!-- orders_clean -->
 <g id="node5" class="node">
-<title>s3</title>
-<ellipse fill="#f3e5f5" stroke="#7b1fa2" cx="207.5" cy="-22" rx="27" ry="18"/>
-<text xml:space="preserve" text-anchor="middle" x="207.5" y="-19" font-family="Arial" font-size="10.00">s3</text>
+<title>orders_clean</title>
+<ellipse fill="#f3e5f5" stroke="#7b1fa2" cx="282.97" cy="-22" rx="43" ry="18"/>
+<text xml:space="preserve" text-anchor="middle" x="282.97" y="-18.5" font-family="Arial" font-size="10.00">orders_clean</text>
 </g>
-<!-- A&#45;&gt;s3 -->
+<!-- clean_orders&#45;&gt;orders_clean -->
 <g id="edge3" class="edge">
-<title>A-&gt;s3</title>
-<path fill="none" stroke="#666666" d="M144.73,-38.1C153.56,-35.8 163.53,-33.2 172.83,-30.77"/>
-<polygon fill="#666666" stroke="#666666" points="173.35,-33.53 180.39,-28.81 171.94,-28.11 173.35,-33.53"/>
+<title>clean_orders&#45;&gt;orders_clean</title>
+<path fill="none" stroke="#666666" d="M204.39,-36.57C214.01,-34.76 224.22,-32.84 233.95,-31.01"/>
+<polygon fill="#666666" stroke="#666666" points="234.28,-33.8 241.62,-29.57 233.24,-28.3 234.28,-33.8"/>
 </g>
-<!-- s4 -->
+<!-- revenue_by_day -->
 <g id="node6" class="node">
-<title>s4</title>
-<ellipse fill="#f3e5f5" stroke="#7b1fa2" cx="387.5" cy="-72" rx="27" ry="18"/>
-<text xml:space="preserve" text-anchor="middle" x="387.5" y="-69" font-family="Arial" font-size="10.00">s4</text>
+<title>revenue_by_day</title>
+<ellipse fill="#f3e5f5" stroke="#7b1fa2" cx="552.99" cy="-72" rx="52.47" ry="18"/>
+<text xml:space="preserve" text-anchor="middle" x="552.99" y="-68.5" font-family="Arial" font-size="10.00">revenue_by_day</text>
 </g>
-<!-- B&#45;&gt;s4 -->
+<!-- daily_revenue&#45;&gt;revenue_by_day -->
 <g id="edge5" class="edge">
-<title>B-&gt;s4</title>
-<path fill="none" stroke="#666666" d="M324.9,-53.1C333.96,-55.88 344.2,-59.02 353.7,-61.94"/>
-<polygon fill="#666666" stroke="#666666" points="352.6,-64.53 361.07,-64.2 354.24,-59.17 352.6,-64.53"/>
+<title>daily_revenue&#45;&gt;revenue_by_day</title>
+<path fill="none" stroke="#666666" d="M458.4,-54.07C470.88,-56.46 484.45,-59.06 497.29,-61.52"/>
+<polygon fill="#666666" stroke="#666666" points="496.61,-64.24 504.99,-62.99 497.66,-58.74 496.61,-64.24"/>
 </g>
-<!-- s5 -->
+<!-- revenue_by_region -->
 <g id="node7" class="node">
-<title>s5</title>
-<ellipse fill="#f3e5f5" stroke="#7b1fa2" cx="387.5" cy="-18" rx="27" ry="18"/>
-<text xml:space="preserve" text-anchor="middle" x="387.5" y="-15" font-family="Arial" font-size="10.00">s5</text>
+<title>revenue_by_region</title>
+<ellipse fill="#f3e5f5" stroke="#7b1fa2" cx="552.99" cy="-18" rx="58.78" ry="18"/>
+<text xml:space="preserve" text-anchor="middle" x="552.99" y="-14.5" font-family="Arial" font-size="10.00">revenue_by_region</text>
 </g>
-<!-- B&#45;&gt;s5 -->
+<!-- daily_revenue&#45;&gt;revenue_by_region -->
 <g id="edge6" class="edge">
-<title>B-&gt;s5</title>
-<path fill="none" stroke="#666666" d="M324.9,-36.9C333.96,-34.12 344.2,-30.98 353.7,-28.06"/>
-<polygon fill="#666666" stroke="#666666" points="354.24,-30.83 361.07,-25.8 352.6,-25.47 354.24,-30.83"/>
+<title>daily_revenue&#45;&gt;revenue_by_region</title>
+<path fill="none" stroke="#666666" d="M458.4,-35.93C469.63,-33.78 481.74,-31.46 493.4,-29.23"/>
+<polygon fill="#666666" stroke="#666666" points="493.82,-32 501.15,-27.74 492.77,-26.5 493.82,-32"/>
 </g>
-<!-- s1 -->
+<!-- raw_orders -->
 <g id="node3" class="node">
-<title>s1</title>
-<ellipse fill="#f3e5f5" stroke="#7b1fa2" cx="27" cy="-72" rx="27" ry="18"/>
-<text xml:space="preserve" text-anchor="middle" x="27" y="-69" font-family="Arial" font-size="10.00">s1</text>
+<title>raw_orders</title>
+<ellipse fill="#f3e5f5" stroke="#7b1fa2" cx="38.49" cy="-72" rx="38.49" ry="18"/>
+<text xml:space="preserve" text-anchor="middle" x="38.49" y="-68.5" font-family="Arial" font-size="10.00">raw_orders</text>
 </g>
-<!-- s1&#45;&gt;A -->
+<!-- raw_orders&#45;&gt;clean_orders -->
 <g id="edge1" class="edge">
-<title>s1-&gt;A</title>
-<path fill="none" stroke="#666666" d="M52.11,-64.62C60.93,-61.92 71.1,-58.81 80.71,-55.87"/>
-<polygon fill="#666666" stroke="#666666" points="81.4,-58.59 88.24,-53.57 79.77,-53.23 81.4,-58.59"/>
+<title>raw_orders&#45;&gt;clean_orders</title>
+<path fill="none" stroke="#666666" d="M73.61,-64.19C83.09,-62.02 93.61,-59.61 103.91,-57.26"/>
+<polygon fill="#666666" stroke="#666666" points="104.22,-60.06 111.4,-55.54 102.97,-54.6 104.22,-60.06"/>
 </g>
-<!-- s2 -->
+<!-- customers -->
 <g id="node4" class="node">
-<title>s2</title>
-<ellipse fill="#f3e5f5" stroke="#7b1fa2" cx="27" cy="-18" rx="27" ry="18"/>
-<text xml:space="preserve" text-anchor="middle" x="27" y="-15" font-family="Arial" font-size="10.00">s2</text>
+<title>customers</title>
+<ellipse fill="#f3e5f5" stroke="#7b1fa2" cx="38.49" cy="-18" rx="37.13" ry="18"/>
+<text xml:space="preserve" text-anchor="middle" x="38.49" y="-14.5" font-family="Arial" font-size="10.00">customers</text>
 </g>
-<!-- s2&#45;&gt;A -->
+<!-- customers&#45;&gt;clean_orders -->
 <g id="edge2" class="edge">
-<title>s2-&gt;A</title>
-<path fill="none" stroke="#666666" d="M52.11,-25.38C60.93,-28.08 71.1,-31.19 80.71,-34.13"/>
-<polygon fill="#666666" stroke="#666666" points="79.77,-36.77 88.24,-36.43 81.4,-31.41 79.77,-36.77"/>
+<title>customers&#45;&gt;clean_orders</title>
+<path fill="none" stroke="#666666" d="M72.67,-25.59C82.26,-27.79 92.99,-30.24 103.5,-32.65"/>
+<polygon fill="#666666" stroke="#666666" points="102.76,-35.35 111.18,-34.41 104.01,-29.89 102.76,-35.35"/>
 </g>
-<!-- s3&#45;&gt;B -->
+<!-- orders_clean&#45;&gt;daily_revenue -->
 <g id="edge4" class="edge">
-<title>s3-&gt;B</title>
-<path fill="none" stroke="#666666" d="M233.01,-28.41C241.71,-30.68 251.68,-33.29 261.1,-35.75"/>
-<polygon fill="#666666" stroke="#666666" points="260.36,-38.45 268.81,-37.76 261.78,-33.03 260.36,-38.45"/>
+<title>orders_clean&#45;&gt;daily_revenue</title>
+<path fill="none" stroke="#666666" d="M322.87,-29.15C332.32,-30.89 342.61,-32.78 352.68,-34.63"/>
+<polygon fill="#666666" stroke="#666666" points="351.98,-37.35 360.36,-36.04 353,-31.84 351.98,-37.35"/>
 </g>
 </g>
 </svg>

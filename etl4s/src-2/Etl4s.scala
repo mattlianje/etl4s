@@ -2958,6 +2958,30 @@ package object etl4s {
       )
   }
 
+  /**
+   * Starts a pipeline with a branch decided purely by config/environment.
+   * Unlike [[If]], the condition is `T => Boolean` and ignores the data value,
+   * so no source node is needed - the pipeline begins on the context itself.
+   * @example
+   * {{{
+   * IfCtx[Config](_.isBackfill)(backfill)
+   *   .ElseIfCtx(_.isDryRun)(dryRun)
+   *   .Else(normal)
+   * }}}
+   */
+  def IfCtx[T](condition: T => Boolean): CtxIfStart[T] = new CtxIfStart[T](condition)
+
+  class CtxIfStart[T](condition: T => Boolean) {
+    def apply[A, C, Branch](branch: Branch)(implicit
+      branchLift: BranchLift[T, A, C, Branch],
+      tn: TypeName[A]
+    ): ReaderPartialConditionalBuilder[T, A, A, C] =
+      ReaderPartialConditionalBuilder(
+        Reader.pure(etl4s.Node.identity[A](Name("input"), tn)),
+        List(((t: T) => Predicate((_: A) => condition(t)), branchLift.lift(branch)))
+      )
+  }
+
   /** Uses a partial builder as a Node: unmatched inputs pass through unchanged. */
   implicit def partialConditionalBuilderToNode[A, B, C](
     builder: PartialConditionalBuilder[A, B, C]

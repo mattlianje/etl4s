@@ -23,8 +23,7 @@ val readCsv    = Node("alice\nbob\ncarol")
 val countUsers = Node[String, Int](csv => csv.split("\n").length)
 val report     = Node[Int, Unit](count => println(s"Processed $count users"))
 
-val pipeline = 
-     readCsv ~> countUsers ~> report
+val pipeline = readCsv ~> countUsers ~> report
 
 pipeline.unsafeRun()
 ```

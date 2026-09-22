@@ -73,8 +73,8 @@ To improve readability and express intent, **etl4s** defines three aliases: `Ext
 You run pipelines at the end of the World by calling `.unsafeRun(...)`
 
 ```scala
-val step = Transform[String, Int](_.length)
-step.unsafeRun("hello")  // 5
+val countChars = Transform[String, Int](_.length)
+countChars.unsafeRun("hello")  // 5
 ```
 
 **DI:** Use `.requires` to turn any Node into a `Reader[Config, Node]`. The `~>` operator works between Nodes and Readers. See [Configuration](#configuration).
@@ -102,13 +102,13 @@ etl4s uses a few simple operators to build pipelines:
 
 | Operator | Name | Description | Example |
 |----------|------|-------------|---------|
-| `~>` | Connect | Chains operations in sequence | `e1 ~> t1 ~> l1` |
-| `&` / `&>` | Fan-out | Group operations with the **same** input (`&>` concurrent) | `t1 & t2` |
-| `*` / `*>` | Product | Pair nodes with **different** inputs (`*>` concurrent) | `t1 * t2` |
-| `>>` | Sequence | Runs nodes in order with same input | `p1 >> p2` |
-| <code>&#124;</code> | Fan-in | Route an `Either` input to the matching branch | <code>fromInt &#124; fromStr</code> |
-| `+` | Choice | Route an `Either` through independent branches | `t1 + t2` |
-| <code>&lt;&#124;&gt;</code> | Fallback | If left throws, run right on the same input | <code>primary &lt;&#124;&gt; fallback</code> |
+| `~>` | Connect | Chains operations in sequence | `parseCart ~> applyTax ~> total` |
+| `&` / `&>` | Fan-out | Group operations with the **same** input (`&>` concurrent) | `profileCard & recentOrders` |
+| `*` / `*>` | Product | Pair nodes with **different** inputs (`*>` concurrent) | `trimName * bumpAge` |
+| `>>` | Sequence | Runs nodes in order with same input | `clearStaging >> warmCache` |
+| <code>&#124;</code> | Fan-in | Route an `Either` input to the matching branch | <code>byLegacyId &#124; byUuid</code> |
+| `+` | Choice | Route an `Either` through independent branches | `handleRefund + handleCharge` |
+| <code>&lt;&#124;&gt;</code> | Fallback | If left throws, run right on the same input | <code>fetchLive &lt;&#124;&gt; fetchCached</code> |
 
 Like `~>`, these all compose between Nodes and Readers (see [Configuration](#configuration)).
 
@@ -338,27 +338,27 @@ Track data lineage and visualize pipeline dependencies. Attach metadata to any N
 on individual instances or on Sequences:
 
 ```scala
-val A = Node[String, String](identity)
+val cleanOrders = Node[String, String](identity)
   .lineage(
-    name = "A",
-    inputs = List("s1", "s2"),
-    outputs = List("s3"),
+    name = "clean_orders",
+    inputs = List("raw_orders", "customers"),
+    outputs = List("orders_clean"),
     schedule = "0 */2 * * *"
   )
 
-val B = Node[String, String](identity)
+val dailyRevenue = Node[String, String](identity)
   .lineage(
-    name = "B",
-    inputs = List("s3"),
-    outputs = List("s4", "s5")
+    name = "daily_revenue",
+    inputs = List("orders_clean"),
+    outputs = List("revenue_by_day", "revenue_by_region")
   )
 ```
 
 Export lineage as JSON, DOT (Graphviz), or Mermaid diagrams:
 
 ```scala
-Seq(A, B).toJson
-Seq(A, B).toDot
+Seq(cleanOrders, dailyRevenue).toJson
+Seq(cleanOrders, dailyRevenue).toDot
 ```
 
 <p align="center">
@@ -366,7 +366,7 @@ Seq(A, B).toDot
 </p>
 
 ```scala
-Seq(A, B).toMermaid
+Seq(cleanOrders, dailyRevenue).toMermaid
 ```
 ```mermaid
 graph LR
@@ -374,30 +374,30 @@ graph LR
     classDef dataSource fill:#f3e5f5,stroke:#4a148c,stroke-width:2px,color:#000
     classDef cluster fill:#e8f5e8,stroke:#2e7d32,stroke-width:2px,color:#000
 
-    A["A<br/>(0 */2 * * *)"]
-    B["B"]
-    s1(["s1"])
-    s2(["s2"])
-    s3(["s3"])
-    s4(["s4"])
-    s5(["s5"])
+    clean_orders["clean_orders<br/>(0 */2 * * *)"]
+    daily_revenue["daily_revenue"]
+    raw_orders(["raw_orders"])
+    customers(["customers"])
+    orders_clean(["orders_clean"])
+    revenue_by_day(["revenue_by_day"])
+    revenue_by_region(["revenue_by_region"])
 
-    s1 --> A
-    s2 --> A
-    A --> s3
-    s3 --> B
-    B --> s4
-    B --> s5
-    A -.-> B
+    raw_orders --> clean_orders
+    customers --> clean_orders
+    clean_orders --> orders_clean
+    orders_clean --> daily_revenue
+    daily_revenue --> revenue_by_day
+    daily_revenue --> revenue_by_region
+    clean_orders -.-> daily_revenue
     linkStyle 6 stroke:#ff6b35,stroke-width:2px
 
-    class A pipeline
-    class B pipeline
-    class s1 dataSource
-    class s2 dataSource
-    class s3 dataSource
-    class s4 dataSource
-    class s5 dataSource
+    class clean_orders pipeline
+    class daily_revenue pipeline
+    class raw_orders dataSource
+    class customers dataSource
+    class orders_clean dataSource
+    class revenue_by_day dataSource
+    class revenue_by_region dataSource
 ```
 
 **etl4s** automatically infers dependencies by matching output -> input sources. Nodes don't need to be connected with `~>` for lineage tracking. Explicit dependencies via `upstreams` also supported.
@@ -409,10 +409,10 @@ Simple UNIX-pipe style chaining of two pipelines:
 ```scala
 import etl4s._
 
-val p1 = Transform((i: Int) => i.toString)
-val p2 = Transform((s: String) => s + "!")
+val format    = Transform((n: Int) => n.toString)
+val emphasize = Transform((s: String) => s + "!")
 
-val p3 = p1 ~> p2
+val announce = format ~> emphasize
 ```
 
 ### Complex chaining

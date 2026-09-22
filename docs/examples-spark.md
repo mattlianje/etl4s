@@ -1,17 +1,20 @@
 # etl4s + Spark
 
-etl4s gives your Spark jobs a spine. Extraction, transformation, and loading
-become named, type-safe stages you can compose, test, and rewire - while Spark
-still does all the heavy lifting.
+A Spark job tends to grow into one long method - reads, filters, joins and writes
+all tangled together, where you can't test a single step in isolation.
+
+etl4s gives it a spine: extraction, transformation and loading become named,
+type-safe stages you wire with `~>`. Spark still does all the heavy lifting -
+etl4s just gives the job a shape you can read, test, and reuse.
 
 ```bash
 scala-cli repl --dep xyz.matthieucourt::etl4s:1.9.1 --dep org.apache.spark::spark-sql:3.5.0
 ```
 
-## Basic pattern
+## Structure a Spark job
 
 The `SparkSession` is a driver singleton, so keep it in scope and let each stage
-close over it. Signatures stay about the *data*, and the pipeline just runs.
+close over it. Signatures stay about the *data*, and the job reads top to bottom.
 
 ```scala
 import etl4s._
@@ -23,32 +26,33 @@ implicit val spark: SparkSession = SparkSession.builder()
 
 import spark.implicits._
 
-val extractUsers = Extract {
-  spark.read.parquet("s3://data/users")
-}
+val extractUsers      = Extract { spark.read.parquet("s3://data/users") }
+val filterActive      = Transform[DataFrame, DataFrame](_.filter($"active" === true))
+val aggregateByRegion = Transform[DataFrame, DataFrame](_.groupBy($"region").count())
+val writeResults      = Load[DataFrame, Unit](_.write.mode("overwrite").parquet("s3://output/results"))
 
-val filterActive = Transform[DataFrame, DataFrame] { df =>
-  df.filter($"active" === true)
-}
+val job = extractUsers ~> filterActive ~> aggregateByRegion ~> writeResults
 
-val aggregateByRegion = Transform[DataFrame, DataFrame] { df =>
-  df.groupBy($"region").count()
-}
-
-val writeResults = Load[DataFrame, Unit] { df =>
-  df.write.mode("overwrite").parquet("s3://output/results")
-}
-
-val p = 
-     extractUsers ~> filterActive ~> aggregateByRegion ~> writeResults
-
-p.unsafeRun()
+job.unsafeRun()
 ```
 
-Because every stage is a plain `DataFrame => DataFrame`, you can unit-test
-`filterActive` or `aggregateByRegion` on their own - no `SparkSession` plumbing.
+## Test a stage without a cluster
 
-## With config injection
+Each stage is just a `DataFrame => DataFrame` value, so you can run one on a tiny
+in-memory DataFrame - no job to launch, no session to mock:
+
+```scala
+val sample = Seq(
+  ("alice", true),
+  ("bob",   false)
+).toDF("name", "active")
+
+val active = filterActive.unsafeRun(sample)
+
+active.count() // 1
+```
+
+## Inject config per environment
 
 Real jobs vary by environment - paths, partition counts, write modes. Declare
 what a stage needs with `.requires`, then `.provide` it once at the edge. The
@@ -78,8 +82,7 @@ val load = Load[DataFrame, Unit]
     df.write.mode("overwrite").parquet(config.outputPath)
   }
 
-val p = 
-     extract ~> transform ~> load
+val job = extract ~> transform ~> load
 
 val config = SparkConfig(
   inputPath  = "s3://data/raw",
@@ -87,12 +90,12 @@ val config = SparkConfig(
   partitions = 200
 )
 
-p.provide(config).unsafeRun()
+job.provide(config).unsafeRun()
 ```
 
-## Multiple sources
+## Combine multiple sources
 
-Combine independent reads with `&`, then join them downstream:
+Fan out independent reads with `&`, then join them downstream:
 
 ```scala
 val extractUsers  = Extract { spark.read.parquet("s3://data/users") }
@@ -102,10 +105,9 @@ val join = Transform[(DataFrame, DataFrame), DataFrame] { case (users, orders) =
   users.join(orders, users("id") === orders("user_id"))
 }
 
-val p = 
-     (extractUsers & extractOrders) ~> join ~> writeResults
+val job = (extractUsers & extractOrders) ~> join ~> writeResults
 
-p.unsafeRun()
+job.unsafeRun()
 ```
 
 !!! note "Let Spark own the parallelism"

@@ -1285,6 +1285,20 @@ class StandaloneContextConditionalSpecs extends munit.FunSuite {
     assertEquals(Jobs.maybeBump.provide(Cfg(isBackfill = true, false)).unsafeRun(41), 42)
     assertEquals(Jobs.maybeBump.provide(Cfg(isBackfill = false, false)).unsafeRun(41), 41)
   }
+
+  test("top-level IfCtx starts a config pipeline with no source node") {
+    val backfill = Node[Int, String](n => s"backfill:$n")
+    val dryRun   = Node[Int, String](n => s"dryrun:$n")
+    val normal   = Node[Int, String](n => s"normal:$n")
+
+    val ingest = IfCtx[Cfg](_.isBackfill)(backfill)
+      .ElseIfCtx(_.isDryRun)(dryRun)
+      .Else(normal)
+
+    assertEquals(ingest.provide(Cfg(isBackfill = true, false)).unsafeRun(42), "backfill:42")
+    assertEquals(ingest.provide(Cfg(isBackfill = false, true)).unsafeRun(42), "dryrun:42")
+    assertEquals(ingest.provide(Cfg(isBackfill = false, false)).unsafeRun(42), "normal:42")
+  }
 }
 
 class BatchCombinatorSpecs extends munit.FunSuite {

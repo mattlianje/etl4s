@@ -56,8 +56,9 @@ Different branches can have different types and requirements, but once stitched 
 that has intersected upstream, and unioned downstream the branch types.
 
 
-## "Never nest" 
-**etl4s** channels the programmer to a model where they avoid stacks of nested function calls.
+## Never nest 
+**etl4s** channels the programmer to a model where they avoid stacks of nested function calls,
+and everything can be reasoned about and refactored clearly at the top level.
 
 To a degree - this is a matter of taste ... but when the entire structure of your program is a top-level composition of etl4s
 nodes you get some unprecedented advantages:
@@ -65,6 +66,29 @@ nodes you get some unprecedented advantages:
 1. You can inspect the _entire_ structure of your program before execution
 2. Thanks to etl4s' macros ... your entire program is aware of the JVM classpaths of each block that makes it up - giving you the
 ability to make your programs "blast radius aware".
+
+
+## Pipelines as free arrows
+
+In the original versions of etl4s (pre 2.x) `Node` was modelled as a monad.
+That was flexible, but a monadic pipeline only exists once you run it, so we couldn't read it back beforehand.
+
+A `Node[-A, +B]` is not a function - it is a small, sealed description of one. The operators
+(`~>`, `&`, `*` ...) don't run anything; each just adds a case to an AST.
+
+- **Arrow**: The wiring behaviour of etl4s Nodes (wrapped in Readers). `~>` chains nodes, `&` / `*` fan them out, point-free, without naming the
+value flowing between. The graph is fixed before anything runs.
+- **Profunctor**: The `-A, +B` variance lets you pre-map the input or post-map
+the output.
+- **Free**: The tree is just data, separate from what runs it. You build it first and interpret it
+later: `.compile[F]` walks the same tree into `Id`, `Try`, `Future`, or your own `Effect[F]`
+
+There has been a rich (and excitingly recent) tradition of modelling lazy programs NOT as monads.
+Some of the literature that was of chief inspiration:
+
+- Arrows: [Hughes, _Generalising Monads to Arrows_](https://www.cse.chalmers.se/~rjmh/Papers/arrows.pdf){target="_blank"}
+- Arrow vs applicative vs monad: [Lindley, Wadler, Yallop, _Idioms are oblivious, arrows are meticulous, monads are promiscuous_](https://homepages.inf.ed.ac.uk/wadler/papers/arrows-and-idioms/arrows-and-idioms.pdf){target="_blank"}
+- Free constructions (why a tree, not an instance): [Capriotti, Kaposi, _Free Applicative Functors_](https://arxiv.org/abs/1403.0749){target="_blank"} and [Rivas, Jaskelioff, _Notions of Computation as Monoids_](https://arxiv.org/abs/1406.4823){target="_blank"}
 
 
 ## What etl4s is NOT

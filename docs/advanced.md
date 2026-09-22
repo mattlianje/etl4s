@@ -1,6 +1,39 @@
 # Advanced
 
 
+## Pipelines are values
+
+Pipelines being values unlocks some powerful niceties. For example given:
+
+```scala
+val billing = parse ~> applyTax ~> format
+```
+
+You can unit test pipeline shape...
+
+```scala
+test("etl graph is wired as designed") {
+  assertEquals(billing.stages.map(_.name), List("parse", "applyTax", "format"))
+  assertEquals(billing.stages.map(s => s.in -> s.out).last, "Double" -> "String")
+}
+```
+
+Govern dataflow architecture
+
+```scala
+def audit(p: Node[?, ?]): Unit = {
+  val forbidden = p.stages.filter(_.fullName.startsWith("com.acme.legacy"))
+  require(forbidden.isEmpty, s"pipeline pulls in banned stages: ${forbidden.map(_.name)}")
+}
+```
+
+And generate docs that never drift
+
+```scala
+os.write.over(os.pwd / "docs" / "billing.mmd", billing.toMermaid)
+```
+
+
 ## Higher Order Nodes
 
 ```scala

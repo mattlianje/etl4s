@@ -13,7 +13,7 @@ import etl4s._
 
 val double = Node[Int, Int](_ * 2)
 
-double(5) /* 10 */
+double(5) // 10
 ```
 
 You can run them like functions or be more deliberate with `.unsafeRun(In)` ... just
@@ -25,7 +25,7 @@ Create new nodes by chaining existing ones together:
 val pipeline = 
      double ~> double
 
-pipeline(5) /* 20 */
+pipeline(5) // 20
 ```
 
 Here is a more substantive example:
@@ -55,7 +55,7 @@ val combine = Node[(Int, Int), Int] { case (a, b) => a + b }
 val p =
      extract5 ~> (double & triple) ~> combine
 
-p.unsafeRun() /* 25 */
+p.unsafeRun() // 25
 ```
 
 One of the key benefits of etl4s is that you can separate configuration (the "knobs to
@@ -88,7 +88,7 @@ val loadData = Node[Unit, String].requires[Config] {
     config => _ => s"Loading ${config.year} data"
 }
 
-loadData.provide(Config(2025)).unsafeRun(()) /* "Loading 2025 data" */
+loadData.provide(Config(2025)).unsafeRun(()) // "Loading 2025 data"
 ```
 
 `.requires` turns the node into a `Reader[Config, Node[...]]`, and config-aware and plain nodes

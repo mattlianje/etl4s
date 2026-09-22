@@ -24,8 +24,8 @@ The same `p` value can be interpreted many ways.
 `.compile[Id].unsafeRun`, a plain synchronous run:
 
 ```scala
-p.compile[Id].unsafeRun("41")  // 42
-p.unsafeRun("41")  // 42
+p.compile[Id].unsafeRun("41") // 42
+p.unsafeRun("41") // 42
 ```
 
 `Try` catches thrown exceptions into `Success`/`Failure`:
@@ -33,8 +33,8 @@ p.unsafeRun("41")  // 42
 ```scala
 import scala.util.{Try, Success, Failure}
 
-p.compile[Try].unsafeRun("41")   // Success(42)
-parse.compile[Try].unsafeRun("oops")    // Failure(NumberFormatException)
+p.compile[Try].unsafeRun("41") // Success(42)
+parse.compile[Try].unsafeRun("oops") // Failure(NumberFormatException)
 ```
 
 `Future` runs asynchronously and enables concurrent branches:

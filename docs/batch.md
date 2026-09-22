@@ -66,14 +66,7 @@ val pipeline =
 
     Like `&>` and `*>`, `eachPar` only runs in parallel when you
     [compile to a concurrent effect](effect-polymorphism.md). Under the default
-    `Id` interpreter (`.unsafeRun`) it runs sequentially
-
-    ```scala
-    import scala.concurrent.Future
-    import scala.concurrent.ExecutionContext.Implicits.global
-
-    pipeline.compile[Future].unsafeRun(())
-    ```
+    `Id` interpreter (`.unsafeRun`) it runs sequentially.
 
 ## `eachSlice(size)`: whole chunks at a time
 

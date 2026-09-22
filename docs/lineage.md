@@ -19,6 +19,9 @@ api:
 - A `Seq` of `.lineage`-annotated nodes draws the dataflow you declared -
   datasources, schedules, cross-pipeline dependencies.
 
+Either mode works the same on Reader-wrapped nodes (config-aware, from
+`.requires`) - they carry lineage just like plain `Node`s.
+
 ## Structure of a single pipeline
 
 Any composed pipeline can draw itself - the same view `.stages` lists. Take the
@@ -231,16 +234,18 @@ The JSON has three top-level keys (all lowercase):
 
 ## Lineage Parameters
 
-- **`name`** (required): Unique identifier
-- **`inputs`**: Input data sources (default: empty)
-- **`outputs`**: Output data sources (default: empty)
-- **`upstreams`**: Explicit dependencies (Nodes, Readers, or Strings)
-- **`schedule`**: Human-readable schedule (e.g., "0 */2 * * *")
-- **`cluster`**: Group name for organizing related pipelines
-- **`description`**: Free-text description of the pipeline (default: "")
-- **`group`**: Logical grouping label (default: "")
-- **`tags`**: `List[String]` of arbitrary tags (default: empty)
-- **`links`**: `Map[String, String]` of label -> URL links (default: empty)
+| Parameter | Description | Default |
+|-----------|-------------|---------|
+| `name` | Unique identifier | required |
+| `inputs` | Input data sources | empty |
+| `outputs` | Output data sources | empty |
+| `upstreams` | Explicit dependencies (`Node`, `Reader`, or `String`) | empty |
+| `schedule` | Human-readable schedule, e.g. `0 */2 * * *` | none |
+| `cluster` | Group name for related pipelines | none |
+| `description` | Free-text description | `""` |
+| `group` | Logical grouping label | `""` |
+| `tags` | `List[String]` of arbitrary tags | empty |
+| `links` | `Map[String, String]` of label -> URL | empty |
 
 `.lineage(...)` works the same on a `Reader[T, Node]` (config-aware node) as it
 does on a plain `Node`.

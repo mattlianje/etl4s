@@ -13,37 +13,25 @@ val e2 = Extract { Thread.sleep(100); "hello" }
 val e3 = Extract { Thread.sleep(100); true }
 ```
 
-`&` fans the same input out to all three, sequentially (~300ms):
+Sequential run of `e1`, `e2`, and `e3` (~300ms total):
 ```scala
-val sequential = e1 & e2 & e3
-
-sequential.unsafeRun(())
-```
-You will get:
-```
-(42, hello, true)
+val sequential: Extract[Unit, (Int, String, Boolean)] =
+  e1 & e2 & e3
 ```
 
-`&>` is the concurrent counterpart - same result (~100ms), running the branches concurrently when compiled to an effect like `Future`:
+Parallel run of `e1`, `e2`, `e3` on their own JVM threads with Scala Futures
+(~100ms total, same result, 3X faster):
 ```scala
-val parallel = e1 &> e2 &> e3
+import scala.concurrent.ExecutionContext.Implicits.global
 
-parallel.compile[Future].unsafeRun(())
-```
-You will get:
-```
-(42, hello, true)
+val parallel: Extract[Unit, (Int, String, Boolean)] =
+  e1 &> e2 &> e3
 ```
 
-Mix the two - `e1` and `e2` concurrent, then `e3`:
+Mix sequential and parallel execution - first two parallel (~100ms), then the
+third (~100ms):
 ```scala
 val mixed = (e1 &> e2) & e3
-
-mixed.compile[Future].unsafeRun(())
-```
-You will get:
-```
-((42, hello), true)
 ```
 
 Full example of a parallel pipeline:
