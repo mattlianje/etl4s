@@ -9,14 +9,23 @@
 # <img src="pix/etl4s-logo.png" width="50"> etl4s
 **Powerful, whiteboard-style ETL**
 
-A lightweight, zero-dependency library for writing type-safe, beautiful ✨🍰  data flows in functional Scala.
+A lightweight, zero-dependency library for writing type-safe, beautiful ✨🍰  data flows in functional Scala. 
 Battle-tested at [Instacart](https://www.instacart.com/)
 
 📖 **[Full documentation](https://mattlianje.github.io/etl4s/)**
 
+## Features
+- Declarative, typed pipeline endpoints
+- Use **Etl4s.scala** like a header file
+- Type-safe, compile-time checked
+- [Config-driven](#configuration) by design
+- Easy, monadic composition of pipelines
+- Built-in retry/failure handling
+- [Data lineage](#lineage) visualization
+
 ## Installation
 
-**etl4s** is on MavenCentral and cross-built for Scala 2.12, 2.13, 3.x
+**etl4s** is on MavenCentral and cross-built for Scala, 2.12, 2.13, 3.x
 ```scala
 "xyz.matthieucourt" %% "etl4s" % "1.9.1"
 ```
@@ -30,38 +39,28 @@ All you need:
 import etl4s._
 ```
 
-## Your pipeline as a DAG
-
-Here is a daily orders pipeline. It reads raw orders and FX rates, converts every amount to USD,
-then loads the result to the warehouse and posts a summary to Slack.
-
+## Quick Example
 ```scala
 import etl4s._
 
-val readOrders = Extract("SELECT id, amount, currency FROM orders")
-val fetchRates = Extract(Map("EUR" -> 1.08, "GBP" -> 1.27))
-
-val normalize = Transform[(String, Map[String, Double]), List[Order]] { 
-    case (raw, rates) =>
-      parseOrders(raw).map(_.toUsd(rates))
+val getUser  = Extract("John Doe")
+val getOrder = Extract("Order #1234")
+val combine  = Transform[(String, String), String] { case (user, order) =>
+  s"$user placed $order"
 }
+val saveDb    = Load[String, String](s => { println(s"DB: $s"); s })
+val sendEmail = Load[String, Unit](s => println(s"Email: $s"))
 
-val writeWarehouse = Load[List[Order], Unit](orders => warehouse.insert(orders))
-val notifySlack    = Load[List[Order], Unit](orders => slack.post(s"Loaded ${orders.size} orders"))
+val pipeline = (getUser & getOrder) ~> combine ~> (saveDb & sendEmail)
 
-val dailyOrders =
-  (readOrders & fetchRates) ~> normalize ~> (writeWarehouse & notifySlack)
-
-dailyOrders.unsafeRun()
+pipeline.unsafeRun()
 ```
 
-Reading it top to bottom:
+## Why etl4s?
 
-1. `readOrders` and `fetchRates` both run and hand their results in as a pair (`&`).
-2. `normalize` parses the rows and converts every amount to USD.
-3. The result loads two ways at once: into the warehouse and as a Slack summary (`&`).
-
-The whole flow is a plain value. Nothing runs until `unsafeRun()`.
+- Ultimately, these nodes and pipelines are just reifications of functions and values with a few extra niceties.
+- Chaotic, framework-coupled ETL codebases that grow without an imposed discipline drive dev teams and data orgs to their knees.
+- **etl4s** is a lightweight DSL to enforce discipline, type-safety, and reuse of pure functions - and see [functional ETL](https://maximebeauchemin.medium.com/functional-data-engineering-a-modern-paradigm-for-batch-data-processing-2327ec32c42a) for what it is... and could be.
 
 ## Core Concepts
 **etl4s** has one core building block:
@@ -77,117 +76,7 @@ val step = Transform[String, Int](_.length)
 step("hello")
 ```
 
-## Operators
-
-etl4s uses a few simple operators to build pipelines:
-
-| Operator | Name | What it does |
-|----------|------|--------------|
-| `~>` | Chain | `a ~> b` - output of `a` feeds into `b` |
-| `&` / `&>` | Fan-out | `a & b` - run both with the same input (`&>` runs them concurrently) |
-| `*` / `*>` | Product | `a * b` - run on different inputs (`*>` runs them concurrently) |
-| `>>` | Sequence | `a >> b` - run in order, keep `b`'s result |
-| <code>&#124;</code> | Fan-in | <code>a &#124; b</code> - route an `Either` input to the matching branch |
-| `+` | Choice | `a + b` - route an `Either` input through independent branches |
-| <code>&lt;&#124;&gt;</code> | Fallback | <code>a &lt;&#124;&gt; b</code> - if `a` throws, run `b` on the same input |
-
-## Of note
-
-- Ultimately, these nodes and pipelines are just reifications of functions and values with a few extra niceties.
-- Chaotic, framework-coupled ETL codebases that grow without an imposed discipline drive dev teams and data orgs to their knees.
-- **etl4s** is simply a library to guide programmers to structure their code as clean, easy to maintain
-graphs with typed, declarative endpoints that are easy to refactor and reason about in terms of business logic
-
-## What etl4s is NOT
-- A scheduler, no cron, no runtime to deploy
-- A DAG backend, no workers, no state store
-- A "framework": it is merely a zero-dep lib to structure code
-
-It won't replace Airflow, Dagster, or Spark. You can use it anywhere
-data flows through functions: Spark jobs, streaming, web-server dataflows, a local script.
-
-## Refactoring is a one-line diff
-
-Suppose you now need to dedupe orders before they are written. 
-You just write a new `Node` and drop it into the chain with `~>`.
-
-```scala
-val dedupe = Transform[List[Order], List[Order]](_.distinctBy(_.id))
-
-val dailyOrders =
-  (readOrders & fetchRates) ~> normalize ~> dedupe ~> (writeWarehouse & notifySlack)
-```
-
-Because the pipeline is a value with explicit input and output types, the compiler checks the new
-wiring for you. If `dedupe` didn't fit, it wouldn't compile.
-
-## Pipelines are values you can inspect
-
-A pipeline is a value you can look at before running it. Every `Node` captures its shape, its in/out
-types, and its enclosing `val` name at compile time. `.toDot` renders a Graphviz graph, `.toMermaid`
-a Mermaid one.
-
-```scala
-dailyOrders.toDot
-```
-
-<!-- TODO: regenerate this SVG from dailyOrders.toDot so it matches the running example -->
-<p align="center">
-  <img src="pix/pipeline-example.svg" width="500">
-</p>
-
-Because the wiring is data, not just control flow, you can inspect it before it ever runs:
-
-```scala
-/* Unit-test the shape */
-dailyOrders.stages.map(_.name)
-
-/* Govern architecture */
-require(!dailyOrders.stages.exists(_.fullName.startsWith("com.acme.legacy")))
-
-/* Generate docs at build-time that never drift */
-os.write.over(os.pwd / "docs" / "orders.mmd", dailyOrders.toMermaid)
-```
-
-## Config, injected once
-
-Pipelines need database URLs, API keys, thresholds... and all types of other knobs you want to turn. Instead of parameter drilling them through every
-function, etl4s lets a stage declares what it `.requires` and you `.provide` it once.
-
-```scala
-trait HasDb    { def jdbcUrl: String }
-trait HasSlack { def webhook: String }
-
-val readOrders = Extract[Unit, String].requires[HasDb] { cfg => _ =>
-  runQuery(cfg.jdbcUrl, "SELECT id, amount, currency FROM orders")
-}
-
-val notifySlack = Load[List[Order], Unit].requires[HasSlack] { cfg => orders =>
-  post(cfg.webhook, s"Loaded ${orders.size} orders")
-}
-
-val dailyOrders =
-  (readOrders & fetchRates) ~> normalize ~> dedupe ~> (writeWarehouse & notifySlack)
-```
-
-`readOrders` needs a DB, `notifySlack` needs Slack. The middle stages carry nothing. 
-
-etl4s infers the smallest config the pipeline needs, `HasDb & HasSlack`, and you provide it once:
-
-```scala
-case class AppConfig(jdbcUrl: String, webhook: String) extends HasDb with HasSlack
-
-dailyOrders.provide(AppConfig("jdbc:pg://prod", "https://hooks.slack.com/...")).unsafeRun()
-
-/** NOTE (Scala 2.x)
-  * Use: `Node.requires[AppConfig, In, Out](cfg => in => out)` syntax
-  */
-```
-
-[Read more about configuration](https://mattlianje.github.io/etl4s/config/)
-
 ## Type safety
-
 **etl4s** won't let you chain together "blocks" that don't fit together:
 ```scala
  val fiveExtract: Extract[Unit, Int]        = Extract(5)
@@ -204,6 +93,42 @@ The above will not compile with:
   |                Required: Node[Int, Any]
 ```
 
+## Operators
+
+etl4s uses a few simple operators to build pipelines:
+
+| Operator | Name | What it does |
+|----------|------|--------------|
+| `~>` | Chain | `a ~> b` - output of `a` feeds into `b` |
+| `&` / `&>` | Fan-out | `a & b` - run both with the same input (`&>` runs them concurrently) |
+| `*` / `*>` | Product | `a * b` - run on different inputs (`*>` runs them concurrently) |
+| `>>` | Sequence | `a >> b` - run in order, keep `b`'s result |
+| <code>&#124;</code> | Fan-in | <code>a &#124; b</code> - route an `Either` input to the matching branch |
+| `+` | Choice | `a + b` - route an `Either` input through independent branches |
+| <code>&lt;&#124;&gt;</code> | Fallback | <code>a &lt;&#124;&gt; b</code> - if `a` throws, run `b` on the same input |
+
+## Configuration
+
+Declare what each step `.requires`, then `.provide` it later:
+
+```scala
+import etl4s._
+
+case class ApiConfig(apiKey: String)
+
+val fetchUser = Extract("alice")
+val callApi   = Transform[String, String].requires[ApiConfig] { cfg => user =>
+  s"${cfg.apiKey}: $user"
+}
+
+val pipeline = fetchUser ~> callApi
+
+pipeline.provide(ApiConfig("secret")).unsafeRun(())  /* "secret: alice" */
+```
+
+**etl4s** automatically infers the smallest shared config for your pipeline. Just `.provide` once.
+
+Read more [here](https://mattlianje.github.io/etl4s/config/)
 
 ## Parallelizing Tasks
 **etl4s** has an elegant shorthand for grouping and parallelizing operations that share the same input type:
@@ -296,6 +221,40 @@ val logStart = Node { println("Starting...") }
 val logEnd   = Node { println("Done!") }
 
 val pipeline = logStart >> (listFiles ~> countFiles) >> logEnd
+```
+
+## Inspect the structure
+A pipeline is a value you can look at before running it. Every `Node` captures its shape,
+its in/out types, and its enclosing `val` name at compile time.
+
+```scala
+val p =
+     extract5 ~> (double & triple) ~> combine ~> saveToDb
+```
+
+`.toDot` renders a Graphviz graph, and `.toMermaid` a Mermaid one.
+
+```scala
+p.toDot
+```
+Feed that to Graphviz and you get:
+
+<p align="center">
+  <img src="pix/pipeline-example.svg" width="500">
+</p>
+
+When your pipelines are inspectable values you get some superpowers for free. You can:
+
+Unit test pipeline shape
+```scala
+/* Unit test pipeline shape */
+assertEquals(pipeline.stages.map(_.name), List("parse", "applyTax", "format"))
+
+/* Govern dataflow architecture */
+require(forbidden.isEmpty, s"pipeline pulls in banned stages: ${forbidden.map(_.name)}")
+
+/* Generate docs at build time that never drift */
+os.write.over(os.pwd / "docs" / "billing.mmd", billing.toMermaid)
 ```
 
 ## Lineage
@@ -395,6 +354,14 @@ val combined =
      (namePipeline & agePipeline) ~> toUpper ~> consoleLoad
 ```
 
+## Real-world examples
+**etl4s** works great with anything:
+- Spark / Flink / Beam
+- ETL / Streaming
+- Distributed Systems
+- Local scripts
+- Big Data workflows
+- Web-server dataflows
 
 ## Inspiration
 - Debasish Ghosh's [Functional and Reactive Domain Modeling](https://www.manning.com/books/functional-and-reactive-domain-modeling)
