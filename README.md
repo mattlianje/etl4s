@@ -131,7 +131,7 @@ pipeline.provide(ApiConfig("secret")).unsafeRun(())  /* "secret: alice" */
 Read more [here](https://mattlianje.github.io/etl4s/config/)
 
 ## Parallelizing Tasks
-**etl4s** has an elegant shorthand for grouping and parallelizing operations that share the same input type:
+**etl4s** has an elegant shorthand for grouping and parallelizing operations when using `&>` or `*>`:
 ```scala
 /* Simulate slow IO operations (e.g: DB calls, API requests) */
 
