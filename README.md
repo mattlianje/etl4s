@@ -243,18 +243,14 @@ Feed that to Graphviz and you get:
 
 When your pipelines are inspectable values you get some superpowers for free:
 
-**Unit test pipeline shape**
 ```scala
+/* Unit test pipeline shape */
 assertEquals(pipeline.stages.map(_.name), List("parse", "applyTax", "format"))
-```
 
-**Govern dataflow architecture**
-```scala
+/* Govern dataflow architecture */
 require(forbidden.isEmpty, s"pipeline pulls in banned stages: ${forbidden.map(_.name)}")
-```
 
-**Generate docs at build time that never drift**
-```scala
+/* Generate docs at build time that never drift */
 os.write.over(os.pwd / "docs" / "billing.mmd", billing.toMermaid)
 ```
 
