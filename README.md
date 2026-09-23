@@ -251,7 +251,7 @@ p.toDot
 You get:
 
 <p align="center">
-  <img src="pix/pipeline-example.svg" width="500">
+  <img src="pix/pipeline-example.svg" width="100%">
 </p>
 
 When your pipelines are inspectable values you get some superpowers for free:
