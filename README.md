@@ -16,10 +16,10 @@ Battle-tested at [Instacart](https://www.instacart.com/).
 
 ## Features
 - Declarative, typed pipeline endpoints
-- Use **Etl4s.scala** like a header file
+- Zero dependencies
 - Type-safe, compile-time checked
 - [Config-driven](#configuration) by design
-- Easy, monadic composition of pipelines
+- Easy composition of pipelines as free-arrows
 - Built-in retry/failure handling
 - [Data lineage](#lineage) visualization
 
@@ -54,6 +54,19 @@ val sendEmail = Load[String, Unit](s => println(s"Email: $s"))
 val pipeline = (getUser & getOrder) ~> combine ~> (saveDb & sendEmail)
 
 pipeline.unsafeRun()
+```
+- `getUser` and `getOrder` each produce strings "purely"
+- `&` groups them, and automatically tuples their output
+- `combine` takes this tuple and creates a single string
+- This string is then handled by `saveDb` and `sendEmail`
+- `unsafeRun` is what actually runs the pipeline.
+
+Suppose we now want to clean the combined data? No problem, just add a block to
+your etl4s graph.
+
+```scala
+val pipeline = 
+     (getUser & getOrder) ~> combine ~> clean ~> (saveDb & sendEmail)
 ```
 
 ## Why etl4s?
@@ -235,7 +248,7 @@ val p =
 ```scala
 p.toDot
 ```
-Feed that to Graphviz and you get:
+You get:
 
 <p align="center">
   <img src="pix/pipeline-example.svg" width="500">

@@ -22,8 +22,8 @@ import etl4s._
 
 case class Cfg(key: String)
 
-val readData   = Extract("data")
-val tagWithKey = Transform[String, String].requires[Cfg] { cfg => data =>
+val readData   = Node("data")
+val tagWithKey = Node[String, String].requires[Cfg] { cfg => data =>
   s"${cfg.key}: $data"
 }
 
@@ -37,6 +37,27 @@ You will get:
 "secret: data"
 ```
 
+## Config stays out of your type signatures
+
+Some effect systems bake config into the core data type as another type slot. For etl4s it would
+look like `Node[Cfg, In, Out]`
+
+etl4s leaves the node at `Node[In, Out]`. `.requires[Cfg]` wraps just that node in the config
+it asks for (a `Reader[Cfg, Node[In, Out]]`).
+
+The operators don't care which is which:
+
+```scala
+val load = Node[Unit, String](_ => "data")
+val tag: Reader[Cfg, Node[String, String]] =
+  Node[String, String].requires[Cfg] { c => s => c.key + s }
+
+load ~> tag
+```
+
+`~>`, `&`, `>>`, etc compose plain and config-aware nodes together, infer the combined
+requirement, and leave you one `.provide` at the edge.
+
 ## Config Propagation
 
 Build modular configs with traits. etl4s infers what your pipeline needs:
@@ -46,15 +67,15 @@ trait HasDb { def dbUrl: String }
 trait HasAuth { def apiKey: String }
 case class AppConfig(dbUrl: String, apiKey: String) extends HasDb with HasAuth
 
-val save = Load[String, Unit].requires[HasDb] { cfg => data =>
+val save = Node[String, Unit].requires[HasDb] { cfg => data =>
   println(s"Saving to ${cfg.dbUrl}: $data")
 }
 
-val fetch = Extract[Unit, String].requires[HasAuth] { cfg => _ =>
+val fetch = Node[Unit, String].requires[HasAuth] { cfg => _ =>
   s"Fetched with ${cfg.apiKey}"
 }
 
-val toUpper = Transform[String, String](_.toUpperCase)
+val toUpper = Node[String, String](_.toUpperCase)
 
 
 val pipeline = 
@@ -75,8 +96,8 @@ so mixing it in adds no requirement. The pipeline still asks only for what the R
 need:
 
 ```scala
-val fetch   = Extract[Unit, String].requires[HasAuth] { c => _ => s"got ${c.apiKey}" }
-val toUpper = Transform[String, String](_.toUpperCase)
+val fetch   = Node[Unit, String].requires[HasAuth] { c => _ => s"got ${c.apiKey}" }
+val toUpper = Node[String, String](_.toUpperCase)
 
 val p = 
      fetch ~> toUpper

@@ -104,8 +104,6 @@ both captured at compile time by a small macro, so you can dump its stages or re
 Take the fan-out / fan-in pipeline from earlier and add a load step that writes the result:
 
 ```scala
-val saveToDb = Node[Int, Unit](n => println(s"saved $n"))
-
 val p =
      extract5 ~> (double & triple) ~> combine ~> saveToDb
 ```
@@ -116,7 +114,7 @@ val p =
 pipeline.toDot
 ```
 
-Feed that to Graphviz and you get:
+You get:
 
 <div class="diagram">
 <svg width="689pt" height="98pt" viewBox="0.00 0.00 689.00 98.00" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink">
