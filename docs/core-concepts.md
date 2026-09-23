@@ -60,7 +60,7 @@ AndThen(
 ```
 
 <p align="center">
-  <img src="https://raw.githubusercontent.com/mattlianje/etl4s/master/pix/pipeline-tree.svg" width="240">
+  <img src="https://raw.githubusercontent.com/mattlianje/etl4s/master/pix/pipeline-tree.svg" width="210">
 </p>
 
 Because a pipeline is just this tree, you can interpret it however you like. That is what

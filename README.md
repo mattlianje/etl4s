@@ -137,7 +137,7 @@ AndThen(
 ```
 
 <p align="center">
-  <img src="pix/pipeline-tree.svg" width="240">
+  <img src="pix/pipeline-tree.svg" width="210">
 </p>
 
 This unlocks the ability to interpret your pipelines however your want. Take:
