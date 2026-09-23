@@ -47,6 +47,27 @@ You will get:
 HELLO
 ```
 
+## Pipelines are values
+Building a pipeline runs nothing. Every combinator (`~>`, `&`, `>>`, ...) just grows an
+immutable AST - a free profunctor over your plain functions. `a ~> b ~> c` is literally
+a tree of case classes:
+
+```scala
+AndThen(
+  AndThen(Step("a", ...), Step("b", ...)),
+  Step("c", ...)
+)
+```
+
+<p align="center">
+  <img src="https://raw.githubusercontent.com/mattlianje/etl4s/master/pix/pipeline-tree.svg" width="240">
+</p>
+
+Because a pipeline is just this tree, you can interpret it however you like. That is what
+makes etl4s effect polymorphic: `.compile[F]` folds the same tree into `In => F[Out]` for
+any effect `F` (`Try`, `Future`, cats-effect `IO`, ZIO, Kyo ...). See
+[Effect polymorphism](effect-polymorphism.md).
+
 ## Running pipelines
 Call like a function:
 ```scala
