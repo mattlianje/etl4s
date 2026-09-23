@@ -243,12 +243,7 @@ val p =
      extract5 ~> (double & triple) ~> combine ~> saveToDb
 ```
 
-`.toDot` renders a Graphviz graph, and `.toMermaid` a Mermaid one.
-
-```scala
-p.toDot
-```
-You get:
+Use `.toDot` or `.toMermaid` on any `Node`. You get:
 
 <p align="center">
   <img src="pix/pipeline-example.svg" width="100%">
