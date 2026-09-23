@@ -26,12 +26,13 @@ implicit val spark: SparkSession = SparkSession.builder()
 
 import spark.implicits._
 
-val extractUsers      = Extract { spark.read.parquet("s3://data/users") }
-val filterActive      = Transform[DataFrame, DataFrame](_.filter($"active" === true))
-val aggregateByRegion = Transform[DataFrame, DataFrame](_.groupBy($"region").count())
-val writeResults      = Load[DataFrame, Unit](_.write.mode("overwrite").parquet("s3://output/results"))
+val extractUsers  = Node { spark.read.parquet("s3://data/users") }
+val filterActive  = Node[DataFrame, DataFrame](_.filter($"active" === true))
+val aggByRegion   = Node[DataFrame, DataFrame](_.groupBy($"region").count())
+val writeResults  = Node[DataFrame, Unit](_.write.mode("overwrite").parquet("s3://..."))
 
-val job = extractUsers ~> filterActive ~> aggregateByRegion ~> writeResults
+val job = 
+     extractUsers ~> filterActive ~> aggregateByRegion ~> writeResults
 
 job.unsafeRun()
 ```
@@ -82,7 +83,8 @@ val load = Load[DataFrame, Unit]
     df.write.mode("overwrite").parquet(config.outputPath)
   }
 
-val job = extract ~> transform ~> load
+val job = 
+     extract ~> transform ~> load
 
 val config = SparkConfig(
   inputPath  = "s3://data/raw",
@@ -105,7 +107,8 @@ val join = Transform[(DataFrame, DataFrame), DataFrame] { case (users, orders) =
   users.join(orders, users("id") === orders("user_id"))
 }
 
-val job = (extractUsers & extractOrders) ~> join ~> writeResults
+val job = 
+     (extractUsers & extractOrders) ~> join ~> writeResults
 
 job.unsafeRun()
 ```

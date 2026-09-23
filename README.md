@@ -159,8 +159,8 @@ val mixed = (e1 &> e2) & e3
 
 Full example of a parallel pipeline:
 ```scala
-val consoleLoad: Load[String, Unit] = Load(println(_))
-val dbLoad:      Load[String, Unit] = Load(x => println(s"DB Load: ${x}"))
+val consoleLoad = Load[String, Unit](println(_))
+val dbLoad      = Load[String, Unit](x => println(s"DB Load: ${x}"))
 
 val merge = Transform[(Int, String, Boolean), String] { case (i, s, b) =>
     s"$i-$s-$b"
@@ -177,8 +177,6 @@ Retry failed operations:
 ```scala
 val callFlakyApi = Extract("response")
   .withRetry(maxAttempts = 3, initialDelayMs = 100)
-
-callFlakyApi ~> parseResponse ~> saveResult
 ```
 
 #### `onFailure`
@@ -187,7 +185,7 @@ Catch exceptions and recover:
 val fetchUser = Extract[Unit, String](_ => throw new RuntimeException("Boom!"))
   .onFailure(e => s"Error: ${e.getMessage}")
 
-fetchUser.unsafeRun(())  /* "Error: Boom!" */
+fetchUser.unsafeRun() /* "Error: Boom!" */
 ```
 
 ## Conditional Branching
@@ -247,13 +245,16 @@ When your pipelines are inspectable values you get some superpowers for free. Yo
 
 Unit test pipeline shape
 ```scala
-/* Unit test pipeline shape */
 assertEquals(pipeline.stages.map(_.name), List("parse", "applyTax", "format"))
+```
 
-/* Govern dataflow architecture */
+Govern dataflow architecture
+```scala
 require(forbidden.isEmpty, s"pipeline pulls in banned stages: ${forbidden.map(_.name)}")
+```
 
-/* Generate docs at build time that never drift */
+Generate docs at build time that never drift
+```scala
 os.write.over(os.pwd / "docs" / "billing.mmd", billing.toMermaid)
 ```
 

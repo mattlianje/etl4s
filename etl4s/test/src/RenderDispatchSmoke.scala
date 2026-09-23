@@ -23,9 +23,9 @@ class RenderDispatchSpec extends munit.FunSuite {
 
   test("a single Reader's toMermaid / toDot render structure before context") {
     case class Cfg(rate: Double)
-    object Jobs extends Etl4sContext[Cfg] {
-      val parse    = Etl4sContext.Extract[String, Double] { _ => s => s.trim.toDouble }
-      val applyTax = Etl4sContext.Transform[Double, Double] { c => a => a * (1 + c.rate) }
+    object Jobs extends Etl4sCtx[Cfg] {
+      val parse    = Etl4sCtx.Extract[String, Double] { _ => s => s.trim.toDouble }
+      val applyTax = Etl4sCtx.Transform[Double, Double] { c => a => a * (1 + c.rate) }
     }
     import Jobs._
 

@@ -335,7 +335,7 @@ class ReaderSpecs extends munit.FunSuite {
   test("etl4sContext and WithContext aliases") {
     case class AppConfig(serviceName: String, timeout: Int)
 
-    object TestContext extends Etl4sContext[AppConfig] {
+    object TestContext extends Etl4sCtx[AppConfig] {
 
       val extractWithContext: Reader[AppConfig, Extract[String, Int]] =
         Reader { ctx =>
@@ -351,7 +351,7 @@ class ReaderSpecs extends munit.FunSuite {
           }
         }
 
-      val testC = Etl4sContext.Extract[Int, Int] { ctx => x =>
+      val testC = Etl4sCtx.Extract[Int, Int] { ctx => x =>
         x * 2
       }
     }
@@ -388,15 +388,15 @@ class ReaderSpecs extends munit.FunSuite {
     }
   }
 
-  test("Etl4sContext companion object methods") {
+  test("Etl4sCtx companion object methods") {
     case class AppConfig(serviceName: String, timeout: Int)
 
-    object TestContext extends Etl4sContext[AppConfig] {
-      val getData = Etl4sContext.Extract[String, Int] { config => input =>
+    object TestContext extends Etl4sCtx[AppConfig] {
+      val getData = Etl4sCtx.Extract[String, Int] { config => input =>
         s"${config.serviceName}: $input".length * config.timeout
       }
 
-      val processData = Etl4sContext.Transform[Int, String] { config => value =>
+      val processData = Etl4sCtx.Transform[Int, String] { config => value =>
         s"Processed by ${config.serviceName} with value $value"
       }
     }
@@ -410,11 +410,11 @@ class ReaderSpecs extends munit.FunSuite {
     assertEquals(result, "Processed by DataService with value 34")
   }
 
-  test("Etl4sContext.Node alias") {
+  test("Etl4sCtx.Node alias") {
     case class Config(multiplier: Int)
 
-    object TestContext extends Etl4sContext[Config] {
-      val multiply = Etl4sContext.Node[Int, Int] { cfg => x =>
+    object TestContext extends Etl4sCtx[Config] {
+      val multiply = Etl4sCtx.Node[Int, Int] { cfg => x =>
         x * cfg.multiplier
       }
     }
@@ -1239,34 +1239,34 @@ class StandaloneContextConditionalSpecs extends munit.FunSuite {
 
   case class Cfg(isBackfill: Boolean, isDryRun: Boolean)
 
-  object Jobs extends Etl4sContext[Cfg] {
+  object Jobs extends Etl4sCtx[Cfg] {
 
-    val backfillFlow = Etl4sContext.Load[Int, String] { _ => n => s"backfill:$n" }
-    val deltaFlow    = Etl4sContext.Load[Int, String] { _ => n => s"delta:$n" }
-    val dryRunFlow   = Etl4sContext.Load[Int, String] { _ => n => s"dry-run:$n" }
+    val backfillFlow = Etl4sCtx.Load[Int, String] { _ => n => s"backfill:$n" }
+    val deltaFlow    = Etl4sCtx.Load[Int, String] { _ => n => s"delta:$n" }
+    val dryRunFlow   = Etl4sCtx.Load[Int, String] { _ => n => s"dry-run:$n" }
 
     /** Branch on context, starting the pipeline. */
     val ingest: Reader[Cfg, Node[Int, String]] =
-      Etl4sContext.If(_.isBackfill)(backfillFlow).Else(deltaFlow)
+      Etl4sCtx.If(_.isBackfill)(backfillFlow).Else(deltaFlow)
 
     /** Chain further context branches with ElseIfCtx. */
     val ingestChained: Reader[Cfg, Node[Int, String]] =
-      Etl4sContext
+      Etl4sCtx
         .If(_.isBackfill)(backfillFlow)
         .ElseIfCtx(_.isDryRun)(dryRunFlow)
         .Else(deltaFlow)
 
     /** No Else: unmatched input passes through unchanged. */
     val maybeBump =
-      Etl4sContext.If(_.isBackfill)(Etl4sContext.Transform[Int, Int] { _ => n => n + 1 })
+      Etl4sCtx.If(_.isBackfill)(Etl4sCtx.Transform[Int, Int] { _ => n => n + 1 })
   }
 
-  test("Etl4sContext.If starts a context pipeline on context") {
+  test("Etl4sCtx.If starts a context pipeline on context") {
     assertEquals(Jobs.ingest.provide(Cfg(isBackfill = true, false)).unsafeRun(7), "backfill:7")
     assertEquals(Jobs.ingest.provide(Cfg(isBackfill = false, false)).unsafeRun(7), "delta:7")
   }
 
-  test("Etl4sContext.If chains further context branches with ElseIfCtx") {
+  test("Etl4sCtx.If chains further context branches with ElseIfCtx") {
     assertEquals(
       Jobs.ingestChained.provide(Cfg(isBackfill = true, false)).unsafeRun(7),
       "backfill:7"

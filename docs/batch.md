@@ -114,10 +114,3 @@ val enrichPage =
 ## Introspection
 
 A reified batch is still inspectable, the inner step shows up in `.stages`:
-
-```scala
-val p =
-     fetchOrders ~> eachPar(3)(enrichOrder)
-
-p.stages.map(_.name)  // includes "enrichOrder"
-```

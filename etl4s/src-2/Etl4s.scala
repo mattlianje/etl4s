@@ -2259,7 +2259,7 @@ package object etl4s {
      *
      * @example
      * {{{
-     * val contextExtract = Etl4sContext.Extract[Config, String, Int] { config => input =>
+     * val contextExtract = Etl4sCtx.Extract[Config, String, Int] { config => input =>
      *   process(input, config)
      * }
      * 
@@ -2583,8 +2583,8 @@ package object etl4s {
    * {{{
    * case class MyConfig(dbUrl: String, timeout: Int)
    * 
-   * object MyETL extends Etl4sContext[MyConfig] {
-   *   val saveUser = Etl4sContext.Load[User, Unit] { config => user =>
+   * object MyETL extends Etl4sCtx[MyConfig] {
+   *   val saveUser = Etl4sCtx.Load[User, Unit] { config => user =>
    *     // use config.dbUrl, config.timeout
    *     saveToDatabase(config, user)
    *   }
@@ -2598,13 +2598,13 @@ package object etl4s {
    *
    * @tparam T the configuration/context type
    */
-  trait Etl4sContext[T] {
+  trait Etl4sCtx[T] {
 
     /**
      * Provides natural access to context-wrapped operations.
-     * Use as: `Etl4sContext.Extract[A, B] { ctx => in => out }`
+     * Use as: `Etl4sCtx.Extract[A, B] { ctx => in => out }`
      */
-    object Etl4sContext {
+    object Etl4sCtx {
       def Extract[A, B](
         f: T => A => B
       )(implicit n: Name, i: TypeName[A], o: TypeName[B]): Reader[T, Extract[A, B]] =

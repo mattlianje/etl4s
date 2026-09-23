@@ -4,7 +4,7 @@ api:
   - sig: ".provide(env)"
   - sig: ".provideContext(env)"
   - sig: "Reader[T, Node]"
-  - sig: "Etl4sContext[T]"
+  - sig: "Etl4sCtx[T]"
 ---
 
 # Configuration
@@ -27,9 +27,10 @@ val tagWithKey = Transform[String, String].requires[Cfg] { cfg => data =>
   s"${cfg.key}: $data"
 }
 
-val pipeline = readData ~> tagWithKey
+val pipeline = 
+     readData ~> tagWithKey
 
-pipeline.provide(Cfg("secret")).unsafeRun(())
+pipeline.provide(Cfg("secret")).unsafeRun()
 ```
 You will get:
 ```
@@ -43,6 +44,7 @@ Build modular configs with traits. etl4s infers what your pipeline needs:
 ```scala
 trait HasDb { def dbUrl: String }
 trait HasAuth { def apiKey: String }
+case class AppConfig(dbUrl: String, apiKey: String) extends HasDb with HasAuth
 
 val save = Load[String, Unit].requires[HasDb] { cfg => data =>
   println(s"Saving to ${cfg.dbUrl}: $data")
@@ -54,11 +56,11 @@ val fetch = Extract[Unit, String].requires[HasAuth] { cfg => _ =>
 
 val toUpper = Transform[String, String](_.toUpperCase)
 
-case class AppConfig(dbUrl: String, apiKey: String) extends HasDb with HasAuth
 
-val pipeline = fetch ~> toUpper ~> save
+val pipeline = 
+     fetch ~> toUpper ~> save
 
-pipeline.provide(AppConfig("jdbc:pg", "secret-key")).unsafeRun(())
+pipeline.provide(AppConfig("jdbc:pg", "secret-key")).unsafeRun()
 ```
 
 `.requires[T]` turns a node into a `Reader[T, Node]`.
@@ -74,10 +76,12 @@ need:
 
 ```scala
 val fetch   = Extract[Unit, String].requires[HasAuth] { c => _ => s"got ${c.apiKey}" }
-val toUpper = Transform[String, String](_.toUpperCase) // plain node
+val toUpper = Transform[String, String](_.toUpperCase)
 
-val p = fetch ~> toUpper                 // still Reader[HasAuth, Node[Unit, String]]
-p.provide(AppConfig("jdbc:pg", "key")).unsafeRun(())
+val p = 
+     fetch ~> toUpper
+
+p.provide(AppConfig("jdbc:pg", "key")).unsafeRun()
 ```
 
 <div class="diagram">
@@ -111,7 +115,7 @@ that lives in the overlap (the `AppConfig` above, which extends both).
 
 **3. A subtype absorbs its supertype.** If one node needs `HasDb` and another needs a subtype
 `AppConfig <: HasDb`, the merged requirement is just `AppConfig`. The more specific type (the
-smaller set) wins, so there's nothing extra to provide.
+smaller set) wins.
 
 <div class="diagram">
 <svg xmlns="http://www.w3.org/2000/svg" width="320" height="200" viewBox="0 0 320 200" font-family="'Helvetica Neue', Helvetica, Arial, sans-serif">
@@ -122,33 +126,28 @@ smaller set) wins, so there's nothing extra to provide.
 </svg>
 </div>
 
-`.provide` also has an alias, `.provideContext`, which does the same thing:
 
-```scala
-pipeline.provideContext(AppConfig("jdbc:pg", "secret-key")).unsafeRun(())
-```
+## Etl4sCtx
 
-## Etl4sContext
-
-`Etl4sContext[T]` organizes config-driven nodes into modules:
+`Etl4sCtx[T]` organizes config-driven nodes into modules:
 
 ```scala
 case class DbConfig(url: String, timeout: Int)
 
-object DataPipeline extends Etl4sContext[DbConfig] {
+object DataPipeline extends Etl4sCtx[DbConfig] {
 
-  val fetch = Etl4sContext.Extract[Unit, String] { cfg => _ =>
+  val fetch = Etl4sCtx.Extract[Unit, String] { cfg => _ =>
     s"Connected to ${cfg.url} with timeout ${cfg.timeout}s"
   }
 
-  val save = Etl4sContext.Load[String, Unit] { cfg => data =>
+  val save = Etl4sCtx.Load[String, Unit] { cfg => data =>
     println(s"Saving to ${cfg.url}: $data")
   }
 
   val pipeline = fetch ~> save
 }
 
-DataPipeline.pipeline.provide(DbConfig("jdbc:pg", 5000)).unsafeRun(())
+DataPipeline.pipeline.provide(DbConfig("jdbc:pg", 5000)).unsafeRun()
 ```
 
 !!! note "Scala 2"
