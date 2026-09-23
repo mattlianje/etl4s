@@ -1,0 +1,73 @@
+<svg width="689pt" height="98pt" viewBox="0.00 0.00 689.00 98.00" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink">
+<g id="graph0" class="graph" transform="scale(1 1) rotate(0) translate(4 94)" fill="#888888">
+<g id="node1" class="node">
+<ellipse fill="none" stroke="#888888" cx="105.61" cy="-45" rx="40.6" ry="18"/>
+<text xml:space="preserve" text-anchor="middle" x="105.61" y="-39.95" font-family="Times,serif" font-size="14.00">extract5</text>
+</g>
+<g id="node4" class="node">
+<ellipse fill="#888888" stroke="#888888" cx="201.54" cy="-45" rx="4.32" ry="4.32"/>
+</g>
+<g id="edge3" class="edge">
+<path fill="none" stroke="#888888" d="M146.45,-45C160.19,-45 174.78,-45 185.33,-45"/>
+<polygon fill="#888888" stroke="#888888" points="185.26,-48.5 195.26,-45 185.26,-41.5 185.26,-48.5"/>
+<text xml:space="preserve" text-anchor="middle" x="171.72" y="-48.2" font-family="Times,serif" font-size="14.00">Int</text>
+</g>
+<g id="node2" class="node">
+<ellipse fill="none" stroke="#888888" cx="292.85" cy="-72" rx="36" ry="18"/>
+<text xml:space="preserve" text-anchor="middle" x="292.85" y="-66.95" font-family="Times,serif" font-size="14.00">double</text>
+</g>
+<g id="node5" class="node">
+<ellipse fill="none" stroke="#888888" cx="423.01" cy="-45" rx="43.16" ry="18"/>
+<text xml:space="preserve" text-anchor="middle" x="423.01" y="-39.95" font-family="Times,serif" font-size="14.00">combine</text>
+</g>
+<g id="edge4" class="edge">
+<path fill="none" stroke="#888888" d="M326.53,-65.12C340.61,-62.15 357.38,-58.62 372.91,-55.34"/>
+<polygon fill="#888888" stroke="#888888" points="373.4,-58.82 382.46,-53.33 371.96,-51.97 373.4,-58.82"/>
+<text xml:space="preserve" text-anchor="middle" x="354.35" y="-63.32" font-family="Times,serif" font-size="14.00">Int</text>
+</g>
+<g id="node3" class="node">
+<ellipse fill="none" stroke="#888888" cx="292.85" cy="-18" rx="30.37" ry="18"/>
+<text xml:space="preserve" text-anchor="middle" x="292.85" y="-12.95" font-family="Times,serif" font-size="14.00">triple</text>
+</g>
+<g id="edge5" class="edge">
+<path fill="none" stroke="#888888" d="M321.98,-23.93C336.85,-27.06 355.54,-30.99 372.72,-34.62"/>
+<polygon fill="#888888" stroke="#888888" points="371.76,-37.99 382.26,-36.63 373.2,-31.14 371.76,-37.99"/>
+<text xml:space="preserve" text-anchor="middle" x="354.35" y="-35.51" font-family="Times,serif" font-size="14.00">Int</text>
+</g>
+<g id="edge1" class="edge">
+<path fill="none" stroke="#888888" d="M205.93,-46.03C213.46,-48.3 232.34,-54.01 250.49,-59.5"/>
+<polygon fill="#888888" stroke="#888888" points="249.26,-62.78 259.85,-62.32 251.29,-56.08 249.26,-62.78"/>
+<text xml:space="preserve" text-anchor="middle" x="231.36" y="-58.49" font-family="Times,serif" font-size="14.00">Int</text>
+</g>
+<g id="edge2" class="edge">
+<path fill="none" stroke="#888888" d="M205.38,-42.71C209.3,-39.67 216.7,-34.36 223.86,-31.5 232.6,-28.01 242.34,-25.39 251.66,-23.44"/>
+<polygon fill="#888888" stroke="#888888" points="252.05,-26.92 261.24,-21.65 250.77,-20.04 252.05,-26.92"/>
+<text xml:space="preserve" text-anchor="middle" x="231.36" y="-34.7" font-family="Times,serif" font-size="14.00">Int</text>
+</g>
+<g id="node6" class="node">
+<ellipse fill="none" stroke="#888888" cx="565.97" cy="-45" rx="48.79" ry="18"/>
+<text xml:space="preserve" text-anchor="middle" x="565.97" y="-39.95" font-family="Times,serif" font-size="14.00">saveToDb</text>
+</g>
+<g id="edge6" class="edge">
+<path fill="none" stroke="#888888" d="M466.3,-45C478.6,-45 492.26,-45 505.4,-45"/>
+<polygon fill="#888888" stroke="#888888" points="505.26,-48.5 515.26,-45 505.26,-41.5 505.26,-48.5"/>
+<text xml:space="preserve" text-anchor="middle" x="491.68" y="-48.2" font-family="Times,serif" font-size="14.00">Int</text>
+</g>
+<g id="node8" class="node">
+<ellipse fill="#888888" stroke="#888888" cx="677.64" cy="-45" rx="2.88" ry="2.88"/>
+</g>
+<g id="edge8" class="edge">
+<path fill="none" stroke="#888888" d="M615.07,-45C632.55,-45 650.96,-45 663.05,-45"/>
+<polygon fill="#888888" stroke="#888888" points="662.91,-48.5 672.91,-45 662.91,-41.5 662.91,-48.5"/>
+<text xml:space="preserve" text-anchor="middle" x="644.76" y="-48.2" font-family="Times,serif" font-size="14.00">Unit</text>
+</g>
+<g id="node7" class="node">
+<ellipse fill="#888888" stroke="#888888" cx="2.88" cy="-45" rx="2.88" ry="2.88"/>
+</g>
+<g id="edge7" class="edge">
+<path fill="none" stroke="#888888" d="M5.98,-45C12.44,-45 32.81,-45 53.36,-45"/>
+<polygon fill="#888888" stroke="#888888" points="53.2,-48.5 63.2,-45 53.2,-41.5 53.2,-48.5"/>
+<text xml:space="preserve" text-anchor="middle" x="35.38" y="-48.2" font-family="Times,serif" font-size="14.00">Any</text>
+</g>
+</g>
+</svg>
