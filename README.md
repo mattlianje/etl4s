@@ -82,12 +82,71 @@ Node[-In, +Out]
 ```
 A Node wraps a lazily-evaluated function `In => Out`. Chain them with `~>` to build pipelines.
 
-To improve readability and express intent, **etl4s** defines four aliases: `Extract`, `Transform`, `Load` and `Pipeline`. All behave the same under the hood.
+## Node types
+To improve readability and express intent, **etl4s** defines three aliases: `Extract`, `Transform` and `Load`. All behave the same under the hood.
 
 ```scala
-val step = Transform[String, Int](_.length)
-step("hello")
+type Extract[In, Out]   = Node[In, Out]
+type Transform[In, Out] = Node[In, Out]
+type Load[In, Out]      = Node[In, Out]
 ```
+
+## Building pipelines
+```scala
+import etl4s._
+
+val readUsers  = Extract[List[String]](List("alice", "bob", "carol"))
+val countUsers = Transform[List[String], Int](_.size)
+val report     = Load[Int, Unit](count => println(s"Processed $count users"))
+
+val pipeline = readUsers ~> countUsers ~> report
+
+pipeline.unsafeRun()
+```
+Prints:
+```
+Processed 3 users
+```
+
+## Introspection
+Building a pipeline runs nothing. Every combinator (`~>`, `&`, `>>`, ...) just grows an
+immutable AST, forming a free profunctor over your plain functions. `a ~> b ~> c`
+is literally a tree of case classes:
+
+```scala
+AndThen(
+  AndThen(Step("a", ...), Step("b", ...)),
+  Step("c", ...)
+)
+```
+
+<p align="center">
+  <img src="pix/pipeline-tree.svg" width="240">
+</p>
+
+Because a pipeline is just this tree, you can interpret it however you like, and etl4s 
+is effect polymorphic. Use`.compile[F]` to fold the any tree into
+`In => F[Out]` for any effect `F` (ZIO, Kyo, plain Future, etc)
+
+
+This works because etl4s has macros so that every `Node` captures its shape,
+its in/out types, and its enclosing `val` name at compile time.
+
+```scala
+val p =
+     extract5 ~> (double & triple) ~> combine ~> saveToDb
+```
+
+Use `.toDot` or `.toMermaid` on any `Node`. You get:
+
+<p align="center">
+  <img src="pix/pipeline-example.svg" width="100%">
+</p>
+
+When your pipelines are inspectable values you get some superpowers for free:
+- Unit test pipeline shape
+- Govern dataflow architecture
+- Generate docs at build time that never drift
 
 ## Type safety
 **etl4s** won't let you chain together "blocks" that don't fit together:

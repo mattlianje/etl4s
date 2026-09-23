@@ -10,9 +10,9 @@ A Node wraps a lazily-evaluated function `In => Out`. Chain them with `~>` to bu
 To improve readability and express intent, **etl4s** defines three aliases: `Extract`, `Transform` and `Load`. All behave the same under the hood.
 
 ```scala
-type Extract[-In, +Out]   = Node[In, Out]
-type Transform[-In, +Out] = Node[In, Out]
-type Load[-In, +Out]      = Node[In, Out]
+type Extract[In, Out]   = Node[In, Out]
+type Transform[In, Out] = Node[In, Out]
+type Load[In, Out]      = Node[In, Out]
 ```
 
 ## Building pipelines
