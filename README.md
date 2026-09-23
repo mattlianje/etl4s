@@ -120,7 +120,7 @@ etl4s uses a few simple operators to build pipelines:
 | `+` | Choice | `a + b` - route an `Either` input through independent branches |
 | <code>&lt;&#124;&gt;</code> | Fallback | <code>a &lt;&#124;&gt; b</code> - if `a` throws, run `b` on the same input |
 
-## Inspect the structure
+## Introspection
 A pipeline is a value you can look at before running it. Every `Node` captures its shape,
 its in/out types, and its enclosing `val` name at compile time.
 
