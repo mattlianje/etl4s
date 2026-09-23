@@ -15,9 +15,7 @@ val ingest = pullEvents ~> parse ~> validate ~> load
 Gather independent sources with `&`, then flow the tuple downstream:
 
 ```scala
-val gather  = fetchUser & fetchOrders & fetchPayments
-
-val profile = gather ~> assemble ~> render
+val profile = (fetchUser & fetchOrders) ~> gather ~> assemble ~> render
 ```
 
 `&>` is the concurrent counterpart - parallel once compiled to an effect like `Future`:
@@ -35,7 +33,7 @@ and your own effects. Use `*` / `*>` to pair nodes that take *different* inputs.
 
 ```scala
 val ingest = listFiles ~> each(parseFile) ~> load
-val fast   = listFiles ~> eachPar(4)(parseFile) ~> load   // up to 4 at a time
+val fast   = listFiles ~> eachPar(4)(parseFile) ~> load // up to 4 at a time
 ```
 
 See [Batch operations](batch.md) for the full set and how they behave per effect.
@@ -97,7 +95,7 @@ ingest.provide(Config(isBackfill = true, isDryRun = false)).unsafeRun(42)
 Recover inline, then keep flowing:
 
 ```scala
-val rates   = fetchLiveRates.onFailure(_ => cachedRates)
+val rates = fetchLiveRates.onFailure(_ => cachedRates)
 
 val convert = rates ~> applyRates ~> load
 ```
@@ -105,7 +103,8 @@ val convert = rates ~> applyRates ~> load
 ## Retry with backoff
 
 ```scala
-val fetch  = callPaymentApi.withRetry(maxAttempts = 3, initialDelayMs = 100, backoffFactor = 2.0)
+val fetch  = 
+     callPaymentApi.withRetry(maxAttempts = 3, initialDelayMs = 100, backoffFactor = 2.0)
 
 val charge = fetch ~> recordTxn ~> notify
 ```
