@@ -119,12 +119,15 @@ The above will not compile with:
   |                Found:    (exclaim : Transform[String, String])
   |                Required: Node[Int, Any]
 ```
-## Introspection
-A pipeline is a value you can look at before running it. Every `Node` captures its shape,
-its in/out types, and its enclosing `val` name at compile time. A pipeline is just an immutable AST,
-a free profunctor over your plain functions.
 
-`a ~> b ~> c` is just a tree of case classes
+## Introspection
+A pipeline is a immutable value (an AST) you can look at before running. Every `Node` captures its shape,
+its in/out types, and its enclosing `val` name at compile time. 
+
+```scala
+a ~> b ~> c
+```
+Compiles to:
 
 ```scala
 AndThen(
@@ -137,7 +140,7 @@ AndThen(
   <img src="pix/pipeline-tree.svg" width="240">
 </p>
 
-You can also render it. Take:
+This unlocks the ability to interpret your pipelines however your want. Take:
 
 ```scala
 val p =
@@ -149,6 +152,8 @@ Use `.toDot` or `.toMermaid` on any `Node`. You get:
 <p align="center">
   <img src="pix/pipeline-example.svg" width="100%">
 </p>
+
+But you can just as easily write custom interpreters.
 
 When your pipelines are inspectable values you get some superpowers for free:
 - Unit test pipeline shape
