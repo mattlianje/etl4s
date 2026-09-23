@@ -61,8 +61,8 @@ pipeline.unsafeRun()
 - This string is then handled by `saveDb` and `sendEmail`
 - `unsafeRun` is what actually runs the pipeline.
 
-Suppose we now want to clean the combined data? No problem, just add a block to
-your etl4s graph.
+Suppose we now want to refactor and clean the combined data?
+No problem, just add a `clean` block to your etl4s graph:
 
 ```scala
 val pipeline = 
