@@ -9,7 +9,7 @@ Pipelines being values unlocks some powerful niceties. For example given:
 val billing = parse ~> applyTax ~> format
 ```
 
-You can unit test pipeline shape...
+**Unit test pipeline shape**
 
 ```scala
 test("etl graph is wired as designed") {
@@ -18,7 +18,7 @@ test("etl graph is wired as designed") {
 }
 ```
 
-Govern dataflow architecture
+**Govern dataflow architecture**
 
 ```scala
 def audit(p: Node[?, ?]): Unit = {
@@ -27,7 +27,7 @@ def audit(p: Node[?, ?]): Unit = {
 }
 ```
 
-And generate docs that never drift
+**Generate docs that never drift**
 
 ```scala
 os.write.over(os.pwd / "docs" / "billing.mmd", billing.toMermaid)
