@@ -255,15 +255,16 @@ You get:
 </p>
 
 When your pipelines are inspectable values you get some superpowers for free:
-- Unit test pipeline shape
+
+🔷 Unit test pipeline shape
 ```scala
 assertEquals(pipeline.stages.map(_.name), List("parse", "applyTax", "format"))
 ```
-- Govern dataflow architecture
+🔷 Govern dataflow architecture
 ```scala
 require(forbidden.isEmpty, s"pipeline pulls in banned stages: ${forbidden.map(_.name)}")
 ```
-- Generate docs at build time that never drift
+🔷 Generate docs at build time that never drift
 
 
 ## Lineage
