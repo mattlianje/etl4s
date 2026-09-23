@@ -120,6 +120,26 @@ etl4s uses a few simple operators to build pipelines:
 | `+` | Choice | `a + b` - route an `Either` input through independent branches |
 | <code>&lt;&#124;&gt;</code> | Fallback | <code>a &lt;&#124;&gt; b</code> - if `a` throws, run `b` on the same input |
 
+## Inspect the structure
+A pipeline is a value you can look at before running it. Every `Node` captures its shape,
+its in/out types, and its enclosing `val` name at compile time.
+
+```scala
+val p =
+     extract5 ~> (double & triple) ~> combine ~> saveToDb
+```
+
+Use `.toDot` or `.toMermaid` on any `Node`. You get:
+
+<p align="center">
+  <img src="pix/pipeline-example.svg" width="100%">
+</p>
+
+When your pipelines are inspectable values you get some superpowers for free:
+- Unit test pipeline shape
+- Govern dataflow architecture
+- Generate docs at build time that never drift
+
 ## Configuration
 
 Declare what each step `.requires`, then `.provide` it later:
@@ -233,26 +253,6 @@ val logEnd   = Node { println("Done!") }
 
 val pipeline = logStart >> (listFiles ~> countFiles) >> logEnd
 ```
-
-## Inspect the structure
-A pipeline is a value you can look at before running it. Every `Node` captures its shape,
-its in/out types, and its enclosing `val` name at compile time.
-
-```scala
-val p =
-     extract5 ~> (double & triple) ~> combine ~> saveToDb
-```
-
-Use `.toDot` or `.toMermaid` on any `Node`. You get:
-
-<p align="center">
-  <img src="pix/pipeline-example.svg" width="100%">
-</p>
-
-When your pipelines are inspectable values you get some superpowers for free:
-- Unit test pipeline shape
-- Govern dataflow architecture
-- Generate docs at build time that never drift
 
 ## Lineage
 
