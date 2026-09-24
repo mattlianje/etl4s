@@ -31,7 +31,7 @@ Battle-tested at [Instacart](https://www.instacart.com/).
 ```
 Or try in REPL:
 ```bash
-scala-cli repl --scala 3 --dep xyz.matthieucourt:etl4s_3:1.9.1
+scala-cli repl --scala 3 --dep xyz.matthieucourt:etl4s:latest.release
 ```
 
 All you need:
