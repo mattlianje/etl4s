@@ -8,7 +8,8 @@ type-safe stages you wire with `~>`. Spark still does all the heavy lifting -
 etl4s just gives the job a shape you can read, test, and reuse.
 
 ```bash
-scala-cli repl --dep xyz.matthieucourt::etl4s:latest.release  \
+scala-cli repl --scala 2.13 \
+               --dep xyz.matthieucourt::etl4s:latest.release \
                --dep org.apache.spark::spark-sql:3.5.0
 ```
 
