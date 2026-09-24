@@ -4,7 +4,7 @@ import scala.concurrent.Future
 import scala.concurrent.ExecutionContext.Implicits.global
 import scala.util.Try
 
-class ProductOpSpec extends munit.FunSuite {
+class ProductSpec extends munit.FunSuite {
 
   val parseName = Node[String, String](_.trim)
   val parseAge  = Node[Int, Int](_ + 1)

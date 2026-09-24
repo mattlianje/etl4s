@@ -2,7 +2,7 @@ package etl4s
 
 import scala.concurrent.ExecutionContext.Implicits.global
 
-class NodeIntrospectionSpec extends munit.FunSuite {
+class IntrospectionSpec extends munit.FunSuite {
 
   test("stages capture val-names and in/out type names in execution order") {
     val parse = Node[String, Int](_.trim.toInt)

@@ -3,7 +3,7 @@ package etl4s
 import scala.concurrent.ExecutionContext.Implicits.global
 
 /* Tests that require real timing/blocking - JVM only */
-class TimingSpecs extends munit.FunSuite {
+class TimingSpec extends munit.FunSuite {
 
   test("&> runs concurrently under as[Future]") {
     import scala.concurrent.{Future, Await}

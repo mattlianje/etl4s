@@ -3,7 +3,7 @@ package etl4s
 import scala.concurrent.ExecutionContext.Implicits.global
 
 /** Tests that require real timing/blocking - Native only */
-class TimingSpecs extends munit.FunSuite {
+class TimingSpec extends munit.FunSuite {
 
   test("&> composes and yields the tuple (sync = sequential, no threads)") {
     // Native has no real parallel runtime, so concurrency is not asserted here;

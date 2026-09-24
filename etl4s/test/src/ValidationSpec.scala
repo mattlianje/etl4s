@@ -2,7 +2,7 @@ package etl4s
 
 import scala.util.{Try, Failure}
 
-class ValidationEffectSpec extends munit.FunSuite {
+class ValidationSpec extends munit.FunSuite {
 
   val base = Node[Int, String](n => s"v$n").withName("base")
 

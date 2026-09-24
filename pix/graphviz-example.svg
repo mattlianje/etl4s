@@ -1,5 +1,11 @@
 <svg width="422pt" height="98pt"
  viewBox="0.00 0.00 422.00 98.00" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink">
+<style>
+  @media (prefers-color-scheme: dark) {
+    [stroke="#666666"] { stroke: #9198a1 }
+    [fill="#666666"] { fill: #9198a1 }
+  }
+</style>
 <g id="graph0" class="graph" transform="scale(1 1) rotate(0) translate(4 94)">
 <title>G</title>
 <!-- A -->
