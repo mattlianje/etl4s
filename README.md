@@ -68,7 +68,7 @@ val pipeline =
 - Chaotic, framework-coupled ETL codebases that grow without an imposed discipline drive dev teams and data orgs to their knees.
 - **etl4s** is a lightweight DSL to enforce discipline, type-safety, and reuse of pure functions - and see [functional ETL](https://maximebeauchemin.medium.com/functional-data-engineering-a-modern-paradigm-for-batch-data-processing-2327ec32c42a) for what it is... and could be.
 
-It works with anything (Spark, Flink, Beam, streaming, web-server dataflows, local scripts) and runs anywhere: JVM, Scala.js and Scala Native.
+It works with anything (Spark, Flink, Beam, streaming, web-server dataflows, local scripts) and runs on the JVM, in the browser, or as a native binary.
 
 ## Type safety
 **etl4s** won't let you chain together "blocks" that don't fit together:
