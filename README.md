@@ -12,7 +12,7 @@
 A lightweight, zero-dependency library for writing type-safe, beautiful ✨🍰  data flows in functional Scala. 
 Battle-tested at [Instacart](https://www.instacart.com/).
 
-- 📖 [Full documentation](https://mattlianje.github.io/etl4s/)
+- [Full documentation](https://mattlianje.github.io/etl4s/)
 
 ## Features
 - Declarative, typed pipeline endpoints
