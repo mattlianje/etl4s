@@ -9,6 +9,8 @@
 # <img src="pix/etl4s-logo.png" width="50"> etl4s
 **Powerful, whiteboard-style ETL**
 
+[![Maven Central](https://img.shields.io/maven-central/v/xyz.matthieucourt/etl4s_3)](https://central.sonatype.com/artifact/xyz.matthieucourt/etl4s_3)
+
 A lightweight, zero-dependency library for writing type-safe, beautiful ✨🍰  data flows in functional Scala. 
 Battle-tested at [Instacart](https://www.instacart.com/).
 
