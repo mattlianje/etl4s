@@ -174,9 +174,10 @@ val callApi   = Node[String, String].requires[ApiConfig] { cfg => user =>
   s"${cfg.apiKey}: $user"
 }
 
-val pipeline = fetchUser ~> callApi
+val p = 
+     fetchUser ~> callApi
 
-pipeline.provide(ApiConfig("secret")).unsafeRun() /* "secret: alice" */
+p.provide(ApiConfig("secret")).unsafeRun() /* "secret: alice" */
 ```
 
 **etl4s** automatically infers the smallest shared config for your pipeline. Just `.provide` once.
