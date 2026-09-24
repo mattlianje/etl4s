@@ -12,7 +12,7 @@
 A lightweight, zero-dependency library for writing type-safe, beautiful ✨🍰  data flows in functional Scala. 
 Battle-tested at [Instacart](https://www.instacart.com/).
 
-📖 [Full documentation](https://mattlianje.github.io/etl4s/)
+- 📖 [Full documentation](https://mattlianje.github.io/etl4s/)
 
 ## Features
 - Declarative, typed pipeline endpoints
@@ -20,7 +20,7 @@ Battle-tested at [Instacart](https://www.instacart.com/).
 - Type-safe, compile-time checked
 - [Config-driven](#configuration) by design
 - Easy composition of pipelines as free-arrows
-- [Effect polymorphic](#effect-polymorphism): run on `Try`, `Future`, `IO`, `ZIO`, Kyo ...
+- [Effect polymorphic](#effect-polymorphism): run on `Future`, `IO`, `ZIO`, Kyo ...
 - Built-in retry/failure handling
 - [Data lineage](#lineage) visualization
 
