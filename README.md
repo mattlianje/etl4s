@@ -169,14 +169,14 @@ import etl4s._
 
 case class ApiConfig(apiKey: String)
 
-val fetchUser = Extract("alice")
-val callApi   = Transform[String, String].requires[ApiConfig] { cfg => user =>
+val fetchUser = Node("alice")
+val callApi   = Node[String, String].requires[ApiConfig] { cfg => user =>
   s"${cfg.apiKey}: $user"
 }
 
 val pipeline = fetchUser ~> callApi
 
-pipeline.provide(ApiConfig("secret")).unsafeRun(())  /* "secret: alice" */
+pipeline.provide(ApiConfig("secret")).unsafeRun() /* "secret: alice" */
 ```
 
 **etl4s** automatically infers the smallest shared config for your pipeline. Just `.provide` once.
@@ -228,14 +228,14 @@ val pipeline =
 #### `withRetry`
 Retry failed operations:
 ```scala
-val callFlakyApi = Extract("response")
+val callFlakyApi = Node("response")
   .withRetry(maxAttempts = 3, initialDelayMs = 100)
 ```
 
 #### `onFailure`
 Catch exceptions and recover:
 ```scala
-val fetchUser = Extract[Unit, String](_ => throw new RuntimeException("Boom!"))
+val fetchUser = Node[Unit, String](_ => throw new RuntimeException("Boom!"))
   .onFailure(e => s"Error: ${e.getMessage}")
 
 fetchUser.unsafeRun() /* "Error: Boom!" */
@@ -258,7 +258,7 @@ Read more [here](https://mattlianje.github.io/etl4s/branching/).
 Use `.tap()` for side effects without disrupting pipeline flow:
 
 ```scala
-val listFiles  = Extract(List("a.txt", "b.txt"))
+val listFiles  = Node(List("a.txt", "b.txt"))
                    .tap(files => println(s"Processing: $files"))
 
 val countFiles = Transform[List[String], Int](_.size)
