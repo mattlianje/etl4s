@@ -45,6 +45,14 @@ This will give:
 Result: 10
 ```
 
+To improve readability and express intent, **etl4s** defines three aliases: `Extract`, `Transform` and `Load`. All behave the same under the hood.
+
+```scala
+type Extract[In, Out]   = Node[In, Out]
+type Transform[In, Out] = Node[In, Out]
+type Load[In, Out]      = Node[In, Out]
+```
+
 You can use other operators like `&` to fan out and stitch your graphs
 
 ```scala
@@ -92,11 +100,32 @@ loadData.provide(Config(2025)).unsafeRun(()) // "Loading 2025 data"
 ```
 
 `.requires` turns the node into a `Reader[Config, Node[...]]`, and config-aware and plain nodes
-compose together with the same `~>`
+compose together with the same `~>`. See [Configuration](config.md) for details.
+
+## Pipelines are values
+Building a pipeline runs nothing. Every combinator (`~>`, `&`, `>>`, ...) just grows an
+immutable AST - a free profunctor over your plain functions. `a ~> b ~> c` is literally
+a tree of case classes:
+
+```scala
+AndThen(
+  AndThen(Step("a", ...), Step("b", ...)),
+  Step("c", ...)
+)
+```
+
+<p align="center">
+  <img src="https://raw.githubusercontent.com/mattlianje/etl4s/master/pix/pipeline-tree.svg" width="210">
+</p>
+
+Because a pipeline is just this tree, you can interpret it however you like. That is what
+makes etl4s effect polymorphic: `.compile[F]` folds the same tree into `In => F[Out]` for
+any effect `F` (`Try`, `Future`, cats-effect `IO`, ZIO, Kyo ...). See
+[Effect polymorphism](effect-polymorphism.md).
 
 ## Inspect the structure
 
-A pipeline is a value you can look at *before* running it.
+Since a pipeline is a value, you can look at it *before* running it.
 
 Every `Node` carries its own shape, its in/out types and the enclosing `val` name,
 both captured at compile time by a small macro, so you can dump its stages or render it as a diagram:
@@ -111,7 +140,7 @@ val p =
 `.toDot` renders a Graphviz graph, and `.toMermaid` a Mermaid one.
 
 ```scala
-pipeline.toDot
+p.toDot
 ```
 
 You get:

@@ -12,7 +12,6 @@ nav:
     - Installation: installation.md
     - Tutorial: first-pipeline.md
   - Guide:
-    - Core Concepts: core-concepts.md
     - Operators: operators.md
     - Effect Polymorphism: effect-polymorphism.md
     - Parallel Execution: tasks.md

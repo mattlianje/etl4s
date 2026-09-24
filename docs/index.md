@@ -1121,7 +1121,7 @@ hide:
 <div class="get-started-links">
 <a href="installation/">Installation</a>
 <a href="first-pipeline/">First Pipeline</a>
-<a href="core-concepts/">Core Concepts</a>
+<a href="operators/">Operators</a>
 <a href="examples/">Examples</a>
 </div>
 </div>
