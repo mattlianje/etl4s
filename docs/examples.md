@@ -10,6 +10,15 @@ import etl4s._
 val ingest = pullEvents ~> parse ~> validate ~> load
 ```
 
+A pipeline is itself a node, so pipelines chain the same way:
+
+```scala
+val ingest  = pullEvents ~> parse
+val publish = validate ~> load
+
+val nightly = ingest ~> publish
+```
+
 ## Fan-out to many
 
 Gather independent sources with `&`, then flow the tuple downstream:
@@ -21,13 +30,13 @@ val profile = (fetchUser & fetchOrders) ~> gather ~> assemble ~> render
 `&>` is the concurrent counterpart - parallel once compiled to an effect like `Future`:
 
 ```scala
-val gather = fetchUser &> fetchOrders &> fetchPayments
+val fetchAll = fetchUser &> fetchOrders &> fetchPayments
 
-gather.compile[Future].unsafeRun()
+fetchAll.compile[Future].unsafeRun()
 ```
 
 See [Effect polymorphism](effect-polymorphism.md) for `.compile[Id|Try|Future]`
-and your own effects. Use `*` / `*>` to pair nodes that take *different* inputs.
+and your own effects. Use `*` / `*>` to pair nodes that take different inputs.
 
 ## Batch processing
 
@@ -43,14 +52,10 @@ See [Batch operations](batch.md) for the full set and how they behave per effect
 `.tap` observes the value in flight without changing it - handy for logging:
 
 ```scala
-val extract   = Extract("s3://events/2026-09-21")
-val transform = Transform[String, Int](_.length)
-val load      = Load[Int, Unit](rows => save(rows))
-
 val pipeline =
-  extract   .tap(path => println(s"pulling $path")) ~>
-  transform .tap(rows => println(s"rows: $rows"))   ~>
-  load
+     extract.tap(path => println(s"pulling $path")) ~>
+     transform.tap(rows => println(s"rows: $rows")) ~>
+     load
 ```
 
 ## Sequence side-effects with `>>`
@@ -72,6 +77,16 @@ val route = extractOrder
   .Else                 (reject)
 ```
 
+## Route an `Either` with `|`
+
+When a step returns an `Either`, `|` sends each side to its own branch:
+
+```scala
+val ingest = parse ~> validate ~> (quarantine | load)
+```
+
+`Left`s go to `quarantine`, `Right`s go to `load`.
+
 ## Branch on config, not data
 
 When the route depends only on config, `IfCtx` starts the pipeline on the context directly - no source node. The condition is `Config => Boolean`, so the branch is picked before any data flows:
@@ -79,25 +94,41 @@ When the route depends only on config, `IfCtx` starts the pipeline on the contex
 ```scala
 case class Config(isBackfill: Boolean, isDryRun: Boolean)
 
-val backfill = Node[Int, String](n => s"backfill:$n")
-val dryRun   = Node[Int, String](n => s"dryrun:$n")
-val normal   = Node[Int, String](n => s"normal:$n")
-
-val ingest = IfCtx[Config](_.isBackfill)(backfill)
-  .ElseIfCtx(_.isDryRun)(dryRun)
-  .Else(normal)
+val ingest = IfCtx[Config](_.isBackfill)(replayArchive)
+  .ElseIfCtx(_.isDryRun)(logOnly)
+  .Else(ingestLive)
 
 ingest.provide(Config(isBackfill = true, isDryRun = false)).unsafeRun(42)
 ```
 
-## Fallback values with `.onFailure`
+## Inject config with `.requires`
 
-Recover inline, then keep flowing:
+Declare what a step needs, wire the pipeline as usual, then `.provide` once at the edge:
 
 ```scala
-val rates = fetchLiveRates.onFailure(_ => cachedRates)
+val load = Load[Rows, Unit].requires[DbConfig] { db => rows => write(db.url, rows) }
+
+val nightly = extract ~> transform ~> load
+
+nightly.provide(prodDb).unsafeRun()
+```
+
+See [Configuration](config.md) for more.
+
+## Fall back to another node with `<|>`
+
+If the first node throws, the second runs on the same input:
+
+```scala
+val rates = fetchLiveRates <|> readCachedRates
 
 val convert = rates ~> applyRates ~> load
+```
+
+To recover to a plain value instead, use `.onFailure`:
+
+```scala
+val rates = fetchLiveRates.onFailure(_ => Rates.empty)
 ```
 
 ## Retry with backoff
@@ -106,5 +137,5 @@ val convert = rates ~> applyRates ~> load
 val fetch  = 
      callPaymentApi.withRetry(maxAttempts = 3, initialDelayMs = 100, backoffFactor = 2.0)
 
-val charge = fetch ~> recordTxn ~> notify
+val charge = fetch ~> recordTxn ~> notifyCustomer
 ```
