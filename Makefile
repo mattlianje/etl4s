@@ -1,6 +1,6 @@
 .PHONY: compile test test-jvm test-js test-native publish-local bundle clean fmt fmt-check repl repl-2.12 repl-2.13 repl-3 docs publish-doc
 
-VERSION := 1.9.1
+VERSION := $(shell sed -n 's/.*def publishVersion *= *"\(.*\)".*/\1/p' build.mill)
 BUNDLE_DIR := bundles
 GPG_KEY := F36FE8EEBD829E6CF1A5ADB6246482D1268EDC6E
 

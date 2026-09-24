@@ -2,7 +2,7 @@
 
 **etl4s** is on MavenCentral and cross-built for Scala, 2.12, 2.13, 3.x:
 ```scala
-"xyz.matthieucourt" %% "etl4s" % "1.9.1"
+"xyz.matthieucourt" %% "etl4s" % "2.0.0"
 ```
 
 Try it in your REPL (with [scala-cli](https://scala-cli.virtuslab.org/)):
