@@ -3,7 +3,7 @@
 ## General
 
 **Q: What is etl4s?**  
-A single-file, zero-dependency Scala library for expressing code as composable pipelines. Chain with `~>`, parallelize with `&`, inject dependencies with `.requires`.
+A zero-dependency Scala library for expressing code as composable pipelines. Chain with `~>`, parallelize with `&`, inject dependencies with `.requires`.
 
 **Q: Is this a framework?**  
 No, and never will be. It's an ultralight library that doesn't impose a worldview. Try it zero-cost on one pipeline today.
@@ -20,43 +20,10 @@ Anywhere: local scripts, web servers, alongside any framework like Spark or Flin
 **Q: Can I use this in production?**  
 Yes. It powers grocery deliveries at [Instacart](https://www.instacart.com/). Type safety catches bugs at compile time. No runtime dependencies means nothing to break.
 
-## How it works
-
-**Q: What does `~>` actually do?**  
-Connects pipeline stages. It's an overloaded symbolic operator that works with plain nodes (`Node[In, Out]`) or nodes that need config (`Reader[Env, Node[In, Out]]`). Mix them freely - the operator figures out what environment is needed. If two stages need different configs, it automatically merges them.
-
 ## Usage
 
 **Q: What happens if a stage fails?**  
-Execution halts immediately. Use `.safeRun()` to get a `Try[Result]`, or handle errors with `.onFailure()`.
+The exception propagates out of `.unsafeRun()`. Recover inline with `.onFailure()`, or wrap the call in your own `Try`/`try`-`catch`.
 
 **Q: Can I mix sync and async code?**  
-Yes. All stages run as effects. You can have blocking and non-blocking operations in the same pipeline.
-
-## Observability
-
-**Q: How do I know what happened during execution?**  
-Call `.unsafeRunTrace()` instead of `.unsafeRun()`. Returns `Trace` with logs, errors, and timing:
-
-```scala
-val trace = pipeline.unsafeRunTrace(data)
-trace.logs                // everything logged during execution
-trace.errors              // all errors encountered
-trace.timeElapsedMillis   // how long it took
-```
-
-**Q: How does tracing work?**  
-Uses ThreadLocal to collect logs and errors during execution. Any stage can call `Trace.log()` or `Trace.error()`. Downstream stages see upstream issues automatically via `Trace.current` - no passing state through function parameters.
-
-**Q: How do I add metrics?**  
-Use `Tel.addCounter()`, `Tel.setGauge()`, `Tel.recordHistogram()` in your stages. Zero-cost by default. Provide `Etl4sTelemetry` implementation to light them up in prod:
-
-```scala
-val process = Transform[List[User], Int] { users =>
-  Tel.addCounter("users_processed", users.size)
-  users.filter(_.isValid).length
-}
-```
-
-**Q: Can I use this with Prometheus/DataDog/etc?**  
-Yes. Implement the `Etl4sTelemetry` trait for your backend. See the [Telemetry docs](opentelemetry.md).
+Yes. By default (`.unsafeRun`) stages are plain synchronous functions run on the `Id` interpreter, with no threads and no effect wrapping. They only run inside an effect `F` when you `.compile[F]` (e.g. `Future`), which is also what enables concurrency for `&>`. You can freely place blocking and non-blocking operations in the same pipeline.

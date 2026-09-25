@@ -1,143 +1,119 @@
-# Conditional Branching
+---
+api:
+  - sig: ".If(pred)(branch)"
+  - sig: ".ElseIf(pred)(branch)"
+  - sig: ".Else(branch)"
+  - sig: "If[A](pred)(branch)"
+  - sig: "IfCtx[C](pred)(branch)"
+  - sig: ".IfCtx(pred)(branch)"
+  - sig: ".ElseIfCtx(pred)(branch)"
+---
 
-Route data through different pipelines using `If`, `ElseIf`, and `Else`. Branch on the data itself or on configuration.
+# Conditional branching
 
-```scala
-import etl4s._
+Route data down different pipelines with `If`, `ElseIf`, and `Else`. Branch on the data flowing through, or on outside config.
 
-case class JobConfig(isBackfill: Boolean)
+## Branch on data
 
-val pipeline = extract ~> validate
-  .If(cfg => _ => cfg.isBackfill) (fullLoad ~> dedupe ~> save)
-  .Else                           (deltaLoad ~> save)
-```
-
-Branch on data:
-
-```scala
-val classify = Node[Int, Int](identity)
-  .If(_ > 0)     (Node(_ => "positive"))
-  .ElseIf(_ < 0) (Node(_ => "negative"))
-  .Else          (Node(_ => "zero"))
-
-classify.unsafeRun(5)   // "positive"
-classify.unsafeRun(-3)  // "negative"
-classify.unsafeRun(0)   // "zero"
-```
-
-The condition is checked against the input, and only the matching branch executes.
-
-## Composing Pipelines in Branches
-
-Each branch can be a full pipeline, not just a single node:
+The predicate runs against the input, and only the matching branch fires:
 
 ```scala
-val router = Node[User, User](identity)
-  .If(_.tier == "premium")      (validate ~> enrich ~> toPremiumResult)
-  .ElseIf(_.tier == "standard") (validate ~> toStandardResult)
-  .Else                         (toGuestResult)
+val classify = score
+  .If(_ > 0)     (tagPositive)
+  .ElseIf(_ < 0) (tagNegative)
+  .Else          (tagZero)
 ```
 
-## Combining with Fan-out
-
-Branches can include parallel operations using `&` or `&>`:
+Close with `.Else` and it is exhaustive. Drop the `.Else` and unmatched input flows straight through:
 
 ```scala
-val router = Node[User, User](identity)
-  .If(_.wantsDetails) ((identity & loadMetrics & loadHistory) ~> toFullProfile)
-  .Else               (toSimpleProfile)
+val maybeBoost = enrich.If(_.score > 10)(applyBoost)
 ```
 
-## Config-Aware Branching
+## Start with a branch
 
-When your pipeline uses configuration, conditions can access it too:
+`If[A]` opens a pipeline on the branch itself, no upstream node needed:
 
 ```scala
-case class Config(threshold: Int)
-
-val router = Node[Config, Int, Int](identity)
-  .If(cfg => n => n >= cfg.threshold) (premiumPath)
-  .Else                               (standardPath)
-
-router.provide(Config(100)).unsafeRun(150)  // premium
-router.provide(Config(100)).unsafeRun(50)   // standard
+val ship = If[Order](_.isRush)(expedite).Else(standard) ~> notify
 ```
 
-## Context-Only Branching
+## Branches are pipelines
 
-Use `IfCtx` and `ElseIfCtx` when the branch decision depends only on config, not the data flowing through:
+Any branch can be a whole pipeline, fan-out and all:
 
 ```scala
-case class Config(isBackfill: Boolean, isDryRun: Boolean)
-
-val source   = Reader[Config, Node[Int, Int]] { _ => Node(identity) }
-val backfill = Node[Int, String](n => s"backfill:$n")
-val dryRun   = Node[Int, String](n => s"dryrun:$n")
-val normal   = Node[Int, String](n => s"normal:$n")
-
-val pipeline = source
-  .IfCtx(_.isBackfill)(backfill)
-  .ElseIfCtx(_.isDryRun)(dryRun)
-  .Else(normal)
-
-pipeline.provide(Config(isBackfill = true, isDryRun = false)).unsafeRun(42)
-// "backfill:42"
+val offers = extractUser
+  .If(_.tier == "premium")      (validate ~> enrich ~> premiumOffer)
+  .ElseIf(_.tier == "standard") (validate ~> standardOffer)
+  .Else                         (guestNotice)
 ```
-
-This is cleaner than the curried form `cfg => _ => cfg.isBackfill` when the data value is irrelevant to the condition.
-
-## Automatic Reader Lifting
-
-Branches can freely mix plain `Node` and `Reader` branches. etl4s automatically lifts `Node` branches into `Reader` so you don't have to wrap them manually:
 
 ```scala
-case class Config(threshold: Int)
-
-val source      = Reader[Config, Node[Int, Int]] { _ => Node(identity) }
-val belowThresh = Reader[Config, Node[Int, String]] { cfg =>
-  Node(n => s"below-${cfg.threshold}:$n")
-}
-val aboveThresh = Node[Int, String](n => s"above:$n")  // plain Node, auto-lifted
-
-val pipeline = source
-  .If((cfg: Config) => (n: Int) => n < cfg.threshold)(belowThresh)
-  .Else(aboveThresh)
-
-pipeline.provide(Config(10)).unsafeRun(5)   // "below-10:5"
-pipeline.provide(Config(10)).unsafeRun(15)  // "above:15"
+val profile = loadUser
+  .If(_.wantsDetails) ((self & loadMetrics & loadHistory) ~> fullProfile)
+  .Else               (simpleProfile)
 ```
 
-In Scala 3, config types accumulate via intersection (`&`) and output types via union (`|`). In Scala 2, all branches share the same config and output types.
+Swap `&` for `&>` to fan out concurrently under an effect.
+
+## Branch on config and data
+
+When the decision needs config too, take a typed condition `(cfg: Config) => (data: A) => Boolean`:
+
+```scala
+val route = source
+  .If((cfg: Config) => (n: Int) => n < cfg.threshold) (formatBelow)
+  .Else                                               (formatAbove)
+
+route.provide(Config(10)).unsafeRun(5) // "below:5"
+```
+
+## Branch on config alone
+
+When only the config matters and the data is irrelevant, use `IfCtx` / `ElseIfCtx` - the condition is just `Config => Boolean`. `IfCtx[Config]` starts the pipeline on the context itself, no source node:
+
+```scala
+val ingest =
+  IfCtx[Config](_.isBackfill)(readSnapshot ~> replay ~> load)
+    .ElseIfCtx(_.isDryRun)   (readStream ~> validate ~> logOnly)
+    .Else                    (readStream ~> validate ~> load)
+
+ingest.provide(Config(isBackfill = true, isDryRun = false)).unsafeRun(batch)
+```
+
+Already have an upstream Reader? Call `.IfCtx` on it instead:
+
+```scala
+val ingest = source
+  .IfCtx(_.isBackfill)  (readSnapshot ~> replay ~> load)
+  .ElseIfCtx(_.isDryRun)(readStream ~> validate ~> logOnly)
+  .Else                 (readStream ~> validate ~> load)
+```
 
 ## Scala 2 vs Scala 3
 
 The API is identical across versions, but Scala 3's type system enables more flexibility.
 
-**Scala 3** - branches can return different types (union):
+**Scala 3**: branches can return different types (union):
 
 ```scala
-val router = Node[Int, Int](identity)
-  .If(_ > 0)     (Node(n => s"pos-$n"))    // String
-  .ElseIf(_ < 0) (Node(n => n * -1))       // Int
-  .Else          (Node(n => n.toDouble))   // Double
-// Result type: String | Int | Double
+val router = score
+  .If(_ > 0)     (toLabel)    // String
+  .ElseIf(_ < 0) (negate)     // Int
+  .Else          (toDouble)   // Double
 ```
 
-**Scala 3** - branches can require different configs (intersection):
+The result type is `Node[Int, String | Int | Double]`.
 
-```scala
-val router = Node[String, String](identity)
-  .If(cfg => _.startsWith("db:")) (dbBranch)    // needs DbConfig
-  .Else                           (cacheBranch) // needs CacheConfig
-// Must provide: DbConfig & CacheConfig
-```
+**Scala 3**: config-aware branches accumulate their config via intersection (`&`):
+mixing branches that need `DbConfig` and `CacheConfig` yields a pipeline that must be provided `DbConfig & CacheConfig`.
 
 !!! note "Scala 2"
-    All branches must return the same type:
+    All branches must return the same type, and share the same config type:
     ```scala
-    val router = Node[Int, Int](identity)
-      .If(_ > 0)     (Node(n => s"pos-$n"))
-      .ElseIf(_ < 0) (Node(n => s"neg-$n"))
-      .Else          (Node(_ => "zero"))
-    // All branches return String
+    val router = score
+      .If(_ > 0)     (posLabel)
+      .ElseIf(_ < 0) (negLabel)
+      .Else          (zeroLabel)
     ```

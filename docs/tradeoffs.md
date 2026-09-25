@@ -1,25 +1,26 @@
 # Tradeoffs
 
-## Tracing
+## Reified pipelines
 
-`Trace` uses two `ThreadLocal` lists - one for logs, one for errors. Appending is O(1) but not zero cost. If you're doing `Trace.log()` in a tight loop over millions of records, you're allocating. For normal ETL granularity (log per stage, per batch, per failure), you won't notice.
+We have seen the powerful benefits of reifying our pipelines. Long-short, our programs
+become descriptions, that can have many interpretations and they become fully inspectable.
 
-## Parallelism
+There are some costs:
 
-`&>` uses `Future` under the hood (for now). You bring the `ExecutionContext`:
+- **A small interpretation overhead.** Running a reified tree is a little slower than
+hand composed functions with erased types. For IO-bound ETL work, this is completely trivial, but it is non-zero.
+- **A fixed set of of combinators.** The node types are a closed set. You extend
+a pipeline (here, by extend, we mean "add nodes") by composing the combinators that exist,
+not by inventing new node kinds. In practice `Step` plus the operators (`~>`, `&>`, etc) cover the ground,
+but it is not an open free structure you bolt new instructions onto.
 
-```scala
-import scala.concurrent.ExecutionContext.Implicits.global
 
-val parallel = e1 &> e2 &> e3
-```
+## Concurrency comes from the effect
 
-!!! warning "Keep in mind"
-    - Each `&>` branch submits a `Future`
-	- So avoid folding over some interrable of size `n` with `&>` since it would fire off a syscall for an OS thread `n` number of times
+Concurrency is a property of the interpreter, not of the operator. `&>`, `*>`,
+and `eachPar(n)` mark *where* work may run concurrently, but nothing runs in
+parallel under the default `Id` interpreter (`unsafeRun`): it is fully
+sequential, with no `ExecutionContext` involved.
 
-The plan is to make an effect polymorphic **etl4s** concurrency subsystem (soon) ...so you could plug in ZIO, CE, Kyo or keep `Future`.
-
-## Telemetry
-
-`Tel` compiles to no-ops when there's no `Etl4sTelemetry` in implicit scope. Zero allocation, zero overhead.
+Admittedly, this can be a bit surprising and counterintuitive but cannot be avoided without forcing
+a specific concurrency implementation on the programmer.

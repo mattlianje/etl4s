@@ -271,186 +271,6 @@ hide:
   75%, 100% { opacity: 0; transform: translateY(-4px); }
 }
 
-/* Trace animation - minimalist: dot flows through nodes, logs accumulate */
-.trace-demo {
-  position: relative;
-  width: 280px;
-  height: 110px;
-  font-family: var(--mono, monospace);
-  font-size: 0.5rem;
-  margin: 0 auto;
-}
-
-.trace-demo .pipeline {
-  position: absolute;
-  top: 0;
-  left: 0;
-  display: flex;
-  align-items: flex-start;
-  gap: 0;
-}
-
-.trace-demo .node-group {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-}
-
-.trace-demo .trace-node {
-  width: 10px;
-  height: 10px;
-  border-radius: 50%;
-  background: var(--md-primary-fg-color);
-  opacity: 0.6;
-}
-
-.trace-demo .node-label {
-  font-size: 0.4rem;
-  margin-top: 2px;
-  opacity: 0.5;
-}
-
-.trace-demo .trace-arrow {
-  font-size: 0.5rem;
-  opacity: 0.3;
-  margin: 0 14px;
-  color: var(--md-primary-fg-color);
-  line-height: 10px;
-}
-
-.trace-demo .trace-dot {
-  position: absolute;
-  width: 5px;
-  height: 5px;
-  border-radius: 50%;
-  background: var(--md-primary-fg-color);
-  top: 2.5px;
-  opacity: 0;
-}
-
-/* Trace log - simple list below pipeline */
-.trace-demo .trace-log {
-  position: absolute;
-  top: 30px;
-  left: 0;
-  right: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 3px;
-  padding-top: 10px;
-  opacity: 0.25;
-}
-
-.trace-demo .trace-log::before {
-  content: '';
-  position: absolute;
-  top: 0;
-  left: 10%;
-  right: 10%;
-  height: 1px;
-  background: linear-gradient(90deg, transparent, var(--md-primary-fg-color), transparent);
-  opacity: 0.3;
-}
-
-.trace-demo .log-entry {
-  font-size: 0.42rem;
-  color: var(--md-default-fg-color);
-  opacity: 0;
-  white-space: nowrap;
-}
-
-.trace-demo .log-entry .log-prefix {
-  color: var(--md-primary-fg-color);
-  opacity: 0.6;
-}
-
-/* Result line */
-.trace-demo .trace-result {
-  position: absolute;
-  bottom: 0;
-  left: 0;
-  font-size: 0.44rem;
-  opacity: 0;
-  white-space: nowrap;
-  color: var(--md-default-fg-color);
-}
-
-.trace-demo .trace-result .val {
-  color: var(--md-primary-fg-color);
-}
-
-/* Animations */
-@keyframes trace-dot-flow {
-  0% { left: -8px; opacity: 0; }
-  4% { left: -4px; opacity: 0.7; }
-  25% { left: 5px; }
-  50% { left: 57px; }
-  75% { left: 109px; }
-  90% { left: 150px; opacity: 0.7; }
-  100% { left: 170px; opacity: 0; }
-}
-
-@keyframes trace-node-glow-1 {
-  0%, 18% { opacity: 0.6; }
-  25%, 32% { opacity: 1; }
-  38%, 100% { opacity: 0.6; }
-}
-
-@keyframes trace-node-glow-2 {
-  0%, 42% { opacity: 0.6; }
-  50%, 57% { opacity: 1; }
-  62%, 100% { opacity: 0.6; }
-}
-
-@keyframes trace-node-glow-3 {
-  0%, 68% { opacity: 0.6; }
-  75%, 82% { opacity: 1; }
-  87%, 100% { opacity: 0.6; }
-}
-
-@keyframes trace-log-border {
-  0%, 20% { opacity: 0.25; }
-  28%, 92% { opacity: 0.5; }
-  96%, 100% { opacity: 0.25; }
-}
-
-@keyframes trace-log-1 {
-  0%, 30% { opacity: 0; }
-  36%, 90% { opacity: 0.7; }
-  96%, 100% { opacity: 0; }
-}
-
-@keyframes trace-log-2 {
-  0%, 54% { opacity: 0; }
-  60%, 90% { opacity: 0.7; }
-  96%, 100% { opacity: 0; }
-}
-
-@keyframes trace-log-3 {
-  0%, 78% { opacity: 0; }
-  84%, 90% { opacity: 0.7; }
-  96%, 100% { opacity: 0; }
-}
-
-@keyframes trace-result-appear {
-  0%, 78% { opacity: 0; }
-  84%, 94% { opacity: 0.6; }
-  100% { opacity: 0; }
-}
-
-.trace-demo .trace-dot-1 { animation: trace-dot-flow 7s ease-in-out infinite; }
-
-.trace-demo .trace-node-1 { animation: trace-node-glow-1 7s ease-out infinite; }
-.trace-demo .trace-node-2 { animation: trace-node-glow-2 7s ease-out infinite; }
-.trace-demo .trace-node-3 { animation: trace-node-glow-3 7s ease-out infinite; }
-
-.trace-demo .trace-log { animation: trace-log-border 7s ease-out infinite; }
-.trace-demo .log-1 { animation: trace-log-1 7s ease-out infinite; }
-.trace-demo .log-2 { animation: trace-log-2 7s ease-out infinite; }
-.trace-demo .log-3 { animation: trace-log-3 7s ease-out infinite; }
-
-.trace-demo .trace-result { animation: trace-result-appear 7s ease-out infinite; }
-
 /* Platform animation */
 .platform-demo {
   position: relative;
@@ -554,12 +374,6 @@ hide:
   opacity: 0.8;
 }
 
-.type-safety-demo .node-type {
-  font-size: 0.4rem;
-  opacity: 0.5;
-  white-space: nowrap;
-}
-
 .type-safety-demo .node-e { left: 10px; top: 18px; }
 .type-safety-demo .node-t { left: 95px; top: 18px; animation: node-t-fade 6s ease-out infinite; }
 .type-safety-demo .node-l { left: 180px; top: 18px; animation: node-l-move 6s ease-out infinite; }
@@ -572,8 +386,8 @@ hide:
   color: var(--md-primary-fg-color);
 }
 
-.type-safety-demo .conn-et { left: 72px; transform: translateX(-50%); animation: conn-et-fade 6s ease-out infinite; }
-.type-safety-demo .conn-tl { left: 158px; transform: translateX(-50%); animation: conn-tl-fade 6s ease-out infinite; }
+.type-safety-demo .conn-et { left: 58px; transform: translateX(-50%); animation: conn-et-fade 6s ease-out infinite; }
+.type-safety-demo .conn-tl { left: 143px; transform: translateX(-50%); animation: conn-tl-fade 6s ease-out infinite; }
 
 .type-safety-demo .flow-dot {
   position: absolute;
@@ -1080,7 +894,7 @@ hide:
 <div class="intro-header">
   <img src="assets/etl4s-logo.png" alt="etl4s" />
   <h1>etl4s</h1>
-  <p style="opacity: 0.6; font-size: 0.85rem; margin: 0.5rem 0 1.5rem 0;">Powerful, whiteboard-style ETL.</p>
+  <p style="opacity: 0.6; font-size: 0.85rem; margin: 0.5rem 0 1.5rem 0;">Powerful, whiteboard-style ETL</p>
   <div class="intro-buttons">
     <a href="installation/" class="btn-primary">Get Started</a>
     <a href="https://scastie.scala-lang.org/mattlianje/1280QhQ5RWODgizeXOIsXA/5" target="_blank" class="btn-secondary">Try Online</a>
@@ -1109,8 +923,12 @@ hide:
 
     /* Run */
     pipeline.unsafeRun()
-    // Result: 15!
-    // [DB] Result: 15!
+    ```
+
+    Prints:
+    ```
+    Result: 15!
+    [DB] Result: 15!
     ```
 
 === "Config"
@@ -1135,13 +953,13 @@ hide:
     ```scala
     import etl4s._
 
-    val A = Node[String, String](identity)
-      .lineage(name = "A", inputs = List("s1", "s2"), outputs = List("s3"))
+    val ingest = Node[String, String](identity)
+      .lineage(name = "ingest", inputs = List("s1", "s2"), outputs = List("s3"))
 
-    val B = Node[String, String](identity)
-      .lineage(name = "B", inputs = List("s3"), outputs = List("s4", "s5"))
+    val enrich = Node[String, String](identity)
+      .lineage(name = "enrich", inputs = List("s3"), outputs = List("s4", "s5"))
 
-    Seq(A, B).toMermaid
+    Seq(ingest, enrich).toMermaid
     ```
 
     ```mermaid
@@ -1149,41 +967,24 @@ hide:
         classDef pipeline fill:#e1f5fe,stroke:#01579b,stroke-width:2px,color:#000
         classDef dataSource fill:#f3e5f5,stroke:#4a148c,stroke-width:2px,color:#000
 
-        A["A"]
-        B["B"]
+        ingest["ingest"]
+        enrich["enrich"]
         s1(["s1"])
         s2(["s2"])
         s3(["s3"])
         s4(["s4"])
         s5(["s5"])
 
-        s1 --> A
-        s2 --> A
-        A --> s3
-        s3 --> B
-        B --> s4
-        B --> s5
+        s1 --> ingest
+        s2 --> ingest
+        ingest --> s3
+        s3 --> enrich
+        enrich --> s4
+        enrich --> s5
 
-        class A pipeline
-        class B pipeline
+        class ingest pipeline
+        class enrich pipeline
         class s1,s2,s3,s4,s5 dataSource
-    ```
-
-=== "Telemetry"
-
-    ```scala
-    import etl4s._
-
-    val process = Transform[List[Row], List[Row]] { rows =>
-      Tel.addCounter("rows.processed", rows.size)
-      Tel.setGauge("batch.size", rows.size.toDouble)
-      rows.filter(_.isValid)
-    }
-
-    process.unsafeRun(rows)  // no-ops (zero cost)
-
-    implicit val t: Etl4sTelemetry = Prometheus()
-    process.unsafeRun(rows)  // metrics flowing
     ```
 
 ---
@@ -1234,11 +1035,11 @@ hide:
 </div>
 <div class="feature-visual">
 <div class="type-safety-demo">
-  <div class="node node-e"><span class="node-dot"></span><span class="node-label">E</span><span class="node-type">[A, Int]</span></div>
+  <div class="node node-e"><span class="node-dot"></span><span class="node-label">E</span></div>
   <span class="conn conn-et">~></span>
-  <div class="node node-t"><span class="node-dot"></span><span class="node-label">T</span><span class="node-type">[Int, Str]</span></div>
+  <div class="node node-t"><span class="node-dot"></span><span class="node-label">T</span></div>
   <span class="conn conn-tl">~></span>
-  <div class="node node-l"><span class="node-dot"></span><span class="node-label">L</span><span class="node-type">[Str, B]</span></div>
+  <div class="node node-l"><span class="node-dot"></span><span class="node-label">L</span></div>
   <span class="flow-dot flow-dot-1"></span>
   <span class="flow-dot flow-dot-2"></span>
   <span class="flow-bad"></span>
@@ -1268,40 +1069,6 @@ hide:
     <span class="dot"></span>
     <span class="env-label">Needs[Db & Api]</span>
   </div>
-</div>
-</div>
-</div>
-
-<div class="feature-row reverse">
-<div class="feature-text">
-<h3>Built-in tracing.</h3>
-<p>Shared execution state across pipeline nodes. Write logs, flag errors, react to upstream failures, track timing. Retrieve with <code>.unsafeRunTrace()</code>.</p>
-</div>
-<div class="feature-visual">
-<div class="trace-demo">
-  <div class="pipeline">
-    <div class="node-group">
-      <div class="trace-node trace-node-1"></div>
-      <span class="node-label">E</span>
-    </div>
-    <span class="trace-arrow">~></span>
-    <div class="node-group">
-      <div class="trace-node trace-node-2"></div>
-      <span class="node-label">T</span>
-    </div>
-    <span class="trace-arrow">~></span>
-    <div class="node-group">
-      <div class="trace-node trace-node-3"></div>
-      <span class="node-label">L</span>
-    </div>
-  </div>
-  <span class="trace-dot trace-dot-1"></span>
-  <div class="trace-log">
-    <span class="log-entry log-1"><span class="log-prefix">E</span> read 1420 rows</span>
-    <span class="log-entry log-2"><span class="log-prefix">T</span> validated 89</span>
-    <span class="log-entry log-3"><span class="log-prefix">L</span> wrote batch</span>
-  </div>
-  <div class="trace-result">Trace[B] &mdash; <span class="val">3 logs, 4ms</span></div>
 </div>
 </div>
 </div>
@@ -1354,7 +1121,7 @@ hide:
 <div class="get-started-links">
 <a href="installation/">Installation</a>
 <a href="first-pipeline/">First Pipeline</a>
-<a href="core-concepts/">Core Concepts</a>
+<a href="operators/">Operators</a>
 <a href="examples/">Examples</a>
 </div>
 </div>

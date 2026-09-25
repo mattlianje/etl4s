@@ -1,4 +1,8 @@
-**etl4s** has an elegant shorthand for grouping and parallelizing operations that share the same input type:
+# Parallel Execution
+
+**etl4s** has an elegant shorthand for grouping and parallelizing operations that
+share the same input type:
+
 ```scala
 import etl4s._
 
@@ -9,21 +13,21 @@ val e2 = Extract { Thread.sleep(100); "hello" }
 val e3 = Extract { Thread.sleep(100); true }
 ```
 
-Sequential run of e1, e2, and e3 **(~300ms total)**
+Sequential run of `e1`, `e2`, and `e3` (~300ms total):
 ```scala
 val sequential: Extract[Unit, (Int, String, Boolean)] =
-     e1 & e2 & e3
+  e1 & e2 & e3
 ```
 
-Parallel run of e1, e2, e3 on their own JVM threads with Scala Futures **(~100ms total, same result, 3X faster)**
+Parallel run of `e1`, `e2`, `e3` on their own JVM threads with Scala Futures
+(~100ms total, same result, 3X faster):
 ```scala
-import scala.concurrent.ExecutionContext.Implicits.global
-
 val parallel: Extract[Unit, (Int, String, Boolean)] =
-     e1 &> e2 &> e3
+  e1 &> e2 &> e3
 ```
 
-Mix sequential and parallel execution (first two parallel (~100ms), then third (~100ms)):
+Mix sequential and parallel execution - first two parallel (~100ms), then the
+third (~100ms):
 ```scala
 val mixed = (e1 &> e2) & e3
 ```
@@ -39,4 +43,10 @@ val merge = Transform[(Int, String, Boolean), String] { case (i, s, b) =>
 
 val pipeline =
   (e1 &> e2 &> e3) ~> merge ~> (consoleLoad &> dbLoad)
+
+pipeline.compile[Future].unsafeRun(())
 ```
+
+Concurrency only kicks in under a concurrent effect - see
+[Effect polymorphism](effect-polymorphism.md). For per-element parallelism over a
+collection, see `eachPar` in [Batch collections](batch.md).

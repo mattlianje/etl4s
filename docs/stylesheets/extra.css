@@ -10,6 +10,25 @@
 }
 .dark .highlight pre { background: #222 !important; }
 
+/* Dark-mode scrollbars for scrollable code blocks (otherwise they render light) */
+.dark pre,
+.dark .highlight pre {
+  scrollbar-width: thin;               /* Firefox */
+  scrollbar-color: #555 #222;          /* thumb / track */
+}
+.dark pre::-webkit-scrollbar,
+.dark .highlight pre::-webkit-scrollbar { height: 10px; width: 10px; }
+.dark pre::-webkit-scrollbar-track,
+.dark .highlight pre::-webkit-scrollbar-track { background: #222; }
+.dark pre::-webkit-scrollbar-thumb,
+.dark .highlight pre::-webkit-scrollbar-thumb {
+  background: #555; border-radius: 5px; border: 2px solid #222;
+}
+.dark pre::-webkit-scrollbar-thumb:hover,
+.dark .highlight pre::-webkit-scrollbar-thumb:hover { background: #666; }
+.dark pre::-webkit-scrollbar-corner,
+.dark .highlight pre::-webkit-scrollbar-corner { background: #222; }
+
 .highlight .hll { background-color: #ffffcc; }
 .highlight .c, .highlight .cm, .highlight .c1, .highlight .cs { color: #6a737d; font-style: normal; }
 
@@ -40,31 +59,42 @@
 .dark .highlight .m, .dark .highlight .mb, .dark .highlight .mf, .dark .highlight .mh, .dark .highlight .mi, .dark .highlight .mo, .dark .highlight .il { color: #79c0ff; }
 .dark .highlight .p { color: #c9d1d9; }
 
-/* ===== pymdownx.tabbed ===== */
-.tabbed-set { position: relative; display: flex; flex-wrap: wrap; margin: 1em 0; border-bottom: 1px solid #ddd; }
-.dark .tabbed-set { border-color: #444; }
-.tabbed-set > input { display: none; }
-.tabbed-set label {
-  padding: 0.4em 1em; cursor: pointer; font-size: 0.85em;
-  border-bottom: 2px solid transparent; color: #666; transition: color 0.15s;
+/* ===== pymdownx.tabbed (alternate style) ===== */
+.tabbed-set { display: flex; flex-wrap: wrap; position: relative; margin: 1.5em 0; }
+.tabbed-set > input { position: absolute; opacity: 0; pointer-events: none; }
+.tabbed-labels {
+  display: flex; width: 100%; gap: 0.4em;
+  border-bottom: 1px solid #e0e0e0; overflow-x: auto;
 }
-.dark .tabbed-set label { color: #999; }
-.tabbed-set label:hover { color: #000; }
-.dark .tabbed-set label:hover { color: #ccc; }
-.tabbed-set > input:checked + label { color: #000; border-bottom-color: #4a90d9; }
-.dark .tabbed-set > input:checked + label { color: #eee; border-bottom-color: #4a90d9; }
-.tabbed-content { display: none; width: 100%; order: 99; padding: 0.8em 0; }
-.tabbed-set > input:nth-child(1):checked ~ .tabbed-content:nth-child(2),
-.tabbed-set > input:nth-child(3):checked ~ .tabbed-content:nth-child(4),
-.tabbed-set > input:nth-child(5):checked ~ .tabbed-content:nth-child(6),
-.tabbed-set > input:nth-child(7):checked ~ .tabbed-content:nth-child(8),
-.tabbed-set > input:nth-child(9):checked ~ .tabbed-content:nth-child(10) { display: block; }
+.dark .tabbed-labels { border-bottom-color: #333; }
+.tabbed-labels > label {
+  padding: 0.35em 0.85em; font-size: 13px; font-weight: 500;
+  color: #999; cursor: pointer; white-space: nowrap;
+  border-bottom: 2px solid transparent; margin-bottom: -1px;
+  transition: color 0.15s, border-color 0.15s;
+}
+.tabbed-labels > label:hover { color: #444; }
+.dark .tabbed-labels > label:hover { color: #ccc; }
+.tabbed-content { width: 100%; }
+.tabbed-content > .tabbed-block { display: none; }
+.tabbed-content > .tabbed-block > :first-child { margin-top: 1em; }
 
-/* pymdownx.tabbed alternate style */
-.tabbed-alternate { margin: 1em 0; }
-.tabbed-alternate .tabbed-set { border-bottom: none; }
-.tabbed-alternate .tabbed-content { border-top: 1px solid #ddd; padding-top: 1em; }
-.dark .tabbed-alternate .tabbed-content { border-color: #444; }
+.tabbed-set > input:nth-child(1):checked ~ .tabbed-labels > :nth-child(1),
+.tabbed-set > input:nth-child(2):checked ~ .tabbed-labels > :nth-child(2),
+.tabbed-set > input:nth-child(3):checked ~ .tabbed-labels > :nth-child(3),
+.tabbed-set > input:nth-child(4):checked ~ .tabbed-labels > :nth-child(4),
+.tabbed-set > input:nth-child(5):checked ~ .tabbed-labels > :nth-child(5),
+.tabbed-set > input:nth-child(6):checked ~ .tabbed-labels > :nth-child(6) {
+  color: var(--accent); border-bottom-color: var(--accent);
+}
+.tabbed-set > input:nth-child(1):checked ~ .tabbed-content > :nth-child(1),
+.tabbed-set > input:nth-child(2):checked ~ .tabbed-content > :nth-child(2),
+.tabbed-set > input:nth-child(3):checked ~ .tabbed-content > :nth-child(3),
+.tabbed-set > input:nth-child(4):checked ~ .tabbed-content > :nth-child(4),
+.tabbed-set > input:nth-child(5):checked ~ .tabbed-content > :nth-child(5),
+.tabbed-set > input:nth-child(6):checked ~ .tabbed-content > :nth-child(6) {
+  display: block;
+}
 
 /* ===== TOC permalink ===== */
 .headerlink { text-decoration: none; color: #ccc; margin-left: 0.3em; opacity: 0; transition: opacity 0.15s; }

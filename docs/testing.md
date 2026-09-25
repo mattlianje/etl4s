@@ -1,3 +1,4 @@
+# Testing
 
 Use **etl4s** with the testing framework of your choice
 
@@ -15,7 +16,7 @@ You will get:
 25
 ```
 
-Run pipelines with `unsafeRun` or `safeRun`:
+Run pipelines with `unsafeRun`:
 
 ```scala
 import etl4s._
@@ -23,7 +24,7 @@ import etl4s._
 val plus2:  Transform[Int, Int] = Transform(_ + 2)
 val times5: Transform[Int, Int] = Transform(_ * 5)
 
-val p: Pipeline[Int, Int] = plus2 ~> times5
+val p: Node[Int, Int] = plus2 ~> times5
 
 p.unsafeRun(2)
 ```
@@ -31,27 +32,53 @@ Gives
 ```
 20
 ```
-However, if you use `safeRun` as below
+If you want to capture failures, wrap the run in your own `Try`:
 ```scala
-p.safeRun(2)
+import scala.util.Try
+
+Try(p.unsafeRun(2))
 ```
-You will get a response wrapped in a `scala.util.Try`
+You will get:
 ```
 Success(20)
 ```
 
-## Testing with Traces
+Or run through an effect with `.compile[F]` - `.compile[Try]` folds the outcome
+into a `Try` for you, which is convenient in assertions:
 
-For testing with execution insights, see the [Pipeline Tracing](trace.md) section. You can test traced execution and cross-node communication:
+```scala
+import etl4s._
+import scala.util.Success
+
+val plus2:  Transform[Int, Int] = Transform(_ + 2)
+val times5: Transform[Int, Int] = Transform(_ * 5)
+val p: Node[Int, Int] = plus2 ~> times5
+
+p.compile[Try].unsafeRun(2)
+```
+You will get:
+```
+Success(20)
+```
+
+See [Effect polymorphism](effect-polymorphism.md) for the other effects.
+
+## Testing config pipelines
+
+For nodes that `.requires` config, supply it with `.provide(cfg)` (or its alias
+`.provideContext`) before running - swap in test config at the edge:
 
 ```scala
 import etl4s._
 
-val pipeline = Transform[String, Int](_.length)
-val trace = pipeline.unsafeRunTrace("test")
+case class Cfg(multiplier: Int)
 
-assert(trace.result == 4)
-assert(trace.timeElapsedMillis >= 0)
-assert(!trace.hasErrors)
+val scaled = Transform[Int, Int].requires[Cfg] { cfg => n => n * cfg.multiplier }
+
+scaled.provide(Cfg(10)).unsafeRun(5)
+```
+You will get:
+```
+50
 ```
 

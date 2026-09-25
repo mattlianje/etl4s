@@ -10,33 +10,29 @@
 **Powerful, whiteboard-style ETL**
 
 A lightweight, zero-dependency library for writing type-safe, beautiful ✨🍰  data flows in functional Scala. 
-Battle-tested at [Instacart](https://www.instacart.com/)
+Battle-tested at [Instacart](https://www.instacart.com/).
+
+- [Full documentation](https://mattlianje.github.io/etl4s/)
 
 ## Features
 - Declarative, typed pipeline endpoints
-- Use **Etl4s.scala** like a header file
+- Zero dependencies
 - Type-safe, compile-time checked
 - [Config-driven](#configuration) by design
-- Easy, monadic composition of pipelines
+- Easy composition of pipelines as free-arrows
+- [Effect polymorphic](#effect-polymorphism): run on `Future`, `IO`, `ZIO`, Kyo ...
 - Built-in retry/failure handling
-- Automatic [tracing](#introspection-with-etl4strace)
-- Drop-in [telemetry](#telemetry)
 - [Data lineage](#lineage) visualization
 
 ## Installation
 
-**etl4s** is on MavenCentral and cross-built for Scala, 2.12, 2.13, 3.x
+**etl4s** is on MavenCentral and cross-built for Scala 2.12, 2.13, 3.x
 ```scala
-"xyz.matthieucourt" %% "etl4s" % "1.9.1"
+"xyz.matthieucourt" %% "etl4s" % "2.0.0"
 ```
 Or try in REPL:
 ```bash
-scala-cli repl --scala 3 --dep xyz.matthieucourt:etl4s_3:1.9.1
-```
-
-All you need:
-```scala
-import etl4s._
+scala-cli repl --scala 3 --dep xyz.matthieucourt::etl4s:latest.release
 ```
 
 ## Quick Example
@@ -55,6 +51,16 @@ val pipeline = (getUser & getOrder) ~> combine ~> (saveDb & sendEmail)
 
 pipeline.unsafeRun()
 ```
+- `&` tuples the outputs of `getUser` and `getOrder`
+- `combine` merges the tuple into one string, sent to both `saveDb` and `sendEmail`
+- Nothing runs until `unsafeRun`
+
+Need to clean the combined data? Just add a `clean` node:
+
+```scala
+val pipeline = 
+     (getUser & getOrder) ~> combine ~> clean ~> (saveDb & sendEmail)
+```
 
 ## Why etl4s?
 
@@ -62,50 +68,7 @@ pipeline.unsafeRun()
 - Chaotic, framework-coupled ETL codebases that grow without an imposed discipline drive dev teams and data orgs to their knees.
 - **etl4s** is a lightweight DSL to enforce discipline, type-safety, and reuse of pure functions - and see [functional ETL](https://maximebeauchemin.medium.com/functional-data-engineering-a-modern-paradigm-for-batch-data-processing-2327ec32c42a) for what it is... and could be.
 
-<details>
-<summary><b>But seriously, why etl4s? Why not raw functions??</b></summary>
-
-<br>
-
-- **Clean, easy to edit graphs**: Raw function composition can obscure the high-level flow of data and monadic-stacks, although mightily useful and time-tested, don't impose a strict discipline on assignment and creating new bindings. **etl4s** uses a declarative DSL (`~>`, `&`, `&>`) to define pipelines as explicit, type-safe graphs. This makes your data flows easy to read, reason about, and modify: like a whiteboard diagram.
-
-- **Reusable, typed endpoints**: Pipelines are declarative values with clear contracts (`Node[In, Out]`). Share them across teams as portable, composable components or libs.
-
-- **Built-in resilience and parallelism**: Instead of manually writing boilerplate for error handling and concurrency, **etl4s** provides clean, chainable methods. Add automatic retries with `.withRetry`, handle failures with `.onFailure`, and run tasks in parallel with the `&>` operator, keeping your core logic clean.
-
-- **Automatic state tracking**: Pipeline steps often need to react to upstream events - validation failures, warnings, timeouts, but threading state manually through function calls is painful. **etl4s** uses ThreadLocal `Trace` channels that flow automatically: downstream steps can check `Trace.hasErrors`, `Trace.getLogs`, or `Trace.getElapsedTimeMillis` without any wiring. Call `.unsafeRunTrace()` for full execution details.
-
-- **Metrics by design**: In ETL, metrics aren't just infra-monitoring, they're business logic... especially at the peripheries in Extractors and Loaders. Yet, metric collection is typically bolted on afterwards, or run as side-processes. **etl4s** bakes the `Etl4sTelemetry` interface into every pipeline. Add counters, gauges, and histograms directly in your business logic with `Tel` calls (zero-cost until you provide an implementation). Works with any backend: Prometheus, DataDog, OpenTelemetry.
-
-- **Lineage visualization for free**: Because **etl4s** pipelines are data structures, you can attach metadata and automatically generate lineage diagrams with `.toMermaid` or `.toDot`... impossible with plain functions.
-
-- **Clean configuration and dependency management**: Avoid "parameter drilling" configuration objects through nested functions. **etl4s** provides a simple dependency injection system (`.requires` and `.provide`) that automatically infers and injects the minimal required configuration for any part of your pipeline.
-
-</details>
-
-
-## Core Concepts
-**etl4s** has one core building block:
-```scala
-Node[-In, +Out]
-```
-A Node wraps a lazily-evaluated function `In => Out`. Chain them with `~>` to build pipelines.
-
-To improve readability and express intent, **etl4s** defines four aliases: `Extract`, `Transform`, `Load` and `Pipeline`. All behave the same under the hood.
-
-```scala
-val step = Transform[String, Int](_.length)
-step("hello")  // 5
-```
-
-**Running pipelines:**
-- `pipeline(input)` - call like a function
-- `.unsafeRun(input)` - explicit run
-- `.safeRun(input)` - returns `Try[Out]`
-- `.unsafeRunTrace(input)` - returns `Trace` (logs, timing, errors)
-- `.safeRunTrace(input)` - returns `Trace` with `Try[Out]`
-
-**DI:** Use `.requires` to turn any Node into a `Reader[Config, Node]`. The `~>` operator works between Nodes and Readers. See [Configuration](#configuration).
+It works with anything (Spark, Flink, Beam, streaming, web-server dataflows, local scripts) and runs on the JVM, in the browser, or as a native binary.
 
 ## Type safety
 **etl4s** won't let you chain together "blocks" that don't fit together:
@@ -124,16 +87,92 @@ The above will not compile with:
   |                Required: Node[Int, Any]
 ```
 
+## Core Concepts
+**etl4s** has one core building block:
+```scala
+Node[-In, +Out]
+```
+A Node wraps a lazily-evaluated function `In => Out`. Chain them with `~>` to build pipelines.
+To improve readability and express intent, **etl4s** defines three aliases: `Extract`, `Transform` and `Load`. All behave the same under the hood.
+
+```scala
+type Extract[In, Out]   = Node[In, Out]
+type Transform[In, Out] = Node[In, Out]
+type Load[In, Out]      = Node[In, Out]
+```
+
 ## Operators
 
 etl4s uses a few simple operators to build pipelines:
 
-| Operator | Name | Description | Example |
-|----------|------|-------------|---------|
-| `~>` | Connect | Chains operations in sequence | `e1 ~> t1 ~> l1` |
-| `&` | Combine | Group sequential operations with same input | `t1 & t2` |
-| `&>` | Parallel | Group concurrent operations with same input | `t1 &> t2` |
-| `>>` | Sequence | Runs nodes in order with same input | `p1 >> p2` |
+| Operator | Name | What it does |
+|----------|------|--------------|
+| `~>` | Chain | `a ~> b` - output of `a` feeds into `b` |
+| `&` / `&>` | Fan-out | `a & b` - run both with the same input (`&>` runs them concurrently) |
+| `*` / `*>` | Product | `a * b` - run on different inputs (`*>` runs them concurrently) |
+| `>>` | Sequence | `a >> b` - run in order, keep `b`'s result |
+| <code>&#124;</code> | Fan-in | <code>a &#124; b</code> - route an `Either` input to the matching branch |
+| `+` | Choice | `a + b` - route an `Either` input through independent branches |
+| <code>&lt;&#124;&gt;</code> | Fallback | <code>a &lt;&#124;&gt; b</code> - if `a` throws, run `b` on the same input |
+
+## Introspection
+A pipeline is an immutable value (an AST) you can look at before running. Every `Node` captures its shape,
+its in/out types, and its enclosing `val` name at compile time. 
+
+```scala
+a ~> b ~> c
+```
+Compiles to:
+
+```scala
+AndThen(
+  AndThen(Step("a", ...), Step("b", ...)),
+  Step("c", ...)
+)
+```
+
+<p align="center">
+  <img src="pix/pipeline-tree.svg" width="210">
+</p>
+
+This unlocks the ability to interpret your pipelines however you want. Take:
+
+```scala
+val p =
+     extract5 ~> (double & triple) ~> combine ~> saveToDb
+```
+
+Use `.toDot` or `.toMermaid` on any `Node`. You get:
+
+<p align="center">
+  <img src="pix/pipeline-example.svg" width="100%">
+</p>
+
+But you can just as easily write custom interpreters.
+
+When your pipelines are inspectable values you get some superpowers for free:
+- Unit test pipeline shape
+- Govern dataflow architecture
+- Generate docs at build time that never drift
+
+## Effect polymorphism
+The same pipeline can run on any effect. `.compile[F]` folds the tree into `In => F[Out]`:
+
+```scala
+val parse = Node[String, Int](_.trim.toInt)
+val inc   = Node[Int, Int](_ + 1)
+
+val p =
+     parse ~> inc
+
+p.unsafeRun("41")                  /* 42 */
+p.compile[Try].unsafeRun("41")     /* Success(42) */
+p.compile[Future].unsafeRun("41")  /* Future(Success(42)) */
+```
+
+`Id`, `Try` and `Future` ship out of the box. Implement `etl4s.Effect` once to run on cats-effect `IO`, ZIO, or any `F[_]`.
+
+Read more [here](https://mattlianje.github.io/etl4s/effect-polymorphism/)
 
 ## Configuration
 
@@ -142,20 +181,17 @@ Declare what each step `.requires`, then `.provide` it later:
 ```scala
 import etl4s._
 
-case class Cfg(key: String)
+case class ApiConfig(apiKey: String)
 
-val A = Extract("data")
-val B = Transform[String, String].requires[Cfg] { cfg => data =>
-  s"${cfg.key}: $data"
+val fetchUser = Node("alice")
+val callApi   = Node[String, String].requires[ApiConfig] { cfg => user =>
+  s"${cfg.apiKey}: $user"
 }
 
-val pipeline = A ~> B
+val p = 
+     fetchUser ~> callApi
 
-pipeline.provide(Cfg("secret")).unsafeRun(())  /* "secret: data" */
-
-/** NOTE (Scala 2.x)
-  * Use: `Node.requires[Cfg, In, Out](cfg => in => out)` syntax
-  */
+p.provide(ApiConfig("secret")).unsafeRun() /* "secret: alice" */
 ```
 
 **etl4s** automatically infers the smallest shared config for your pipeline. Just `.provide` once.
@@ -163,7 +199,7 @@ pipeline.provide(Cfg("secret")).unsafeRun(())  /* "secret: data" */
 Read more [here](https://mattlianje.github.io/etl4s/config/)
 
 ## Parallelizing Tasks
-**etl4s** has an elegant shorthand for grouping and parallelizing operations that share the same input type:
+**etl4s** has an elegant shorthand for grouping and parallelizing operations when using `&>` or `*>`:
 ```scala
 /* Simulate slow IO operations (e.g: DB calls, API requests) */
 
@@ -180,8 +216,6 @@ val sequential: Extract[Unit, (Int, String, Boolean)] =
 
 Parallel run of e1, e2, e3 on their own JVM threads with Scala Futures **(~100ms total, same result, 3X faster)**
 ```scala
-import scala.concurrent.ExecutionContext.Implicits.global
-
 val parallel: Extract[Unit, (Int, String, Boolean)] =
      e1 &> e2 &> e3
 ```
@@ -193,8 +227,8 @@ val mixed = (e1 &> e2) & e3
 
 Full example of a parallel pipeline:
 ```scala
-val consoleLoad: Load[String, Unit] = Load(println(_))
-val dbLoad:      Load[String, Unit] = Load(x => println(s"DB Load: ${x}"))
+val consoleLoad = Load[String, Unit](println(_))
+val dbLoad      = Load[String, Unit](x => println(s"DB Load: ${x}"))
 
 val merge = Transform[(Int, String, Boolean), String] { case (i, s, b) =>
     s"$i-$s-$b"
@@ -209,27 +243,17 @@ val pipeline =
 #### `withRetry`
 Retry failed operations:
 ```scala
-import etl4s._
-
-var n = 0
-val A = Transform[Int, String] { x =>
-  n += 1
-  if (n < 3) throw new RuntimeException("fail")
-  else "ok"
-}.withRetry(maxAttempts = 3, initialDelayMs = 10)
-
-Extract(42) ~> A  /* Succeeds on 3rd attempt */
+val callFlakyApi = Node("response")
+  .withRetry(maxAttempts = 3, initialDelayMs = 100)
 ```
 
 #### `onFailure`
 Catch exceptions and recover:
 ```scala
-import etl4s._
-
-val A = Extract[Unit, String](_ => throw new RuntimeException("Boom!"))
+val fetchUser = Node[Unit, String](_ => throw new RuntimeException("Boom!"))
   .onFailure(e => s"Error: ${e.getMessage}")
 
-A.unsafeRun(())  /* Returns "Error: Boom!" */
+fetchUser.unsafeRun() /* "Error: Boom!" */
 ```
 
 ## Conditional Branching
@@ -243,30 +267,18 @@ val pipeline = extractUser
   .Else                         (toGuestNotice)
 ```
 
-Branch on config only with `IfCtx`/`ElseIfCtx`:
-```scala
-val pipeline = sourceReader
-  .IfCtx(_.isBackfill)(backfillBranch)
-  .ElseIfCtx(_.isDryRun)(dryRunBranch)
-  .Else(normalBranch)
-```
-
-Plain `Node` branches are automatically lifted to `Reader` when mixed with config-aware branches - no manual wrapping needed.
-
 Read more [here](https://mattlianje.github.io/etl4s/branching/).
 
 ## Side Effects
 Use `.tap()` for side effects without disrupting pipeline flow:
 
 ```scala
-import etl4s._
+val listFiles  = Node(List("a.txt", "b.txt"))
+                   .tap(files => println(s"Processing: $files"))
 
-val A: Extract[Any, List[String]] = Extract(_ => List("a.txt", "b.txt"))
-                                       .tap(files => println(s"Processing: $files"))
+val countFiles = Transform[List[String], Int](_.size)
 
-val B = Transform[List[String], Int](_.size)
-
-A ~> B
+listFiles ~> countFiles
 ```
 
 Chain side effects with `>>`:
@@ -274,62 +286,8 @@ Chain side effects with `>>`:
 val logStart = Node { println("Starting...") }
 val logEnd   = Node { println("Done!") }
 
-val pipeline = logStart >> (A ~> B) >> logEnd
-pipeline.unsafeRun()
+val pipeline = logStart >> (listFiles ~> countFiles) >> logEnd
 ```
-
-## Tracing
-Nodes can access and update their runtime state with ThreadLocal channels spawned for free. All state is automatically shared across your entire pipeline. Read more [here](https://mattlianje.github.io/etl4s/trace/)
-
-```scala
-val A = Transform[String, Int] { s =>
-  if (s.isEmpty) Trace.error("empty")
-  s.length
-}
-
-val B = Transform[Int, String] { n =>
-  if (Trace.hasErrors) "FALLBACK" else s"len: $n"  
-}
-
-(A ~> B).unsafeRun("")  /* "FALLBACK" */
-```
-
-## Telemetry
-etl4s provides a minimal `Etl4sTelemetry` interface for observability. All pipeline run methods automatically look for this interface in implicit scope.
-
-`Tel` is etl4s's telemetry API object with the same method names as the trait for consistency. All `Tel` calls are no-ops by default - zero overhead until you provide an implementation.
-
-```scala
-val A = Transform[List[String], Int] { data =>
-  Tel.withSpan("op") {
-    Tel.addCounter("n", data.size)
-    Tel.setGauge("v", data.size.toDouble)
-    data.map(_.length).sum
-  }
-}
-
-/* By default Tel calls are no-ops (zero cost) */
-A.unsafeRun(data)
-
-/* Implement Etl4sTelemetry for your backend */
-implicit val telemetry: Etl4sTelemetry = MyPrometheusProvider()
-A.unsafeRun(data) /* metrics flow to Prometheus */
-```
-
-The `Etl4sTelemetry` interface has just 4 methods: `withSpan`, `addCounter`, `setGauge`, `recordHistogram`
-which cover 95% of observability needs.
-
-`unsafeRunTrace` captures all `Tel` calls as structured `TelemetryData` with OTLP-compatible spans and metrics:
-```scala
-val trace = pipeline.unsafeRunTrace(data)
-
-/* Then collects what you want ... */
-trace.spans
-trace.counterTotals
-trace.toOtelJson
-```
-
-Read more in the [Telemetry guide](https://mattlianje.github.io/etl4s/opentelemetry/).
 
 ## Lineage
 
@@ -358,92 +316,18 @@ Export lineage as JSON, DOT (Graphviz), or Mermaid diagrams:
 ```scala
 Seq(A, B).toJson
 Seq(A, B).toDot
+Seq(A, B).toMermaid
 ```
 
 <p align="center">
   <img src="pix/graphviz-example.svg" width="500">
 </p>
 
-```scala
-Seq(A, B).toMermaid
-```
-```mermaid
-graph LR
-    classDef pipeline fill:#e1f5fe,stroke:#01579b,stroke-width:2px,color:#000
-    classDef dataSource fill:#f3e5f5,stroke:#4a148c,stroke-width:2px,color:#000
-    classDef cluster fill:#e8f5e8,stroke:#2e7d32,stroke-width:2px,color:#000
-
-    A["A<br/>(0 */2 * * *)"]
-    B["B"]
-    s1(["s1"])
-    s2(["s2"])
-    s3(["s3"])
-    s4(["s4"])
-    s5(["s5"])
-
-    s1 --> A
-    s2 --> A
-    A --> s3
-    s3 --> B
-    B --> s4
-    B --> s5
-    A -.-> B
-    linkStyle 6 stroke:#ff6b35,stroke-width:2px
-
-    class A pipeline
-    class B pipeline
-    class s1 dataSource
-    class s2 dataSource
-    class s3 dataSource
-    class s4 dataSource
-    class s5 dataSource
-```
-
 **etl4s** automatically infers dependencies by matching output -> input sources. Nodes don't need to be connected with `~>` for lineage tracking. Explicit dependencies via `upstreams` also supported.
 
 ## Examples
-
-#### Chain two pipelines
-Simple UNIX-pipe style chaining of two pipelines:
-```scala
-import etl4s._
-
-val p1 = Pipeline((i: Int) => i.toString)
-val p2 = Pipeline((s: String) => s + "!")
-
-val p3 = p1 ~> p2
-```
-
-#### Complex chaining
-Connect the output of two pipelines to a third:
-```scala
-import etl4s._
-
-val namePipeline = Pipeline("John Doe")
-val agePipeline  = Pipeline(30)
-val toUpper      = Transform[String, String](_.toUpperCase)
-val consoleLoad  = Load[String, Unit](println(_))
-
-val combined =
-  for {
-    name <- namePipeline
-    age <- agePipeline
-    _ <- Extract(s"$name | $age") ~> toUpper ~> consoleLoad
-  } yield ()
-```
-
-## Real-world examples
-**etl4s** works great with anything:
-- Spark / Flink / Beam
-- ETL / Streaming
-- Distributed Systems
-- Local scripts
-- Big Data workflows
-- Web-server dataflows
+See [Common Patterns](https://mattlianje.github.io/etl4s/examples/) and [etl4s + Spark](https://mattlianje.github.io/etl4s/examples-spark/) in the docs.
 
 ## Inspiration
-- Debasish Ghosh's [Functional and Reactive Domain Modeling](https://www.manning.com/books/functional-and-reactive-domain-modeling)
 - [Akka Streams DSL](https://doc.akka.io/libraries/akka-core/current/stream/stream-graphs.html#constructing-graphs)
 - Various Rich Hickey talks
-
-

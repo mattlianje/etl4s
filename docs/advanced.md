@@ -1,52 +1,136 @@
 # Advanced
 
-## Reusable Components
 
-Group parameterized transforms into domain modules:
+## Pipelines are values
+
+Pipelines being values unlocks some powerful niceties. For example given:
 
 ```scala
-object CustomerOps {
+val billing = parse ~> applyTax ~> format
+```
 
+**Unit test pipeline shape**
+
+```scala
+test("etl graph is wired as designed") {
+  assertEquals(billing.stages.map(_.name), List("parse", "applyTax", "format"))
+  assertEquals(billing.stages.map(s => s.in -> s.out).last, "Double" -> "String")
+}
+```
+
+**Govern dataflow architecture**
+
+```scala
+def audit(p: Node[?, ?]): Unit = {
+  val forbidden = p.stages.filter(_.fullName.startsWith("com.acme.legacy"))
+  require(forbidden.isEmpty, s"pipeline pulls in banned stages: ${forbidden.map(_.name)}")
+}
+```
+
+**Generate docs that never drift**
+
+```scala
+os.write.over(os.pwd / "docs" / "billing.mmd", billing.toMermaid)
+```
+
+
+## Higher Order Nodes
+
+```scala
+import etl4s._
+
+object CustomerOps {
   def activeOnly =
-    Transform[List[Customer], List[Customer]](_.filter(_.isActive))
+    Node[List[Customer], List[Customer]](_.filter(_.isActive))
 
   def topSpenders(n: Int) =
-    Transform[List[Customer], List[Customer]](_.sortBy(-_.spend).take(n))
+    Node[List[Customer], List[Customer]](_.sortBy(-_.spend).take(n))
 
   def inRegion(region: String) =
-    Transform[List[Customer], List[Customer]](_.filter(_.region == region))
+    Node[List[Customer], List[Customer]](_.filter(_.region == region))
 }
 
 import CustomerOps._
-val pipeline = extract ~> activeOnly ~> inRegion("EU") ~> topSpenders(100) ~> load
+
+val pipeline =
+     extract ~> activeOnly ~> inRegion("EU") ~> topSpenders(100) ~> load
 ```
+
+## Dynamic Composition
+
+You can build pipelines at runtime instead of writing every `~>` by hand.
+
+```scala
+import etl4s._
+
+val rules: List[Node[Row, Row]] = List(
+  trimStrings,
+  dropEmpty,
+  normalizeDates
+)
+
+val cleaningRules: Node[Row, Row] = rules.reduce(_ ~> _)
+
+val pipeline =
+     extract ~> cleaningRules ~> load
+```
+
+
+Since `reduce` throws on empty lists, you can fold from `Node.identity` (no-op Node)
+and the result is a valid pipeline just with zero steps
+
+```scala
+val cleaningRules: Node[Row, Row] = rules.foldLeft(Node.identity[Row])(_ ~> _)
+```
+
+
+Assemble custom pipelines based on some configuration type
+
+```scala
+case class Config(dedupe: Boolean, enrich: Boolean)
+
+def buildPipeline(cfg: Config): Node[Row, Row] = {
+  val optional = List(
+    cfg.dedupe -> dedupe,
+    cfg.enrich -> enrich
+  )
+  optional
+    .collect { case (true, step) => step }
+    .foldLeft(Node.identity[Row])(_ ~> _)
+}
+```
+
 
 ## Custom Operators
 
-Add domain-specific operators via extension methods:
-
 ```scala
+import etl4s._
+
 extension [A, B](node: Node[A, B]) {
   def timed(label: String): Node[A, B] = Node { input =>
     val start = System.currentTimeMillis()
     val result = node(input)
-    Trace.log(s"$label: ${System.currentTimeMillis() - start}ms")
+    println(s"$label: ${System.currentTimeMillis() - start}ms")
     result
   }
 }
 
-val pipeline = extract ~> transform.timed("main") ~> load
+val pipeline =
+     extract ~> transform.timed("main") ~> load
 ```
 
 ## Symbolic Operators
 
-Define your own:
+Define your own symbolic operators like `!!` and `@@` below
 
 ```scala
+import etl4s._
+
 extension [A, B](node: Node[A, B]) {
   def !!(attempts: Int): Node[A, B] = node.withRetry(attempts)
-  def @@(label: String): Node[A, B] = node.tap(_ => Trace.log(label))
+  def @@(label: String): Node[A, B] = node.tap(_ => println(label))
 }
 
-val pipeline = extract ~> riskyTransform !! 3 ~> load @@ "done"
+val pipeline =
+     extract ~> riskyTransform !! 3 ~> load @@ "done"
 ```

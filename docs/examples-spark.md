@@ -1,12 +1,22 @@
 # etl4s + Spark
 
-etl4s works alongside Spark. Use it to structure your Spark job logic - extraction, transformations, and loading stay composable and type-safe.
+A Spark job tends to grow into one long method - reads, filters, joins and writes
+all tangled together, where you can't test a single step in isolation.
+
+etl4s gives it a spine: extraction, transformation and loading become named,
+type-safe stages you wire with `~>`. Spark still does all the heavy lifting -
+etl4s just gives the job a shape you can read, test, and reuse.
 
 ```bash
-scala-cli repl --dep io.github.mattlianje::etl4s:1.9.1 --dep org.apache.spark::spark-sql:3.5.0
+scala-cli repl --scala 2.13 \
+               --dep xyz.matthieucourt::etl4s:latest.release \
+               --dep org.apache.spark::spark-sql:3.5.0
 ```
 
-## Basic pattern
+## Structure a Spark job
+
+The `SparkSession` is a driver singleton, so keep it in scope and let each stage
+close over it. Signatures stay about the *data*, and the job reads top to bottom.
 
 ```scala
 import etl4s._
@@ -16,32 +26,41 @@ implicit val spark: SparkSession = SparkSession.builder()
   .appName("etl4s-spark")
   .getOrCreate()
 
-val extractUsers = Extract[SparkSession, DataFrame] { spark =>
-  spark.read.parquet("s3://data/users")
-}
+import spark.implicits._
 
-val filterActive = Transform[DataFrame, DataFrame] { df =>
-  df.filter($"active" === true)
-}
+val extractUsers  = Node { spark.read.parquet("s3://data/users") }
+val filterActive  = Node[DataFrame, DataFrame](_.filter($"active" === true))
+val aggByRegion   = Node[DataFrame, DataFrame](_.groupBy($"region").count())
+val writeResults  = Node[DataFrame, Unit](_.write.mode("overwrite").parquet("s3://..."))
 
-val aggregateByRegion = Transform[DataFrame, DataFrame] { df =>
-  df.groupBy($"region").count()
-}
+val job = 
+     extractUsers ~> filterActive ~> aggregateByRegion ~> writeResults
 
-val writeResults = Load[DataFrame, Unit] { df =>
-  df.write.mode("overwrite").parquet("s3://output/results")
-}
-
-val pipeline =
-  extractUsers ~>
-  filterActive ~>
-  aggregateByRegion ~>
-  writeResults
-
-pipeline.unsafeRun(spark)
+job.unsafeRun()
 ```
 
-## With config injection
+## Test a stage without a cluster
+
+Each stage is just a `DataFrame => DataFrame` value, so you can run one on a tiny
+in-memory DataFrame - no job to launch, no session to mock:
+
+```scala
+val sample = Seq(
+  ("alice", true),
+  ("bob",   false)
+).toDF("name", "active")
+
+val active = filterActive.unsafeRun(sample)
+
+active.count() // 1
+```
+
+## Inject config per environment
+
+Real jobs vary by environment - paths, partition counts, write modes. Declare
+what a stage needs with `.requires`, then `.provide` it once at the edge. The
+`SparkConfig` threads through automatically; the session is still captured from
+scope.
 
 ```scala
 case class SparkConfig(
@@ -50,8 +69,8 @@ case class SparkConfig(
   partitions: Int
 )
 
-val extract = Extract[SparkSession, DataFrame]
-  .requires[SparkConfig] { config => spark =>
+val extract = Extract[Unit, DataFrame]
+  .requires[SparkConfig] { config => _ =>
     spark.read.parquet(config.inputPath)
   }
 
@@ -66,43 +85,44 @@ val load = Load[DataFrame, Unit]
     df.write.mode("overwrite").parquet(config.outputPath)
   }
 
-val pipeline = extract ~> transform ~> load
+val job = 
+     extract ~> transform ~> load
 
 val config = SparkConfig(
-  inputPath = "s3://data/raw",
+  inputPath  = "s3://data/raw",
   outputPath = "s3://data/processed",
   partitions = 200
 )
 
-pipeline.provide(config).unsafeRun(spark)
+job.provide(config).unsafeRun()
 ```
 
-## Multiple data sources
+## Combine multiple sources
+
+Fan out independent reads with `&`, then join them downstream:
 
 ```scala
-val extractUsers = Extract[SparkSession, DataFrame](
-  _.read.parquet("s3://data/users")
-)
-
-val extractOrders = Extract[SparkSession, DataFrame](
-  _.read.parquet("s3://data/orders")
-)
+val extractUsers  = Extract { spark.read.parquet("s3://data/users") }
+val extractOrders = Extract { spark.read.parquet("s3://data/orders") }
 
 val join = Transform[(DataFrame, DataFrame), DataFrame] { case (users, orders) =>
   users.join(orders, users("id") === orders("user_id"))
 }
 
-val pipeline = (extractUsers & extractOrders) ~> join ~> writeResults
+val job = 
+     (extractUsers & extractOrders) ~> join ~> writeResults
 
-pipeline.unsafeRun(spark)
+job.unsafeRun()
 ```
 
-!!! note
-    Use `&` not `&>` with Spark - Spark handles parallelism internally. For many sources, use a Map instead of chaining `&`:
+!!! note "Let Spark own the parallelism"
+    Use `&`, not `&>` - Spark already parallelizes across the cluster, so there's
+    nothing to gain from running the reads on separate threads. For many sources,
+    reach for a `Map` instead of a long `&` chain:
     ```scala
     val sources = Map(
-      "users" -> spark.read.parquet("s3://users"),
-      "orders" -> spark.read.parquet("s3://orders"),
+      "users"    -> spark.read.parquet("s3://users"),
+      "orders"   -> spark.read.parquet("s3://orders"),
       "products" -> spark.read.parquet("s3://products")
     )
     val extract = Extract(sources)
