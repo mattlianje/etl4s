@@ -104,8 +104,12 @@ compose together with the same `~>`. See [Configuration](config.md) for details.
 
 ## Pipelines are values
 Building a pipeline runs nothing. Every combinator (`~>`, `&`, `>>`, ...) just grows an
-immutable AST - a free profunctor over your plain functions. `a ~> b ~> c` is literally
-a tree of case classes:
+immutable AST - a free profunctor over your plain functions. 
+
+```scala
+a ~> b ~> c
+```
+Compiles to:
 
 ```scala
 AndThen(
