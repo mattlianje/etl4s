@@ -114,9 +114,48 @@ AndThen(
 )
 ```
 
-<p align="center">
-  <img src="https://raw.githubusercontent.com/mattlianje/etl4s/master/pix/pipeline-tree.svg" width="210">
-</p>
+<div class="diagram">
+<svg width="210" viewBox="0.00 0.00 189.00 188.00" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink">
+<g id="graph0" class="graph" transform="scale(1 1) rotate(0) translate(4 184)" fill="currentColor">
+<g id="node1" class="node">
+<ellipse fill="none" stroke="currentColor" cx="108" cy="-162" rx="45.72" ry="18"/>
+<text xml:space="preserve" text-anchor="middle" x="108" y="-156.95" font-family="Times,serif" font-size="14.00">AndThen</text>
+</g>
+<g id="node2" class="node">
+<ellipse fill="none" stroke="currentColor" cx="63" cy="-90" rx="45.72" ry="18"/>
+<text xml:space="preserve" text-anchor="middle" x="63" y="-84.95" font-family="Times,serif" font-size="14.00">AndThen</text>
+</g>
+<g id="edge1" class="edge">
+<path fill="none" stroke="currentColor" d="M97.11,-144.05C91.97,-136.06 85.71,-126.33 79.97,-117.4"/>
+<polygon fill="currentColor" stroke="currentColor" points="82.96,-115.58 74.61,-109.06 77.07,-119.37 82.96,-115.58"/>
+</g>
+<g id="node5" class="node">
+<ellipse fill="none" stroke="currentColor" cx="154" cy="-90" rx="27" ry="18"/>
+<text xml:space="preserve" text-anchor="middle" x="154" y="-84.95" font-family="Times,serif" font-size="14.00">c</text>
+</g>
+<g id="edge2" class="edge">
+<path fill="none" stroke="currentColor" d="M119.14,-144.05C124.6,-135.73 131.3,-125.54 137.36,-116.32"/>
+<polygon fill="currentColor" stroke="currentColor" points="140.2,-118.37 142.77,-108.09 134.35,-114.53 140.2,-118.37"/>
+</g>
+<g id="node3" class="node">
+<ellipse fill="none" stroke="currentColor" cx="27" cy="-18" rx="27" ry="18"/>
+<text xml:space="preserve" text-anchor="middle" x="27" y="-12.95" font-family="Times,serif" font-size="14.00">a</text>
+</g>
+<g id="edge3" class="edge">
+<path fill="none" stroke="currentColor" d="M54.29,-72.05C50.16,-64.03 45.13,-54.26 40.52,-45.3"/>
+<polygon fill="currentColor" stroke="currentColor" points="43.76,-43.95 36.08,-36.65 37.54,-47.15 43.76,-43.95"/>
+</g>
+<g id="node4" class="node">
+<ellipse fill="none" stroke="currentColor" cx="99" cy="-18" rx="27" ry="18"/>
+<text xml:space="preserve" text-anchor="middle" x="99" y="-12.95" font-family="Times,serif" font-size="14.00">b</text>
+</g>
+<g id="edge4" class="edge">
+<path fill="none" stroke="currentColor" d="M71.71,-72.05C75.84,-64.03 80.87,-54.26 85.48,-45.3"/>
+<polygon fill="currentColor" stroke="currentColor" points="88.46,-47.15 89.92,-36.65 82.24,-43.95 88.46,-47.15"/>
+</g>
+</g>
+</svg>
+</div>
 
 Because a pipeline is just this tree, you can interpret it however you like. That is what
 makes etl4s effect polymorphic: `.compile[F]` folds the same tree into `In => F[Out]` for
