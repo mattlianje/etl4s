@@ -18,11 +18,11 @@ Battle-tested at [Instacart](https://www.instacart.com/).
 - Declarative, typed pipeline endpoints
 - Zero dependencies
 - Type-safe, compile-time checked
-- [Config-driven](#configuration) by design
+- Config-driven by design
 - Easy composition of pipelines as free-arrows
-- [Effect polymorphic](#effect-polymorphism): run on `Future`, `IO`, `ZIO`, Kyo ...
+- Effect polymorphic: easily runs on CE, ZIO, Kyo
 - Built-in retry/failure handling
-- [Data lineage](#lineage) visualization
+- Pipeline visualization
 
 ## Installation
 
