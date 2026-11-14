@@ -10,7 +10,7 @@
 | `+` | Choice | `a + b` - route an `Either` input through independent branches |
 | <code>&lt;&#124;&gt;</code> | Fallback | <code>a &lt;&#124;&gt; b</code> - if `a` throws, run `b` on the same input |
 
-## `~>` chain
+## Chain nodes with `~>`
 
 <div class="diagram">
 <svg width="141pt" height="33pt" viewBox="0.00 0.00 188.00 44.00" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink">
@@ -39,14 +39,14 @@
 </svg>
 </div>
 
-Output of one node feeds the next, generally the backbone of every pipeline:
+The output of one node feeds the next. This is the backbone of most pipelines:
 
 ```scala
 val checkout = 
      parseCart ~> applyTax ~> total
 ```
 
-## `&` / `&>` fan-out (shared input)
+## Send one input to several nodes with `&` / `&>`
 
 <div class="diagram">
 <svg width="126pt" height="74pt" viewBox="0.00 0.00 168.00 98.00" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink">
@@ -85,15 +85,15 @@ val checkout =
 </svg>
 </div>
 
-One input, two nodes, results paired. Swap `&` for `&>` to fan out concurrently under an effect like `Future`.
-One user goes in and both cards are built from it:
+Both nodes get the same input and their results come back as a pair. Use `&>` to run them concurrently under an
+effect like `Future`. Here one user goes in and both cards are built from it:
 
 ```scala
 val dashboard = 
      fetchUser ~> (profileCard & recentOrders) ~> layout
 ```
 
-## `*` / `*>` product (different inputs)
+## Give each node its own input with `*` / `*>`
 
 <div class="diagram">
 <svg width="126pt" height="74pt" viewBox="0.00 0.00 168.00 98.00" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink">
@@ -135,15 +135,15 @@ val dashboard =
 </svg>
 </div>
 
-Where `&` broadcasts one input, `*` hands each node its own - `_._1` left, `_._2` right. Swap `*` for `*>` to run the two branches concurrently.
-Name goes to `trimName`, age goes to `bumpAge`:
+Where `&` sends the same input to both, `*` splits a pair: the first half goes left, the second goes right. Use `*>`
+to run them concurrently. Here the name goes to `trimName` and the age to `bumpAge`:
 
 ```scala
 val register = 
      (trimName * bumpAge) ~> saveAccount
 ```
 
-## `>>` sequence (keep last)
+## Run steps in order with `>>`
 
 <div class="diagram">
 <svg width="143pt" height="74pt" viewBox="0.00 0.00 190.00 98.00" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink">
@@ -185,15 +185,14 @@ val register =
 </svg>
 </div>
 
-Runs the first steps for their side effects, then flows into the real pipeline, keeping its result.
-This runs the setups steps in order then flows into the real pipeline:
+Runs each step in order and keeps only the last result. Handy for setup steps you run for their side effects:
 
 ```scala
 val ingest = 
      clearStaging >> warmCache >> (extract ~> transform ~> load)
 ```
 
-## `|` fan-in (route an `Either` in)
+## Route an `Either` to the matching branch with `|`
 
 <div class="diagram">
 <svg width="142pt" height="74pt" viewBox="0.00 0.00 189.00 98.00" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink">
@@ -237,15 +236,15 @@ val ingest =
 </svg>
 </div>
 
-An `Either` input goes left or right, both branches merging to one type.
-A legacy id or a uuid comes in, one user comes out:
+A Left goes to the left node, a Right to the right one, and both produce the same type. Here a legacy id or a uuid
+comes in, and one account comes out:
 
 ```scala
 val load = 
      (byLegacyId | byUuid) ~> loadAccount
 ```
 
-## `+` choice
+## Handle each side of an `Either` with `+`
 
 <div class="diagram">
 <svg width="146pt" height="74pt" viewBox="0.00 0.00 194.00 98.00" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink">
@@ -292,15 +291,15 @@ val load =
 </svg>
 </div>
 
-Routes an `Either` through independent branches and keeps the `Either` on the way out.
-Each txn kind is handled on its own branch, then merged back with `|`
+Like `|`, but each side keeps its own output type, so you still have an Either at the end. Here refunds and charges
+are handled separately, then merged back with `|`:
 
 ```scala
 val settle = 
      classifyTxn ~> (handleRefund + handleCharge) ~> (fileRefund | postCharge)
 ```
 
-## `<|>` fallback (try, then recover)
+## Fall back to another node with `<|>`
 
 <div class="diagram">
 <svg width="164pt" height="74pt" viewBox="0.00 0.00 218.00 98.00" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink">
@@ -340,15 +339,15 @@ val settle =
 </svg>
 </div>
 
-Runs the left node; if it **throws**, runs the right on the *original* input.
-This tries `fetchLive`, and falls back to `fetchCached` if it throws:
+Runs the left node, and if it **throws**, runs the right one on the *original* input. Here `fetchCached` only runs
+if `fetchLive` fails:
 
 ```scala
 val convert = 
      (fetchLive <|> fetchCached) ~> applyRates ~> total
 ```
 
-Under an error-tracking effect the recovery flows through that effect's error channel instead of a thrown exception.
+Under an effect that tracks errors (like `Try`), the recovery goes through the effect instead of a thrown exception.
 
 !!! note "Concurrency needs a concurrent effect"
     `&>` and `*>` only run their branches concurrently when compiled to a concurrent

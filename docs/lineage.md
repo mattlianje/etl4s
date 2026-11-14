@@ -12,20 +12,17 @@ api:
 
 # Diagrams
 
-`.toDot` and `.toMermaid` render any etl4s pipeline as a diagram, in two modes:
+`.toDot` and `.toMermaid` draw any etl4s pipeline, in two ways:
 
-- A single `Node` draws its structure - leaf names and in/out types, straight from
-  how you composed it.
-- A `Seq` of `.lineage`-annotated nodes draws the dataflow you declared -
-  datasources, schedules, cross-pipeline dependencies.
+- On a single node, you get its structure: the steps and their in/out types.
+- On a list of nodes tagged with `.lineage`, you get the dataflow: datasources,
+  schedules, and which pipeline feeds which.
 
-Either mode works the same on Reader-wrapped nodes (config-aware, from
-`.requires`) - they carry lineage just like plain `Node`s.
+Both work the same on config-aware nodes.
 
-## Structure of a single pipeline
+## Draw a single pipeline
 
-Any composed pipeline can draw itself - the same view `.stages` lists. Take the
-fan-out / fan-in pipeline with a load step:
+Any pipeline can draw itself. Take this one:
 
 ```scala
 import etl4s._
@@ -118,26 +115,19 @@ pipeline.toDot
 </svg>
 </div>
 
-Two options:
-
-- `showTypes = false` drops the type labels on the edges.
-- `direction` sets the layout: `Direction.LR` (default), `TB`, `RL`, `BT`.
+`showTypes = false` hides the type labels, and `direction` changes the layout (`LR` by default, or `TB`, `RL`, `BT`):
 
 ```scala
 pipeline.toDot(showTypes = false)
 pipeline.toMermaid(direction = Direction.TB)
 ```
 
-See [Your First Pipeline](first-pipeline.md#inspect-the-structure) for the `.stages` list
-behind the same view.
+To get the same structure as a list, see `.stages` in [Your First Pipeline](first-pipeline.md#inspect-the-structure).
 
-## Lineage of a dataflow
+## Draw lineage across pipelines
 
-When you want datasources, schedules, and cross-pipeline dependencies, attach lineage
-metadata with `.lineage`, then call `.toDot`, `.toMermaid` or `.toJson` on a `Seq` of the
-annotated nodes.
-
-## Quick Start
+To show datasources, schedules and dependencies between pipelines, tag your nodes with `.lineage`, then call
+`.toDot`, `.toMermaid` or `.toJson` on a `Seq` of them.
 
 ```scala
 import etl4s._
@@ -158,7 +148,7 @@ val B = Node[String, String](identity)
   )
 ```
 
-Export to JSON, DOT (Graphviz), or Mermaid:
+Export them to JSON, DOT (Graphviz) or Mermaid:
 
 ```scala
 Seq(A, B).toJson
@@ -166,11 +156,11 @@ Seq(A, B).toDot
 Seq(A, B).toMermaid
 ```
 
-## Visualization
+## Export the diagram
 
 ### DOT
 
-Generate DOT graphs for Graphviz:
+For Graphviz:
 
 ```scala
 Seq(A, B).toDot
@@ -217,7 +207,7 @@ graph LR
     class s5 dataSource
 ```
 
-Orange dotted arrows show inferred dependencies.
+The orange dotted arrows are inferred dependencies.
 
 ### JSON
 
@@ -225,14 +215,14 @@ Orange dotted arrows show inferred dependencies.
 Seq(A, B).toJson
 ```
 
-The JSON has three top-level keys (all lowercase):
+The JSON has three top-level keys:
 
 - `pipelines`: array of pipeline objects (with their `inputs`, `outputs`,
   `upstream_pipelines`, `schedule`, `description`, `group`, `tags`, `links`, ...)
 - `datasources`: array of data source names
 - `clusters`: array of cluster objects
 
-## Lineage Parameters
+## Lineage parameters
 
 | Parameter | Description | Default |
 |-----------|-------------|---------|
@@ -247,32 +237,25 @@ The JSON has three top-level keys (all lowercase):
 | `tags` | `List[String]` of arbitrary tags | empty |
 | `links` | `Map[String, String]` of label -> URL | empty |
 
-`.lineage(...)` works the same on a `Reader[T, Node]` (config-aware node) as it
-does on a plain `Node`.
+`.lineage` works the same on config-aware nodes.
 
-### Low-level setters
+### Set fields one at a time
 
-For attaching metadata incrementally there are also individual setters:
-`.lineageName(name)`, `.lineageInputs(inputs*)`, `.lineageOutputs(outputs*)`, and
-`.withLineage(lineage)` (attach a fully-built `Lineage`). These are available on
-both `Node` and `Reader`.
+To add metadata bit by bit, use `.lineageName`, `.lineageInputs` and `.lineageOutputs`, or `.withLineage` to
+attach a whole `Lineage` at once.
 
-Unlike `.toDot` / `.toMermaid` (which dispatch on single-node structure vs. `Seq`
-dataflow, as described at the top), `.toJson` always emits the lineage metadata -
-on a single node or a `Seq`.
+Note that `.toJson` always gives you the lineage metadata, even on a single node.
 
-## Explicit Upstreams
+## Declare dependencies yourself
 
-Use `upstreams` for non-data dependencies:
-
-If you add a node `C`
+Use `upstreams` when one pipeline depends on another without sharing data. Add a node `C`:
 ```scala
 val C = Node[String, String](identity)
   .lineage("C", upstreams = List(A, B))
 
 ```
 
-Then do:
+Then draw all three:
 ```scala
 Seq(A, B, C).toDot
 ```
@@ -281,12 +264,12 @@ Seq(A, B, C).toDot
   <img src="https://raw.githubusercontent.com/mattlianje/etl4s/master/pix/graphviz-dependencies-example.svg" width="500">
 </p>
 
-Note how `C` has an orange upstream dependency to `A` and `B` despite not having as inputs their outputs.
+`C` now depends on `A` and `B`, even though it doesn't read their outputs.
 
 
-## Clusters
+## Group pipelines into clusters
 
-Group related pipelines:
+Give related pipelines the same `cluster` and they're drawn together:
 
 ```scala
 val B = Node[String, String](identity)

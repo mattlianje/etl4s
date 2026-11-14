@@ -1,7 +1,6 @@
 # Parallel Execution
 
-**etl4s** has an elegant shorthand for grouping and parallelizing operations that
-share the same input type:
+Swap `&` for `&>` and nodes that share an input run in parallel:
 
 ```scala
 import etl4s._
@@ -13,26 +12,24 @@ val e2 = Extract { Thread.sleep(100); "hello" }
 val e3 = Extract { Thread.sleep(100); true }
 ```
 
-Sequential run of `e1`, `e2`, and `e3` (~300ms total):
+Run them one after the other (~300ms total):
 ```scala
 val sequential: Extract[Unit, (Int, String, Boolean)] =
   e1 & e2 & e3
 ```
 
-Parallel run of `e1`, `e2`, `e3` on their own JVM threads with Scala Futures
-(~100ms total, same result, 3X faster):
+Run them in parallel on their own threads (~100ms total, same result, 3X faster):
 ```scala
 val parallel: Extract[Unit, (Int, String, Boolean)] =
   e1 &> e2 &> e3
 ```
 
-Mix sequential and parallel execution - first two parallel (~100ms), then the
-third (~100ms):
+Or mix the two. Here the first two run in parallel (~100ms), then the third (~100ms):
 ```scala
 val mixed = (e1 &> e2) & e3
 ```
 
-Full example of a parallel pipeline:
+A full parallel pipeline:
 ```scala
 val consoleLoad: Load[String, Unit] = Load(println(_))
 val dbLoad:      Load[String, Unit] = Load(x => println(s"DB Load: ${x}"))
@@ -47,6 +44,6 @@ val pipeline =
 pipeline.compile[Future].unsafeRun(())
 ```
 
-Concurrency only kicks in under a concurrent effect - see
-[Effect polymorphism](effect-polymorphism.md). For per-element parallelism over a
-collection, see `eachPar` in [Batch collections](batch.md).
+This only runs in parallel under a concurrent effect like `Future` (see
+[Effect polymorphism](effect-polymorphism.md)). To process the elements of a
+collection in parallel, see `eachPar` in [Batch collections](batch.md).

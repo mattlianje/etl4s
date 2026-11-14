@@ -3,7 +3,7 @@
 
 ## Pipelines are values
 
-Pipelines being values unlocks some powerful niceties. For example given:
+Since pipelines are values, you can do things with them before they ever run. Given:
 
 ```scala
 val billing = parse ~> applyTax ~> format
@@ -34,7 +34,9 @@ os.write.over(os.pwd / "docs" / "billing.mmd", billing.toMermaid)
 ```
 
 
-## Higher Order Nodes
+## Write reusable node factories
+
+Functions that return nodes are a simple way to build a library of reusable steps:
 
 ```scala
 import etl4s._
@@ -56,9 +58,9 @@ val pipeline =
      extract ~> activeOnly ~> inRegion("EU") ~> topSpenders(100) ~> load
 ```
 
-## Dynamic Composition
+## Build pipelines at runtime
 
-You can build pipelines at runtime instead of writing every `~>` by hand.
+You don't have to write every `~>` by hand. Build the pipeline from a list:
 
 ```scala
 import etl4s._
@@ -76,15 +78,14 @@ val pipeline =
 ```
 
 
-Since `reduce` throws on empty lists, you can fold from `Node.identity` (no-op Node)
-and the result is a valid pipeline just with zero steps
+`reduce` throws on an empty list, so fold from `Node.identity` (a node that does nothing) instead:
 
 ```scala
 val cleaningRules: Node[Row, Row] = rules.foldLeft(Node.identity[Row])(_ ~> _)
 ```
 
 
-Assemble custom pipelines based on some configuration type
+Or pick the steps from config:
 
 ```scala
 case class Config(dedupe: Boolean, enrich: Boolean)
@@ -101,7 +102,9 @@ def buildPipeline(cfg: Config): Node[Row, Row] = {
 ```
 
 
-## Custom Operators
+## Add your own operators
+
+Extension methods are all you need:
 
 ```scala
 import etl4s._
@@ -119,9 +122,9 @@ val pipeline =
      extract ~> transform.timed("main") ~> load
 ```
 
-## Symbolic Operators
+## Add symbolic operators
 
-Define your own symbolic operators like `!!` and `@@` below
+Symbols work too, like `!!` and `@@` here:
 
 ```scala
 import etl4s._

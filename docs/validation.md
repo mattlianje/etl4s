@@ -7,9 +7,10 @@ api:
 
 # Ensurers
 
-When writing dataflows, you often want to validate inputs and outputs at runtime - and reuse those validations across nodes, collecting all errors instead of failing on the first.
+Ensurers check a node's input and output at runtime. You can reuse them across nodes, and you get every error
+back at once instead of just the first.
 
-Validators are just functions `A => Option[String]`. Return `None` if valid, `Some("error message")` if not:
+A validator is just a function `A => Option[String]`: None if it's fine, `Some("what's wrong")` if not:
 
 ```scala
 import etl4s._
@@ -19,7 +20,7 @@ val lessThan1k = (x: Int) => if (x < 1000) None else Some("Must be < 1000")
 val notEmpty   = (s: String) => if (s.nonEmpty) None else Some("Cannot be empty")
 ```
 
-`.ensure()` lets you attach validators to any Node:
+Attach them to any node with `.ensure`:
 
 ```scala
 val process = Node[Int, String](n => s"Value: $n")
@@ -37,9 +38,9 @@ You will get:
 -5  -> throws ValidationException: "Must be positive"
 ```
 
-## Change Validation
+## Compare input and output
 
-Validate by examining both input and output together. The `change` validator receives a tuple `(input, output)`:
+A `change` validator gets `(input, output)` as a pair, so you can check one against the other:
 
 ```scala
 /* Ensure deduplication never grows the list */
@@ -54,14 +55,14 @@ val dedupe = Node[List[Int], List[Int]](_.distinct)
 
 dedupe.unsafeRun(List(1, 2, 2, 3))
 ```
-You will get (valid - the list shrunk):
+You will get (it passes, the list shrank):
 ```
 List(1, 2, 3)
 ```
 
-## Error Accumulation
+## Collect every error at once
 
-Multiple failures are collected:
+All failing checks are reported together:
 
 ```scala
 val lessThan100 = (x: Int) => if (x < 100) None else Some("Must be < 100")
@@ -80,11 +81,10 @@ ValidationException: "Input validation failed:
   - Must be even"
 ```
 
-## Validation under effects
+## Get validation failures as values
 
-The default `.unsafeRun` throws on failure. To capture the failure as a value,
-run through an effect. Under `.compile[Try]` a validation failure surfaces as a
-`Failure(ValidationException)`:
+`.unsafeRun` throws on failure. Compile to `Try` instead and you get a
+`Failure(ValidationException)` back:
 
 ```scala
 import etl4s._
@@ -102,13 +102,12 @@ Success("42")
 Failure(ValidationException(...))
 ```
 
-See [Effect polymorphism](effect-polymorphism.md) for the full list of effects.
+See [Effect polymorphism](effect-polymorphism.md) for the other effects.
 
-## Parallel Validation
+## Run checks in parallel
 
-Use `.ensurePar()` in place of `.ensure()` to mark the checks within each stage
-as eligible to run concurrently. This only actually runs them in parallel under a
-concurrent effect (e.g. `.compile[Future]` etc).
+Use `.ensurePar` instead of `.ensure` to let the checks run concurrently. They only
+actually run in parallel under a concurrent effect like `Future`.
 
 ```scala
 import etl4s._
@@ -131,10 +130,9 @@ You will get:
 42
 ```
 
-## Handling Failures
+## Recover from validation failures
 
-Validation failures throw a `ValidationException`. Recover with `.onFailure()`
-or wrap the run in your own `Try`:
+A failed check throws a `ValidationException`. Recover with `.onFailure` or wrap the run in a `Try`:
 
 ```scala
 import scala.util.Try
@@ -150,9 +148,9 @@ You will get:
 Failure(ValidationException("Input validation failed:\n  - Must be positive"))
 ```
 
-## Config-Aware Validation
+## Validate against config
 
-Ensurers work on config nodes too. Validators are curried `Config => A => Option[String]` so they can access config:
+Ensurers work on config-aware nodes too. Write the validator as `Config => A => Option[String]` to read the config:
 
 ```scala
 case class Config(minValue: Int, maxValue: Int)

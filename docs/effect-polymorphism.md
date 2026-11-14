@@ -1,8 +1,7 @@
 # Effect Polymorphism
 
-An **etl4s** pipeline is just a description: a small AST of arrow/profunctor
-combinators. Nothing runs while you stitch it together. You choose *how* it runs
-by compiling it to an effect `F[_]` with `.compile[F]`.
+An **etl4s** pipeline is just a description, and nothing runs while you build it.
+You pick *how* it runs by compiling it to an effect with `.compile[F]`.
 
 ```scala
 import etl4s._
@@ -14,21 +13,21 @@ val p =
      parse ~> inc
 ```
 
-The same `p` value can be interpreted many ways.
+The same `p` can run in many ways.
 
-## Built-in effects
+## Run with the built-in effects
 
-**etl4s** ships three effects out of the box: `Id`, `Try`, and `Future`.
+`Id`, `Try` and `Future` work out of the box.
 
-`Id` is the default - `.unsafeRun` (with no `.compile`) is exactly
-`.compile[Id].unsafeRun`, a plain synchronous run:
+`Id` is the default. Plain `.unsafeRun` is the same as `.compile[Id].unsafeRun`,
+a normal synchronous run:
 
 ```scala
 p.compile[Id].unsafeRun("41") // 42
 p.unsafeRun("41") // 42
 ```
 
-`Try` catches thrown exceptions into `Success`/`Failure`:
+`Try` turns exceptions into a `Failure`:
 
 ```scala
 import scala.util.{Try, Success, Failure}
@@ -37,18 +36,17 @@ p.compile[Try].unsafeRun("41") // Success(42)
 parse.compile[Try].unsafeRun("oops") // Failure(NumberFormatException)
 ```
 
-`Future` runs asynchronously and enables concurrent branches:
+`Future` runs asynchronously and lets branches run concurrently:
 
 ```scala
 val result: Future[Int] = pipeline.compile[Future].unsafeRun("41")
 // Future(Success(42))
 ```
 
-## Where concurrency comes from
+## Run branches concurrently
 
-The concurrent operators (`&>`, `*>`, and `eachPar(n)`) only run in parallel
-when you compile to an effect whose `Effect[F]` implements `both` concurrently
-(like `Future`). Under the default `Id` interpreter everything is sequential.
+`&>`, `*>` and `eachPar(n)` only run in parallel when you compile to a
+concurrent effect like `Future`. With plain `unsafeRun`, everything runs in order.
 
 ```scala
 import etl4s._
@@ -65,15 +63,14 @@ both.unsafeRun(())
 both.compile[Future].unsafeRun(())
 ```
 
-`unsafeRun` runs sequentially (~200ms) under `Id`; `.compile[Future]` runs the
-two branches concurrently (~100ms).
+`unsafeRun` takes ~200ms, `.compile[Future]` takes ~100ms.
 
 See [Parallel Execution](tasks.md) for more.
 
 ## Add your own effect
 
-Want to run on the [Cats Effect](https://typelevel.org/cats-effect/) fiber
-runtime, ZIO, Monix, or any `F[_]`? Implement `etl4s.Effect` once:
+To run on [Cats Effect](https://typelevel.org/cats-effect/), ZIO, Monix or any
+other `F[_]`, implement `etl4s.Effect` once:
 
 ```scala
 import etl4s._
@@ -90,7 +87,7 @@ given etl4s.Effect[IO] with {
 }
 ```
 
-Now the same pipeline runs on `IO`, and `&>` branches on CE fibers:
+Now the same pipeline runs on IO, and `&>` branches run on fibers:
 
 ```scala
 val program: IO[Int] = p.compile[IO].unsafeRun("41")
@@ -106,5 +103,5 @@ The `Effect[F]` contract:
 | `handleErrorWith[A](fa)(h): F[A]` | Recover from failures (`onFailure`, `withRetry`) |
 | `both[A,B](fa, fb): F[(A,B)]` | Combine two; override for concurrency (`&>`, `*>`, `eachPar`) |
 
-`map` and `both` have sensible defaults; override `both` to make the concurrent
-operators actually concurrent.
+`map` and `both` have defaults. Override `both` if you want the concurrent
+operators to actually run concurrently.

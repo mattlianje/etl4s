@@ -12,12 +12,10 @@ api:
 
 # Batch Collections
 
-Sub-pipelines often need to run over every element of a list-like source. This is why etl4s
-has a family of `Each` combinators.
+Often you want to run a sub-pipeline over every element of a collection. That's what the `each` family is for.
 
-They work on `List`, `Vector`, `Seq`,
-`Set`, and `Iterable` out of the box (plus `LazyList` on Scala 3), and any
-[custom container](#custom-batchables) you teach it about.
+They work on `List`, `Vector`, `Seq`, `Set` and `Iterable` out of the box (plus `LazyList` on Scala 3), and on
+[your own containers](#batch-over-your-own-container-types) too.
 
 | Combinator | What it does |
 |------------|--------------|
@@ -27,19 +25,19 @@ They work on `List`, `Vector`, `Seq`,
 | `filterEach(pred)` | keep the elements where `pred` holds |
 
 
-## `each`: one element at a time
+## Process every element with `each`
 
-Applies the inner sub-pipeline to every element, in order, preserving the collection type.
-Each order is validated and enriched on its own, then the whole batch is written:
+Runs the sub-pipeline on each element in order, and keeps the collection type. Here each order is validated and
+enriched on its own, then the whole batch is written:
 
 ```scala
 val ingest =
      fetchOrders ~> each(validateOrder ~> enrichOrder) ~> writeOrdersToDB
 ```
 
-## `eachPar(n)`: up to `n` in flight
+## Process elements in parallel with `eachPar(n)`
 
-Same as `each`, but processes up to `n` elements concurrently.
+Same as `each`, but works on up to `n` elements at once:
 
 ```scala
 val ingest =
@@ -52,38 +50,37 @@ val ingest =
     [compile to a concurrent effect](effect-polymorphism.md). Under the default
     `Id` interpreter (`.unsafeRun`) it runs sequentially.
 
-## `eachSlice(size)`: whole chunks at a time
+## Process chunks with `eachSlice(size)`
 
-Feeds the sub-pipeline chunks of `size` elements instead of single ones.
-Ideal for bulk upserts or batched API calls:
+Hands the sub-pipeline chunks of `size` elements instead of one at a time. Good for bulk upserts or batched API calls:
 
 ```scala
 val bulk =
      fetchOrders ~> eachSlice(500)(bulkUpsertOrders) ~> writeReport
 ```
 
-## `collectEach` / `collectEachPar`: map and drop
+## Drop the misses with `collectEach` / `collectEachPar`
 
-When the inner step returns an `Option`, `collectEach` keeps the `Some`s and drops the
-`None`s, a batch-flavoured `collect`. Rows that fail to parse simply fall away:
+When the inner step returns an Option, `collectEach` keeps the Somes and drops the Nones. Here rows that fail to
+parse just fall away:
 
 ```scala
 val load =
      fetchRows ~> collectEach(parseRow) ~> writeOrdersToDB
 ```
 
-## `filterEach` / `filterEachPar`: keep by predicate
+## Filter elements with `filterEach` / `filterEachPar`
 
-Keeps the elements where the predicate node holds:
+Keeps the elements where the predicate holds:
 
 ```scala
 val bigOnly =
      fetchOrders ~> filterEach(isBigOrder) ~> writeReport
 ```
 
-## Failures
+## Handle failures
 
-Under an effect, an element failure short-circuits the batch:
+Under an effect, the first element that fails stops the whole batch:
 
 ```scala
 val ingest =
@@ -92,9 +89,9 @@ val ingest =
 ingest.compile[Try].unsafeRun()  // Failure(...) on the first element that throws
 ```
 
-## Custom batchables
+## Batch over your own container types
 
-Implement `etl4s.Batchable` to run over your own container types:
+Implement `etl4s.Batchable` for your type:
 
 ```scala
 import etl4s._
@@ -111,6 +108,6 @@ val enrichPage =
      fetchPage ~> eachPar(8)(enrichOrder)
 ```
 
-## Introspection
+## Inspect a batch
 
-A reified batch is still inspectable, the inner step shows up in `.stages`:
+A batch is still a value you can inspect, and the inner step shows up in `.stages`:

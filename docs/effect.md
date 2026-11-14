@@ -1,8 +1,8 @@
 # Side Effects
 
-## Observing with `.tap()`
+## Peek at values with `.tap()`
 
-Peek at values mid-pipeline without modifying them:
+Look at a value mid-pipeline without changing it:
 
 ```scala
 import etl4s._
@@ -22,7 +22,7 @@ Got: hello world
 ```
 and returns `Array("hello", "world")`.
 
-Chain taps at different stages:
+You can tap at several stages:
 
 ```scala
 val pipeline = fetchData
@@ -31,9 +31,9 @@ val pipeline = fetchData
   .tap(count => println(s"Processed $count files"))
 ```
 
-## Sequential Effects with `>>`
+## Run steps in order with `>>`
 
-Run multiple nodes in order, same input to each. Only the last result is kept:
+Runs several nodes in order, each with the same input, and keeps only the last result:
 
 ```scala
 val logStart = Node[String, Unit](s => println(s"Start: $s"))
@@ -51,7 +51,7 @@ End: hello
 ```
 and returns `5`.
 
-Common for setup/teardown:
+Useful for setup and teardown:
 
 ```scala
 val clearCache = Node { println("Clearing cache...") }
@@ -69,6 +69,6 @@ val auditEnd   = Node[Request, Unit](r => log(s"Finished ${r.id}"))
 val pipeline = auditStart >> processRequest >> auditEnd
 ```
 
-## Laziness
+## Build now, run later
 
-Side effects are **lazy** - nothing executes until `.unsafeRun()`. Build and compose freely without triggering effects.
+Nothing runs until you call `.unsafeRun()`, so you can build and compose pipelines without triggering anything.

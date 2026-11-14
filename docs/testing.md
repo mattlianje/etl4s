@@ -1,8 +1,10 @@
 # Testing
 
-Use **etl4s** with the testing framework of your choice
+Use **etl4s** with whatever test framework you like.
 
-Run nodes like normal functions
+## Run a node or pipeline
+
+Nodes are just functions, so you can call them directly:
 ```scala
 import etl4s._
 
@@ -16,7 +18,7 @@ You will get:
 25
 ```
 
-Run pipelines with `unsafeRun`:
+Run a pipeline with `unsafeRun`:
 
 ```scala
 import etl4s._
@@ -32,7 +34,9 @@ Gives
 ```
 20
 ```
-If you want to capture failures, wrap the run in your own `Try`:
+## Check for failures
+
+To catch failures, wrap the run in a `Try`:
 ```scala
 import scala.util.Try
 
@@ -43,8 +47,7 @@ You will get:
 Success(20)
 ```
 
-Or run through an effect with `.compile[F]` - `.compile[Try]` folds the outcome
-into a `Try` for you, which is convenient in assertions:
+Or compile to `Try`, which is handy in assertions:
 
 ```scala
 import etl4s._
@@ -63,10 +66,9 @@ Success(20)
 
 See [Effect polymorphism](effect-polymorphism.md) for the other effects.
 
-## Testing config pipelines
+## Test pipelines that need config
 
-For nodes that `.requires` config, supply it with `.provide(cfg)` (or its alias
-`.provideContext`) before running - swap in test config at the edge:
+Just `.provide` test config before running:
 
 ```scala
 import etl4s._

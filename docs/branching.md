@@ -11,11 +11,11 @@ api:
 
 # Conditional branching
 
-Route data down different pipelines with `If`, `ElseIf`, and `Else`. Branch on the data flowing through, or on outside config.
+Send data down different pipelines with `If`, `ElseIf` and `Else`. You can branch on the data itself, or on config.
 
 ## Branch on data
 
-The predicate runs against the input, and only the matching branch fires:
+The condition runs on the input, and only the matching branch runs:
 
 ```scala
 val classify = score
@@ -24,7 +24,7 @@ val classify = score
   .Else          (tagZero)
 ```
 
-Close with `.Else` and it is exhaustive. Drop the `.Else` and unmatched input flows straight through:
+With an `.Else` every input is covered. Without one, anything that doesn't match passes straight through:
 
 ```scala
 val maybeBoost = enrich.If(_.score > 10)(applyBoost)
@@ -32,15 +32,15 @@ val maybeBoost = enrich.If(_.score > 10)(applyBoost)
 
 ## Start with a branch
 
-`If[A]` opens a pipeline on the branch itself, no upstream node needed:
+`If[A]` starts a pipeline with the branch itself, no upstream node needed:
 
 ```scala
 val ship = If[Order](_.isRush)(expedite).Else(standard) ~> notify
 ```
 
-## Branches are pipelines
+## Use whole pipelines as branches
 
-Any branch can be a whole pipeline, fan-out and all:
+A branch can be any pipeline, fan-outs included:
 
 ```scala
 val offers = extractUser
@@ -59,7 +59,7 @@ Swap `&` for `&>` to fan out concurrently under an effect.
 
 ## Branch on config and data
 
-When the decision needs config too, take a typed condition `(cfg: Config) => (data: A) => Boolean`:
+When the decision needs config too, write the condition as `(cfg: Config) => (data: A) => Boolean`:
 
 ```scala
 val route = source
@@ -71,7 +71,8 @@ route.provide(Config(10)).unsafeRun(5) // "below:5"
 
 ## Branch on config alone
 
-When only the config matters and the data is irrelevant, use `IfCtx` / `ElseIfCtx` - the condition is just `Config => Boolean`. `IfCtx[Config]` starts the pipeline on the context itself, no source node:
+When only the config matters, use `IfCtx` / `ElseIfCtx`, where the condition is just `Config => Boolean`.
+`IfCtx[Config]` can start a pipeline on its own, no source node needed:
 
 ```scala
 val ingest =
@@ -82,7 +83,7 @@ val ingest =
 ingest.provide(Config(isBackfill = true, isDryRun = false)).unsafeRun(batch)
 ```
 
-Already have an upstream Reader? Call `.IfCtx` on it instead:
+If you already have an upstream node, call `.IfCtx` on it instead:
 
 ```scala
 val ingest = source
@@ -93,9 +94,9 @@ val ingest = source
 
 ## Scala 2 vs Scala 3
 
-The API is identical across versions, but Scala 3's type system enables more flexibility.
+The API is the same on both, but Scala 3 is a bit more flexible.
 
-**Scala 3**: branches can return different types (union):
+**Scala 3**: branches can return different types (you get a union):
 
 ```scala
 val router = score
@@ -106,11 +107,11 @@ val router = score
 
 The result type is `Node[Int, String | Int | Double]`.
 
-**Scala 3**: config-aware branches accumulate their config via intersection (`&`):
-mixing branches that need `DbConfig` and `CacheConfig` yields a pipeline that must be provided `DbConfig & CacheConfig`.
+**Scala 3**: branches can need different configs. Mix one that needs `DbConfig` with one that needs `CacheConfig`
+and you provide `DbConfig & CacheConfig`.
 
 !!! note "Scala 2"
-    All branches must return the same type, and share the same config type:
+    All branches must return the same type and need the same config:
     ```scala
     val router = score
       .If(_ > 0)     (posLabel)

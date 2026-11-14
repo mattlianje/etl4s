@@ -9,13 +9,11 @@ api:
 
 # Configuration
 
-When writing pipelines, you often need to:
+Pipelines usually need config: database URLs, API keys, thresholds. You don't want to thread it through every
+function, and you want to swap it out in tests.
 
-- Pass database URLs, API keys, thresholds to various stages
-- Avoid threading config through every function signature
-- Keep stages testable by swapping config at the edge
-
-`.requires` declares what a node needs. `.provide` supplies it once at the top. Config flows through automatically - it's just a Reader monad (`Config => Node[In, Out]`) with some syntax.
+Declare what a node needs with `.requires`, then `.provide` it once at the top. Under the hood it's just a Reader
+(`Config => Node[In, Out]`) with some syntax.
 
 ```scala
 import etl4s._
@@ -37,13 +35,10 @@ You will get:
 "secret: data"
 ```
 
-## Config stays out of your type signatures
+## Keep config out of your types
 
-Some effect systems bake config into the core data type as another type slot. For etl4s it would
-look like `Node[Cfg, In, Out]`
-
-etl4s leaves the node at `Node[In, Out]`. `.requires[Cfg]` wraps just that node in the config
-it asks for (a `Reader[Cfg, Node[In, Out]]`).
+Some libraries add config as an extra type parameter, which here would look like `Node[Cfg, In, Out]`. etl4s
+doesn't. A node stays `Node[In, Out]`, and `.requires[Cfg]` wraps only the nodes that need config.
 
 The operators don't care which is which:
 
@@ -55,12 +50,12 @@ val tag: Reader[Cfg, Node[String, String]] =
 load ~> tag
 ```
 
-`~>`, `&`, `>>`, etc compose plain and config-aware nodes together, infer the combined
-requirement, and leave you one `.provide` at the edge.
+`~>`, `&`, `>>` and friends mix plain and config-aware nodes, work out what the whole pipeline needs, and leave
+you one `.provide` at the end.
 
-## Config Propagation
+## Combine configs from different nodes
 
-Build modular configs with traits. etl4s infers what your pipeline needs:
+Split your config into traits, and etl4s works out what the pipeline needs:
 
 ```scala
 trait HasDb { def dbUrl: String }
@@ -86,14 +81,12 @@ pipeline.provide(AppConfig("jdbc:pg", "secret-key")).unsafeRun()
 
 `.requires[T]` turns a node into a `Reader[T, Node]`.
 
-### How config propagation works
+### How requirements combine
 
-The composition operators (`~>`, `&`, `&>`, `>>`) work directly on these config-aware nodes,
-and there are three rules that govern how requirements flow.
+Three rules decide what a pipeline ends up needing.
 
-**1. Plain nodes connect straight to config-aware ones.** A plain `Node` requires nothing,
-so mixing it in adds no requirement. The pipeline still asks only for what the Reader nodes
-need:
+**1. Plain nodes add nothing.** A plain node needs no config, so the pipeline only asks for what the
+config-aware nodes need:
 
 ```scala
 val fetch   = Node[Unit, String].requires[HasAuth] { c => _ => s"got ${c.apiKey}" }
@@ -121,9 +114,8 @@ p.provide(AppConfig("jdbc:pg", "key")).unsafeRun()
 </svg>
 </div>
 
-**2. Unrelated configs merge to an intersection.** When two nodes require different configs,
-etl4s combines them to `T1 & T2`, here `HasAuth & HasDb`. You then `.provide` a single value
-that lives in the overlap (the `AppConfig` above, which extends both).
+**2. Different configs combine.** If one node needs `HasAuth` and another needs `HasDb`, the pipeline needs
+`HasAuth & HasDb`. You provide one value that is both, like the `AppConfig` above.
 
 <div class="diagram">
 <svg xmlns="http://www.w3.org/2000/svg" width="340" height="190" viewBox="0 0 340 190" font-family="'Helvetica Neue', Helvetica, Arial, sans-serif">
@@ -134,9 +126,8 @@ that lives in the overlap (the `AppConfig` above, which extends both).
 </svg>
 </div>
 
-**3. A subtype absorbs its supertype.** If one node needs `HasDb` and another needs a subtype
-`AppConfig <: HasDb`, the merged requirement is just `AppConfig`. The more specific type (the
-smaller set) wins.
+**3. The more specific type wins.** If one node needs `HasDb` and another needs `AppConfig` (which extends
+`HasDb`), the pipeline just needs `AppConfig`.
 
 <div class="diagram">
 <svg xmlns="http://www.w3.org/2000/svg" width="320" height="200" viewBox="0 0 320 200" font-family="'Helvetica Neue', Helvetica, Arial, sans-serif">
@@ -148,9 +139,9 @@ smaller set) wins.
 </div>
 
 
-## Etl4sCtx
+## Group config-driven nodes with `Etl4sCtx`
 
-`Etl4sCtx[T]` organizes config-driven nodes into modules:
+`Etl4sCtx[T]` lets you put nodes that share a config in one module:
 
 ```scala
 case class DbConfig(url: String, timeout: Int)
@@ -172,7 +163,7 @@ DataPipeline.pipeline.provide(DbConfig("jdbc:pg", 5000)).unsafeRun()
 ```
 
 !!! note "Scala 2"
-    Use explicit types for better inference:
+    Spell out the types to help inference:
     ```scala
     Transform.requires[Config, String, String] { cfg => input =>
       cfg.key + input
